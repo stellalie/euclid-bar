@@ -1,0 +1,94 @@
+import Foundation
+
+/// Runs an action's command safely.
+///
+/// The command template is trusted (the user wrote it). The query is not: it
+/// can contain quotes, `$(...)`, backticks. It is therefore only ever passed
+/// as a positional argument (`$1`) and environment variables, never spliced
+/// into the command string:
+///
+///     /bin/zsh -l -c '<run>' euclid '<query>'
+public enum CommandRunner {
+    public struct Failure: Error, Equatable, Sendable, CustomStringConvertible {
+        public let status: Int32
+        public let stderr: String
+        public var description: String {
+            let line = stderr.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+            return line.isEmpty ? "exit \(status)" : "exit \(status): \(line)"
+        }
+    }
+
+    public static func environment(query: String, clip: String? = nil,
+                                   base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var env = base
+        env["EUCLID_QUERY"] = query
+        env["EUCLID_QUERY_URL"] = urlEncode(query)
+        if let clip { env["EUCLID_CLIP"] = clip } else { env.removeValue(forKey: "EUCLID_CLIP") }
+        return env
+    }
+
+    /// Strict encoding: only RFC 3986 unreserved characters pass through,
+    /// so the result is safe in any URL query position (`&`, `=`, `+`, `#` are encoded).
+    public static func urlEncode(_ s: String) -> String {
+        var allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        allowed.insert(charactersIn: "-._~")
+        return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
+    }
+
+    public static func makeProcess(shell: String, command: String, query: String, clip: String? = nil,
+                                   baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> Process {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: shell)
+        p.arguments = ["-l", "-c", command, "euclid", query] // $0 = euclid, $1 = query
+        p.environment = environment(query: query, clip: clip, base: baseEnvironment)
+        p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        p.standardInput = FileHandle.nullDevice
+        p.standardOutput = FileHandle.nullDevice
+        return p
+    }
+
+    /// Fire-and-forget. `completion` runs on an arbitrary thread when the command exits.
+    public static func runInBackground(shell: String, command: String, query: String, clip: String? = nil,
+                                       baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
+                                       completion: @escaping @Sendable (Result<Void, Failure>) -> Void) {
+        let p = makeProcess(shell: shell, command: command, query: query, clip: clip, baseEnvironment: baseEnvironment)
+        let stderr = Pipe()
+        let collected = CappedBuffer(limit: 4096)
+        p.standardError = stderr
+        // Drain continuously so a chatty command can't fill the pipe and block.
+        stderr.fileHandleForReading.readabilityHandler = { h in collected.append(h.availableData) }
+        p.terminationHandler = { proc in
+            stderr.fileHandleForReading.readabilityHandler = nil
+            collected.append(stderr.fileHandleForReading.readDataToEndOfFile())
+            if proc.terminationStatus == 0 {
+                completion(.success(()))
+            } else {
+                completion(.failure(Failure(status: proc.terminationStatus, stderr: collected.string)))
+            }
+        }
+        do {
+            try p.run()
+        } catch {
+            completion(.failure(Failure(status: -1, stderr: "can't start \(shell): \(error.localizedDescription)")))
+        }
+    }
+}
+
+/// Thread-safe byte buffer that keeps only the first `limit` bytes.
+final class CappedBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let limit: Int
+    init(limit: Int) { self.limit = limit }
+
+    func append(_ d: Data) {
+        lock.lock(); defer { lock.unlock() }
+        let room = limit - data.count
+        if room > 0, !d.isEmpty { data.append(d.prefix(room)) }
+    }
+
+    var string: String {
+        lock.lock(); defer { lock.unlock() }
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}

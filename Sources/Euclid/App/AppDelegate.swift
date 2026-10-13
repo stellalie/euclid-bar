@@ -1,20 +1,23 @@
 import AppKit
 import KeyboardShortcuts
 
-extension KeyboardShortcuts.Name {
-    @MainActor static let togglePanel = Self("togglePanel", default: .init(.space, modifiers: [.option]))
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var config: ConfigService!
     private var panel: PanelController!
     private var clipboard: ClipboardService!
     private var statusItem: NSStatusItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make() // needed for ⌘C/⌘V/⌘A in the search field
-        clipboard = ClipboardService()
-        panel = PanelController(clipboard: clipboard)
+
+        config = ConfigService()
+        let settings = config.current.config
+        clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, limit: settings.clipboardLimit)
+        panel = PanelController(clipboard: clipboard, config: config)
+        applyConfig()
+        config.onChange = { [weak self] in self?.applyConfig() }
+        config.startWatching()
         clipboard.start()
         setUpStatusItem()
 
@@ -29,6 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    /// Apply everything that can change live. (clipboard.limit applies on next launch.)
+    private func applyConfig() {
+        let settings = config.current.config
+        if let hotkey = settings.hotkey { HotkeyBinding.apply(hotkey) }
+        clipboard.ignoredBundleIDs = settings.ignoredApps
+        panel.configDidChange()
+    }
+
     @objc private func handleURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let s = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URL(string: s), url.host == "toggle" else { return }
@@ -40,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "function", accessibilityDescription: "Euclid")
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Euclid", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -47,6 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openPanel() { panel.show() }
+
+    /// Opens config.toml in the default text editor (`open -t`).
+    @objc private func editConfig() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-t", config.paths.configFile.path]
+        try? p.run()
+    }
 
     @objc private func clearHistory() {
         let alert = NSAlert()

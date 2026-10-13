@@ -12,9 +12,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let panel: LauncherPanel
     private let content: LauncherViewController
     private let clipboard: ClipboardService
+    private let config: ConfigService
 
-    init(clipboard: ClipboardService) {
+    init(clipboard: ClipboardService, config: ConfigService) {
         self.clipboard = clipboard
+        self.config = config
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
@@ -25,9 +27,32 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.onPaste = { [weak self] id in self?.paste(id: id) }
         content.onCopy = { [weak self] id in self?.copy(id: id) }
         content.onDelete = { [weak clipboard] id in clipboard?.delete(id: id) }
+        content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
         clipboard.onChange = { [weak self] in
             guard let self, self.panel.isVisible else { return }
-            self.content.reload()
+            self.content.refreshAfterExternalChange()
+        }
+        configDidChange()
+    }
+
+    /// Push the current config into the panel (called on launch and every reload).
+    func configDidChange() {
+        content.actions = config.current.config.actions
+        content.problem = config.problemSummary
+    }
+
+    /// Run an action on the query. Hides first so the result (a browser tab,
+    /// a terminal…) gets focus. Failures show in the footer next time.
+    private func run(_ action: Action, query: String) {
+        hide()
+        let name = action.name
+        perfLog.notice("run action '\(name, privacy: .public)'")
+        CommandRunner.runInBackground(shell: config.current.config.shellPath, command: action.run, query: query) { [weak self] result in
+            guard case .failure(let failure) = result else { return }
+            DispatchQueue.main.async {
+                perfLog.error("action '\(name, privacy: .public)' failed: \(failure.description, privacy: .public)")
+                self?.content.notice = "⚠︎ “\(name)” failed (\(failure.description))"
+            }
         }
     }
 
@@ -69,7 +94,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    func hide() { panel.orderOut(nil) }
+    func hide() {
+        guard panel.isVisible else { return }
+        panel.orderOut(nil)
+        content.didHide()
+    }
 
     func windowDidResignKey(_ notification: Notification) { hide() }
 

@@ -1,24 +1,56 @@
 import AppKit
+import Carbon.HIToolbox
 import EuclidCore
+
+/// One row in the results list.
+enum Row {
+    case clip(SearchItem)
+    /// `number` is the 1-based position in the action list (⌘1 = 1).
+    case action(number: Int, Action)
+    case builtin(Builtin, clipID: Int)
+
+    enum Builtin: String, CaseIterable {
+        case paste = "Paste clip", copy = "Copy clip", delete = "Delete clip"
+        var icon: String { ["Paste clip": "text.insert", "Copy clip": "doc.on.doc", "Delete clip": "trash"][rawValue]! }
+        var hint: String { ["Paste clip": "↵", "Copy clip": "⌘C", "Delete clip": "⌘⌫"][rawValue]! }
+    }
+}
 
 @MainActor
 final class LauncherViewController: NSViewController {
     static let size = NSSize(width: 680, height: 440)
 
+    // Wiring (set by PanelController).
     var onClose: (() -> Void)?
     var onPaste: ((Int) -> Void)?
     var onCopy: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
+    var onRunAction: ((Action, _ query: String) -> Void)?
+
+    /// Enabled actions from config, in order.
+    var actions: [Action] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
+    /// Persistent message (e.g. config problem) shown in the footer instead of hints.
+    var problem: String? { didSet { if isViewLoaded { updateFooter() } } }
+    /// One-off message (e.g. last action failed). Cleared when the panel hides.
+    var notice: String? { didSet { if isViewLoaded { updateFooter() } } }
+
+    private enum Mode: Equatable {
+        case search
+        /// ⌘K list. Remembers the query (actions run on it) and the clip that was selected.
+        case actions(query: String, clipID: Int?)
+    }
+    private var mode = Mode.search
 
     private let itemsProvider: () -> [SearchItem]
-    private var results: [SearchItem] = []
+    private var rows: [Row] = []
     private var keyMonitor: Any?
 
     private let searchField = NSTextField()
+    private let modeLabel = NSTextField(labelWithString: "")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let emptyLabel = NSTextField(labelWithString: "")
-    private let footer = NSTextField(labelWithString: "↵ Paste    ⌘C Copy    ⌘⌫ Delete    esc Close")
+    private let footer = NSTextField(labelWithString: "")
 
     init(items: @escaping () -> [SearchItem]) {
         self.itemsProvider = items
@@ -41,11 +73,15 @@ final class LauncherViewController: NSViewController {
         searchField.drawsBackground = false
         searchField.focusRingType = .none
         searchField.font = .systemFont(ofSize: 22, weight: .regular)
-        searchField.placeholderString = "Search clipboard, calculate, or ask AI…"
         searchField.cell?.usesSingleLineMode = true
         searchField.cell?.wraps = false
         searchField.cell?.isScrollable = true
         searchField.delegate = self
+
+        modeLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        modeLabel.textColor = .secondaryLabelColor
+        modeLabel.lineBreakMode = .byTruncatingMiddle
+        modeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let divider = NSBox()
         divider.boxType = .separator
@@ -72,18 +108,23 @@ final class LauncherViewController: NSViewController {
         let footerDivider = NSBox()
         footerDivider.boxType = .separator
         footer.font = .systemFont(ofSize: 11)
-        footer.textColor = .secondaryLabelColor
+        footer.lineBreakMode = .byTruncatingTail
+        footer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .tertiaryLabelColor
 
-        for v in [searchField, divider, scrollView, emptyLabel, footerDivider, footer] {
+        for v in [searchField, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
             searchField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            searchField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            searchField.trailingAnchor.constraint(equalTo: modeLabel.leadingAnchor, constant: -8),
+
+            modeLabel.firstBaselineAnchor.constraint(equalTo: searchField.firstBaselineAnchor),
+            modeLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            modeLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
 
             divider.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 12),
             divider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
@@ -106,60 +147,165 @@ final class LauncherViewController: NSViewController {
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
         installKeyMonitor()
-        runSearch()
+        enterSearchMode(query: "")
     }
 
-    /// Called right before the panel is shown: clear the query, focus the field.
+    // MARK: - Lifecycle
+
+    /// Called right before the panel is shown: fresh search, focused field.
     func prepareForShow() {
-        searchField.stringValue = ""
-        runSearch()
+        enterSearchMode(query: "")
         view.window?.makeFirstResponder(searchField)
     }
 
-    /// History changed while the panel may be visible: refresh, keep the selected entry if it survived.
-    func reload() {
+    func didHide() { notice = nil }
+
+    /// History or config changed while the panel may be visible: refresh, keep the selection if possible.
+    func refreshAfterExternalChange() {
         guard isViewLoaded else { return }
-        let selectedID = results.indices.contains(tableView.selectedRow) ? results[tableView.selectedRow].id : nil
+        let previous = selectedRow.map(rowKey)
         runSearch()
-        if let selectedID, let row = results.firstIndex(where: { $0.id == selectedID }) { select(row: row) }
+        if let previous, let i = rows.firstIndex(where: { rowKey($0) == previous }) { select(row: i) }
     }
+
+    // MARK: - Modes
+
+    private func enterSearchMode(query: String) {
+        mode = .search
+        searchField.stringValue = query
+        searchField.placeholderString = "Search clipboard…"
+        modeLabel.stringValue = ""
+        runSearch()
+        searchField.currentEditor()?.moveToEndOfDocument(nil)
+    }
+
+    private func enterActionsMode() {
+        let clipID: Int? = if case .clip(let item)? = selectedRow { item.id } else { nil }
+        let query = searchField.stringValue
+        mode = .actions(query: query, clipID: clipID)
+        searchField.stringValue = ""
+        searchField.placeholderString = "Filter actions…"
+        modeLabel.stringValue = query.isEmpty ? "Actions" : "Actions · “\(query)”"
+        runSearch()
+    }
+
+    /// The text actions run on: the typed query (remembered while in ⌘K).
+    private var query: String {
+        if case .actions(let q, _) = mode { return q }
+        return searchField.stringValue
+    }
+
+    // MARK: - Search
 
     private func runSearch() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("search")
-        let all = itemsProvider()
-        results = FuzzyMatcher.search(searchField.stringValue, in: all)
+        let text = searchField.stringValue
+
+        switch mode {
+        case .search:
+            let all = itemsProvider()
+            rows = FuzzyMatcher.search(text, in: all).map(Row.clip)
+            // Nothing matched: offer the actions instead, Raycast-style.
+            if rows.isEmpty, !text.isEmpty { rows = actionRows(filter: "") }
+            emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
+
+        case .actions(_, let clipID):
+            rows = actionRows(filter: text)
+            if let clipID {
+                rows += Row.Builtin.allCases
+                    .filter { text.isEmpty || FuzzyMatcher.score(query: text, in: $0.rawValue) != nil }
+                    .map { .builtin($0, clipID: clipID) }
+            }
+            emptyLabel.stringValue = actions.isEmpty && clipID == nil
+                ? "No actions yet — add [[action]] blocks to config.toml" : "No matching actions"
+        }
+
         tableView.reloadData()
         select(row: 0)
-        emptyLabel.stringValue = all.isEmpty ? "Copy something — it will show up here." : "No matches"
-        emptyLabel.isHidden = !results.isEmpty
+        emptyLabel.isHidden = !rows.isEmpty
+        updateFooter()
         tableView.displayIfNeeded()
         signposter.endInterval("search", state)
-        perfLog.notice("search -> \(self.results.count) of \(all.count) rows in \(String(describing: ContinuousClock.now - start), privacy: .public)")
+        perfLog.notice("search -> \(self.rows.count) rows in \(String(describing: ContinuousClock.now - start), privacy: .public)")
+    }
+
+    private func actionRows(filter: String) -> [Row] {
+        actions.enumerated().compactMap { i, action in
+            guard filter.isEmpty || FuzzyMatcher.score(query: filter, in: action.name) != nil else { return nil }
+            return .action(number: i + 1, action)
+        }
+    }
+
+    private func updateFooter() {
+        if let message = notice ?? problem {
+            footer.stringValue = message
+            footer.textColor = .systemOrange
+            return
+        }
+        footer.textColor = .secondaryLabelColor
+        switch mode {
+        case .search:
+            var hints: [String] = []
+            if case .clip? = selectedRow { hints.append("↵ Paste") } else if !rows.isEmpty { hints.append("↵ Run") }
+            if let first = actions.first { hints.append("⌘↵ \(first.name)") }
+            hints.append("⌘K Actions")
+            if case .clip? = selectedRow { hints += ["⌘C Copy", "⌘⌫ Delete"] }
+            footer.stringValue = hints.joined(separator: "    ")
+        case .actions:
+            footer.stringValue = "↵ Run    1–9 Run    type to filter    esc Back"
+        }
+    }
+
+    // MARK: - Selection & activation
+
+    private var selectedRow: Row? {
+        rows.indices.contains(tableView.selectedRow) ? rows[tableView.selectedRow] : nil
+    }
+
+    private func rowKey(_ row: Row) -> String {
+        switch row {
+        case .clip(let item): "c\(item.id)"
+        case .action(let n, _): "a\(n)"
+        case .builtin(let b, _): "b\(b.rawValue)"
+        }
     }
 
     private func select(row: Int) {
-        guard !results.isEmpty else { return }
-        let r = max(0, min(row, results.count - 1))
+        guard !rows.isEmpty else { return }
+        let r = max(0, min(row, rows.count - 1))
         tableView.selectRowIndexes([r], byExtendingSelection: false)
         tableView.scrollRowToVisible(r)
-    }
-
-    private var selectedID: Int? {
-        results.indices.contains(tableView.selectedRow) ? results[tableView.selectedRow].id : nil
+        updateFooter()
     }
 
     @objc private func activateSelection() {
-        if let id = selectedID { onPaste?(id) }
+        guard let row = selectedRow else { return }
+        switch row {
+        case .clip(let item): onPaste?(item.id)
+        case .action(_, let action): onRunAction?(action, query)
+        case .builtin(.paste, let id): onPaste?(id)
+        case .builtin(.copy, let id): onCopy?(id)
+        case .builtin(.delete, let id):
+            onDelete?(id)
+            enterSearchMode(query: query)
+        }
     }
 
-    /// ⌘C (copy entry, unless text is selected in the field) and ⌘⌫ (delete entry).
-    /// Handled here because they're key equivalents, which bypass the text field delegate.
+    /// ⌘1–⌘9 (any mode) or plain 1–9 (in ⌘K): run the Nth action.
+    private func runAction(number n: Int) {
+        guard actions.indices.contains(n - 1) else { NSSound.beep(); return }
+        onRunAction?(actions[n - 1], query)
+    }
+
+    // MARK: - Keys
+
+    /// Key equivalents (⌘-combos) and digits bypass the text field delegate, so handle them here.
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Local monitors run on the main thread.
-            let keyCode = event.keyCode
-            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let keyCode = Int(event.keyCode)
+            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
             let window = event.window.map(ObjectIdentifier.init)
             let consumed = MainActor.assumeIsolated {
                 self?.handleKey(keyCode: keyCode, mods: mods, window: window) ?? false
@@ -168,17 +314,33 @@ final class LauncherViewController: NSViewController {
         }
     }
 
-    private func handleKey(keyCode: UInt16, mods: NSEvent.ModifierFlags, window: ObjectIdentifier?) -> Bool {
-        guard let own = view.window, window == ObjectIdentifier(own),
-              mods == .command, let id = selectedID else { return false }
-        switch keyCode {
-        case 8: // C
-            if let editor = searchField.currentEditor(), editor.selectedRange.length > 0 { return false } // normal text copy
-            onCopy?(id)
+    private func handleKey(keyCode: Int, mods: NSEvent.ModifierFlags, window: ObjectIdentifier?) -> Bool {
+        guard let own = view.window, window == ObjectIdentifier(own) else { return false }
+        let digit = HotkeyBinding.digitKeyCodes.firstIndex(of: keyCode).flatMap { $0 == 0 ? nil : $0 }
+        let inActions = if case .actions = mode { true } else { false }
+
+        switch (mods, keyCode) {
+        case (.command, kVK_ANSI_K):
+            inActions ? enterSearchMode(query: query) : enterActionsMode()
             return true
-        case 51: // Delete
+        case (.command, kVK_Return), (.command, kVK_ANSI_KeypadEnter):
+            runAction(number: 1)
+            return true
+        case (.command, _) where digit != nil:
+            runAction(number: digit!)
+            return true
+        case ([], _) where digit != nil && inActions:
+            runAction(number: digit!)
+            return true
+        case (.command, kVK_ANSI_C):
+            guard case .clip(let item)? = selectedRow, !inActions else { return false }
+            if let editor = searchField.currentEditor(), editor.selectedRange.length > 0 { return false } // normal text copy
+            onCopy?(item.id)
+            return true
+        case (.command, kVK_Delete):
+            guard case .clip(let item)? = selectedRow, !inActions else { return false }
             let row = tableView.selectedRow
-            onDelete?(id)
+            onDelete?(item.id)
             select(row: row) // keep the cursor in place
             return true
         default:
@@ -195,7 +357,8 @@ extension LauncherViewController: NSTextFieldDelegate {
         case #selector(NSResponder.moveUp(_:)): select(row: tableView.selectedRow - 1)
         case #selector(NSResponder.moveDown(_:)): select(row: tableView.selectedRow + 1)
         case #selector(NSResponder.insertNewline(_:)): activateSelection()
-        case #selector(NSResponder.cancelOperation(_:)): onClose?()
+        case #selector(NSResponder.cancelOperation(_:)):
+            if case .actions = mode { enterSearchMode(query: query) } else { onClose?() }
         default: return false
         }
         return true
@@ -203,13 +366,24 @@ extension LauncherViewController: NSTextFieldDelegate {
 }
 
 extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int { results.count }
+    func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ResultCell.id, owner: nil) as? ResultCell ?? ResultCell()
-        cell.configure(results[row])
+        let inActions = if case .actions = mode { true } else { false }
+        switch rows[row] {
+        case .clip(let item):
+            cell.configure(icon: "doc.on.clipboard", title: item.title, subtitle: ResultCell.clipSubtitle(item))
+        case .action(let n, let action):
+            let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
+            cell.configure(icon: "bolt", title: action.name, subtitle: key)
+        case .builtin(let b, _):
+            cell.configure(icon: b.icon, title: b.rawValue, subtitle: b.hint)
+        }
         return cell
     }
+
+    func tableViewSelectionDidChange(_ notification: Notification) { updateFooter() }
 }
 
 /// Reused row view: icon + single-line title + trailing subtitle.
@@ -223,7 +397,6 @@ final class ResultCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.id
-        icon.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)
         icon.contentTintColor = .secondaryLabelColor
         title.font = .systemFont(ofSize: 14)
         title.lineBreakMode = .byTruncatingTail
@@ -252,12 +425,17 @@ final class ResultCell: NSTableCellView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ item: SearchItem) {
+    func configure(icon symbol: String, title text: String, subtitle detail: String) {
+        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         // Never lay out megabytes: show the first non-empty line, capped.
-        let firstLine = item.title.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let firstLine = text.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         title.stringValue = firstLine.trimmingCharacters(in: .whitespaces)
-        let age = item.date.map { Self.ageFormatter.localizedString(for: $0, relativeTo: Date()) }
-        subtitle.stringValue = [item.subtitle, age].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
+        subtitle.stringValue = detail
+    }
+
+    static func clipSubtitle(_ item: SearchItem) -> String {
+        let age = item.date.map { ageFormatter.localizedString(for: $0, relativeTo: Date()) }
+        return [item.subtitle, age].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
     }
 
     private static let ageFormatter: RelativeDateTimeFormatter = {

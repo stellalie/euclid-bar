@@ -12,13 +12,15 @@ final class ClipboardService {
 
     /// Called after any change, so a visible panel can refresh its results.
     var onChange: (() -> Void)?
+    /// Copies made in these apps are never recorded (from config `clipboard.ignore_apps`).
+    var ignoredBundleIDs: Set<String> = []
 
-    init(limit: Int = 5_000) {
+    init(databaseURL: URL, limit: Int = 5_000) {
         let start = ContinuousClock.now
         var store: ClipStore?
         var existing: [Clip] = []
         do {
-            let s = try ClipStore(path: ClipStore.defaultPath)
+            let s = try ClipStore(path: databaseURL.path)
             existing = try s.loadRecent(limit: limit)
             store = s
         } catch {
@@ -32,7 +34,9 @@ final class ClipboardService {
 
     func start() {
         let monitor = ClipboardMonitor { [weak self] text, app in
-            self?.apply(self?.history.record(text, sourceBundleID: app?.bundleIdentifier, sourceName: app?.localizedName))
+            guard let self else { return }
+            if let id = app?.bundleIdentifier, self.ignoredBundleIDs.contains(id) { return }
+            self.apply(self.history.record(text, sourceBundleID: app?.bundleIdentifier, sourceName: app?.localizedName))
         }
         monitor.start()
         self.monitor = monitor

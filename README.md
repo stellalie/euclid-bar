@@ -16,16 +16,35 @@ make cert    # one-time: stable signing identity so Accessibility permission sur
 
 | Key | Action |
 |---|---|
-| `⌥Space` | Toggle panel |
-| `↵` | Paste into the previous app (needs Accessibility permission; copy-only until granted) |
-| `⌘C` | Copy entry |
-| `⌘⌫` | Delete entry |
+| `⌥Space` | Toggle panel (set `hotkey` in config) |
+| `↵` | Paste clip into the previous app / run selected action |
+| `⌘↵` | Run action #1 |
+| `⌘1`–`⌘9` | Run action N |
+| `⌘K` | Action list: `↑↓` `↵`, `1`–`9`, type to filter, `esc` back |
+| `⌘C` / `⌘⌫` | Copy / delete selected clip |
 | `esc` | Close |
 
-History lives in `~/Library/Application Support/Euclid/history.sqlite` (last 5,000 text entries).
-Password-manager copies (`org.nspasteboard.ConcealedType` etc.) are never recorded.
+When no clip matches, the actions are listed instead.
 
-Hotkey: `⌥Space` (configurable later via settings). Dev hook: `open euclid://toggle`.
+## Config
+
+`~/.config/euclid/config.toml` (or `$XDG_CONFIG_HOME/euclid`, or `$EUCLID_CONFIG_DIR`).
+Created with comments on first launch; applied on save. A broken file keeps the
+last good config and shows the error in the panel footer.
+
+```toml
+[[action]]                      # ⌘1 (and ⌘↵)
+name = "Search web"
+run  = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
+```
+
+Actions run as `<shell> -l -c '<run>' euclid "<query>"`: the query is `$1` /
+`$EUCLID_QUERY` (`$EUCLID_QUERY_URL` URL-encoded) and is never spliced into the
+command. Validate with `build/Euclid.app/Contents/MacOS/Euclid --check-config`.
+
+Data (clipboard history) stays in `~/Library/Application Support/Euclid`
+(or `$EUCLID_DATA_DIR`), so it never ends up in dotfiles. Password-manager
+copies (`org.nspasteboard.ConcealedType` etc.) are never recorded.
 
 ## Speed budgets
 

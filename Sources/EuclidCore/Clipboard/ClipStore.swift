@@ -20,11 +20,6 @@ public final class ClipStore: Sendable {
         try migrator.migrate(db)
     }
 
-    public static var defaultPath: String {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return base.appendingPathComponent("Euclid/history.sqlite").path
-    }
-
     private var migrator: DatabaseMigrator {
         var m = DatabaseMigrator()
         m.registerMigration("v1_clips") { db in
