@@ -1,4 +1,4 @@
-.PHONY: app run test perf log cert clean
+.PHONY: app run test perf log cert demo clean
 
 app:
 	scripts/bundle.sh release
@@ -17,6 +17,11 @@ perf:
 # Live timing for hotkey → visible and keystroke → results
 log:
 	log stream --level info --predicate 'subsystem == "dev.euclid"'
+
+# Re-render the README promo (docs/demo.gif + docs/demo.mp4) from the real panel UI
+demo:
+	swift build -c release
+	$$(swift build -c release --show-bin-path)/euclid-bar --render-demo docs
 
 cert:
 	scripts/make-dev-cert.sh

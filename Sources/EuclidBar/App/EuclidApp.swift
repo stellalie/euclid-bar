@@ -9,6 +9,12 @@ enum EuclidApp {
 
     static func main() {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-demo") {
+            _ = NSApplication.shared
+            let dir = CommandLine.arguments.dropFirst(i + 1).first ?? "docs"
+            do { try DemoRenderer.render(to: URL(fileURLWithPath: dir)) } catch { print("error: \(error)"); exit(1) }
+            exit(0)
+        }
 
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory) // no Dock icon, no menu bar takeover

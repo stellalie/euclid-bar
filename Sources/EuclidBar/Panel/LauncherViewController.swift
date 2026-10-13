@@ -168,6 +168,13 @@ final class LauncherViewController: NSViewController {
         if let previous, let i = rows.firstIndex(where: { rowKey($0) == previous }) { select(row: i) }
     }
 
+    // MARK: - Demo (driven by `euclid-bar --render-demo`)
+
+    func demoSetQuery(_ text: String) { searchField.stringValue = text; runSearch() }
+    func demoToggleActions() { if case .actions = mode { enterSearchMode(query: query) } else { enterActionsMode() } }
+    func demoSelect(row: Int) { select(row: row) }
+    var demoRowCount: Int { rows.count }
+
     // MARK: - Modes
 
     private func enterSearchMode(query: String) {

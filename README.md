@@ -1,6 +1,17 @@
 # euclid-bar
 
-Fast macOS launcher: clipboard history + calculator + AI. Swift + AppKit.
+**Clipboard history + actions launcher for macOS.** Press `⌥Space`, find anything
+you copied in under a millisecond, or send what you typed to any CLI: `pi`,
+`claude`, a browser search, your own scripts.
+
+![euclid-bar demo](docs/demo.gif)
+
+<sub>[MP4 version](docs/demo.mp4) · rendered from the real panel UI with `make demo`</sub>
+
+- ⚡ **Instant**: native Swift + AppKit, sub-millisecond fuzzy search over 5,000 clips, ~19 MB of RAM
+- 🔒 **Private**: history stays on your Mac; password-manager copies are never recorded
+- 🧩 **Any CLI is an action**: one line of TOML each, numbered `⌘1`–`⌘9`, listed under `⌘K`
+- 🖥️ **Terminal-native**: open `pi`/`claude` in a new Ghostty tab or split, or a herdr pane
 
 ## Run
 
