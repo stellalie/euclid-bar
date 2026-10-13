@@ -47,12 +47,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         hide()
         let name = action.name
         perfLog.notice("run action '\(name, privacy: .public)'")
-        CommandRunner.runInBackground(shell: config.current.config.shellPath, command: action.run, query: query) { [weak self] result in
+        let shell = config.current.config.shellPath
+        let completion: @Sendable (Result<Void, CommandRunner.Failure>) -> Void = { [weak self] result in
             guard case .failure(let failure) = result else { return }
             DispatchQueue.main.async {
                 perfLog.error("action '\(name, privacy: .public)' failed: \(failure.description, privacy: .public)")
                 self?.content.notice = "⚠︎ “\(name)” failed (\(failure.description))"
             }
+        }
+        switch action.output {
+        case .ghosttyTab: GhosttyLauncher.open(action, placement: .tab, query: query, shell: shell, completion: completion)
+        case .ghosttySplit: GhosttyLauncher.open(action, placement: .split, query: query, shell: shell, completion: completion)
+        default: CommandRunner.runInBackground(shell: shell, command: action.run, query: query, completion: completion)
         }
     }
 

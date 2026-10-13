@@ -59,7 +59,7 @@ import Testing
         [[action]]
         name = "Later"
         run = "true"
-        output = "ghostty-tab"
+        output = "herdr-tab"
 
         [[action]]
         name = "Good"
@@ -167,5 +167,36 @@ import Testing
 
     @Test func urlEncodingIsStrict() {
         #expect(CommandRunner.urlEncode("a b&c=d/é+#") == "a%20b%26c%3Dd%2F%C3%A9%2B%23")
+    }
+
+    /// Mirrors what Ghostty does with `command`: `/bin/sh -c <command>` with EUCLID_QUERY in env.
+    @Test func terminalCommandQuotesTemplateAndKeepsQueryInert() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let out = dir.appendingPathComponent("out").path
+        let pwned = dir.appendingPathComponent("pwned").path
+        let evil = #"it's "$(touch \#(pwned))" `touch \#(pwned)`"#
+        // Template itself contains single quotes, which must survive the outer quoting.
+        let run = #"printf '%s' "$1" > \#(out)"#
+        let command = CommandRunner.terminalCommand(shell: "/bin/zsh", run: run, keepShell: false)
+
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", command]
+        var env = ProcessInfo.processInfo.environment
+        for entry in CommandRunner.euclidEnvironmentEntries(query: evil) {
+            let kv = entry.split(separator: "=", maxSplits: 1).map(String.init)
+            env[kv[0]] = kv[1]
+        }
+        p.environment = env
+        let result = await withCheckedContinuation { c in CommandRunner.run(p) { c.resume(returning: $0) } }
+        #expect(throws: Never.self) { try result.get() }
+        #expect(try String(contentsOfFile: out, encoding: .utf8) == evil)
+        #expect(!FileManager.default.fileExists(atPath: pwned))
+    }
+
+    @Test func shellQuoteHandlesSingleQuotes() {
+        #expect(CommandRunner.shellQuote("it's") == #"'it'\''s'"#)
     }
 }

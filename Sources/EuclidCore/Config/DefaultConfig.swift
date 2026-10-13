@@ -27,8 +27,12 @@ path = "/bin/zsh"            # actions run as a login shell (-l), so your PATH i
 # so quotes or $(...) in what you type can't run anything.
 # Tip: use 'single quotes' around run, so double quotes inside need no escaping.
 #
-# output = "background" (default) runs it and stays out of the way.
-# Coming next: "panel", "ghostty-tab", "ghostty-split", "herdr-tab", "herdr-pane".
+# output:
+#   "background"     (default) run it and stay out of the way
+#   "ghostty-tab"    new tab in the front Ghostty window (new window if none)
+#   "ghostty-split"  split the focused Ghostty pane to the right
+#   (the tab drops into your shell when the command exits)
+# Coming next: "panel", "herdr-tab", "herdr-pane".
 # ---------------------------------------------------------------------------
 
 [[action]]

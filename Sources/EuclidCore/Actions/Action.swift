@@ -9,7 +9,19 @@ public struct Action: Equatable, Sendable {
         case herdrPane = "herdr-pane"
 
         /// Outputs implemented so far. Others parse, but the action is disabled with a warning.
-        public var isAvailable: Bool { self == .background }
+        public var isAvailable: Bool { [.background, .ghosttyTab, .ghosttySplit].contains(self) }
+
+        /// Short label for the UI.
+        public var label: String? {
+            switch self {
+            case .background: nil
+            case .panel: "panel"
+            case .ghosttyTab: "Ghostty tab"
+            case .ghosttySplit: "Ghostty split"
+            case .herdrTab: "herdr tab"
+            case .herdrPane: "herdr pane"
+            }
+        }
     }
 
     public let name: String

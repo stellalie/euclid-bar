@@ -12,6 +12,10 @@ public enum CommandRunner {
     public struct Failure: Error, Equatable, Sendable, CustomStringConvertible {
         public let status: Int32
         public let stderr: String
+        public init(status: Int32, stderr: String) {
+            self.status = status
+            self.stderr = stderr
+        }
         public var description: String {
             let line = stderr.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
             return line.isEmpty ? "exit \(status)" : "exit \(status): \(line)"
@@ -52,9 +56,16 @@ public enum CommandRunner {
                                        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
                                        completion: @escaping @Sendable (Result<Void, Failure>) -> Void) {
         let p = makeProcess(shell: shell, command: command, query: query, clip: clip, baseEnvironment: baseEnvironment)
+        run(p, completion: completion)
+    }
+
+    /// Runs any prepared process, collecting stderr (capped) for error reporting.
+    public static func run(_ p: Process, completion: @escaping @Sendable (Result<Void, Failure>) -> Void) {
         let stderr = Pipe()
         let collected = CappedBuffer(limit: 4096)
         p.standardError = stderr
+        if p.standardInput == nil { p.standardInput = FileHandle.nullDevice }
+        if p.standardOutput == nil { p.standardOutput = FileHandle.nullDevice }
         // Drain continuously so a chatty command can't fill the pipe and block.
         stderr.fileHandleForReading.readabilityHandler = { h in collected.append(h.availableData) }
         p.terminationHandler = { proc in
@@ -69,8 +80,35 @@ public enum CommandRunner {
         do {
             try p.run()
         } catch {
-            completion(.failure(Failure(status: -1, stderr: "can't start \(shell): \(error.localizedDescription)")))
+            let path = p.executableURL?.path ?? "?"
+            completion(.failure(Failure(status: -1, stderr: "can't start \(path): \(error.localizedDescription)")))
         }
+    }
+
+    // MARK: - Terminals
+
+    /// The command a terminal (Ghostty, herdr…) should run for an action.
+    /// The terminal runs it through `/bin/sh -c` with `EUCLID_QUERY` in its
+    /// environment, so the query is still only ever a variable, never code:
+    ///
+    ///     /bin/zsh -l -c '<run>; exec /bin/zsh -l' euclid "$EUCLID_QUERY"
+    ///
+    /// `keepShell` drops into an interactive shell when the command exits, so the tab stays useful.
+    public static func terminalCommand(shell: String, run: String, keepShell: Bool = true) -> String {
+        let script = keepShell ? "\(run); exec \(shellQuote(shell)) -l" : run
+        return "\(shellQuote(shell)) -l -c \(shellQuote(script)) euclid \"$EUCLID_QUERY\""
+    }
+
+    /// POSIX single-quoting: safe for any string.
+    public static func shellQuote(_ s: String) -> String {
+        "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
+    }
+
+    /// Environment entries for terminals that take `KEY=VALUE` lists.
+    public static func euclidEnvironmentEntries(query: String, clip: String? = nil) -> [String] {
+        var entries = ["EUCLID_QUERY=\(query)", "EUCLID_QUERY_URL=\(urlEncode(query))"]
+        if let clip { entries.append("EUCLID_CLIP=\(clip)") }
+        return entries
     }
 }
 
