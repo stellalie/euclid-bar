@@ -14,7 +14,13 @@ limit = 5000                 # entries kept
 ignore_apps = []             # bundle IDs never recorded, e.g. ["com.1password.1password"]
 
 [shell]
-path = "/bin/zsh"            # actions run as a login shell (-l), so your PATH is loaded
+path = "/bin/zsh"            # actions run as a login shell (-l): ~/.zprofile loads, ~/.zshrc doesn't
+
+# Environment for every action. Use it for variables you export in ~/.zshrc
+# (interactive-only), e.g. provider settings for `pi --print` in the background:
+[env]
+# AWS_PROFILE = "my-profile"
+# AWS_REGION  = "us-east-1"
 
 # ---------------------------------------------------------------------------
 # Actions, in order. The first is ⌘↵; ⌘1–⌘9 run the first nine; ⌘K lists all.
@@ -29,7 +35,8 @@ path = "/bin/zsh"            # actions run as a login shell (-l), so your PATH i
 #
 # Commands run in the background. Anything goes: open URLs, call CLIs, scripts.
 # Scripts in ~/.config/euclid/bin are on PATH. Euclid installs one you can edit:
-#   ghostty-run tab|split|window <command...>   run a command in Ghostty
+#   ghostty-run tab|split|window <command...>     run a command in Ghostty
+#   herdr-run   tab|split|split-down <command...> run a command in herdr
 # Coming next: output = "panel" streams a command's output into Euclid.
 # ---------------------------------------------------------------------------
 
@@ -49,5 +56,9 @@ run  = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # [[action]]
 # name = "pi in Ghostty"
 # run  = 'ghostty-run tab pi "$1"'          # or: split, window
+
+# [[action]]
+# name = "pi in herdr"
+# run  = 'herdr-run tab pi "$1"'            # or: split, split-down
 """#
 }

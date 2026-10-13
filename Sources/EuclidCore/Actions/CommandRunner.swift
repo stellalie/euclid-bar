@@ -45,8 +45,16 @@ public enum CommandRunner {
                                    baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> Process {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: shell)
-        p.arguments = ["-l", "-c", command, "euclid", query] // $0 = euclid, $1 = query
-        p.environment = environment(query: query, clip: clip, pathPrefix: pathPrefix, base: baseEnvironment)
+        var script = command
+        var env = environment(query: query, clip: clip, pathPrefix: pathPrefix, base: baseEnvironment)
+        if let pathPrefix {
+            // The login profile (path_helper, ~/.zprofile) reorders PATH, so re-prefix
+            // *after* it runs: scripts in the bin directory must win over same-named tools.
+            env["EUCLID_BIN"] = pathPrefix
+            script = "PATH=\"$EUCLID_BIN:$PATH\"\n" + command
+        }
+        p.arguments = ["-l", "-c", script, "euclid", query] // $0 = euclid, $1 = query
+        p.environment = env
         p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         p.standardInput = FileHandle.nullDevice
         p.standardOutput = FileHandle.nullDevice

@@ -55,8 +55,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                 self?.content.notice = "⚠︎ “\(name)” failed (\(failure.description))"
             }
         }
+        let env = ProcessInfo.processInfo.environment.merging(config.current.config.environment) { $1 }
         CommandRunner.runInBackground(shell: shell, command: action.run, query: query,
-                                      pathPrefix: config.paths.binDirectory.path, completion: completion)
+                                      pathPrefix: config.paths.binDirectory.path, baseEnvironment: env,
+                                      completion: completion)
     }
 
     /// Enter: put the entry on the pasteboard, hide, and ⌘V into the previous app.

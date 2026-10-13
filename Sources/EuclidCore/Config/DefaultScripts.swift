@@ -1,7 +1,15 @@
-/// Helper scripts installed into `<config>/bin` on first launch. Never
-/// overwritten, so they're yours to edit. Actions get that directory first on PATH.
+/// Helper scripts installed into `<config>/bin`. Actions get that directory first on PATH.
+/// Once you edit a script it's yours: Euclid only upgrades files that are
+/// byte-identical to a version it shipped (see `previousVersions`).
 public enum DefaultScripts {
-    public static let all: [(name: String, text: String)] = [("ghostty-run", ghosttyRun)]
+    public static let all: [(name: String, text: String)] = [("ghostty-run", ghosttyRun), ("herdr-run", herdrRun)]
+
+    /// SHA-256 of every earlier shipped version, per script. A file matching one
+    /// of these is unmodified, so it's safe to replace with the current version.
+    public static let previousVersions: [String: Set<String>] = [
+        // v1: ran the command in a non-interactive shell, so ~/.zshrc exports were missing.
+        "ghostty-run": ["aaecd6d1093bc03da602c20138539c4e41c650638fcd68f782896df35a0141dd"],
+    ]
 
     /// Ghostty's CLI can't open tabs or splits on macOS (`+new-window is not
     /// supported on this platform`), so this uses its AppleScript API.
@@ -15,8 +23,9 @@ public enum DefaultScripts {
 #
 # Arguments are re-quoted with zsh's (q) flag and reach Ghostty only through an
 # environment variable, so quotes, $(...) or backticks in them never run.
-# When the command exits, the terminal drops into your shell.
-# Installed by Euclid. Edit freely: Euclid never overwrites it.
+# The command runs in an interactive login shell (loads ~/.zprofile and ~/.zshrc),
+# exactly like typing it into a new tab. When it exits, you're left in your shell.
+# Installed by Euclid. Edit freely: once edited, Euclid never overwrites it.
 set -eu
 
 place=${1:-}
@@ -27,7 +36,7 @@ esac
 (( $# )) || { print -u2 "ghostty-run: missing command"; exit 64 }
 
 inner=${(j: :)${(q)@}}
-term_cmd="/bin/zsh -l -c 'eval \"\$EUCLID_CMD\"; exec \"\${SHELL:-/bin/zsh}\" -l'"
+term_cmd="/bin/zsh -l -i -c 'eval \"\$EUCLID_CMD\"; exec \"\${SHELL:-/bin/zsh}\" -l'"
 
 if [[ -n ${GHOSTTY_RUN_DRY:-} ]]; then   # testing: print instead of opening Ghostty
   print -r -- "$term_cmd"; print -r -- "EUCLID_CMD=$inner"; exit 0
@@ -51,5 +60,55 @@ on run argv
   end tell
 end run
 APPLESCRIPT
+"""#
+
+    /// Run a command in a new herdr tab or split, via herdr's CLI.
+    public static let herdrRun = #"""
+#!/bin/zsh
+# herdr-run: run a command in a new herdr tab or split.
+#
+#   herdr-run tab        pi "$1"
+#   herdr-run split      pi "$1"     # split the focused pane to the right
+#   herdr-run split-down pi "$1"
+#
+# The command is re-quoted with zsh's (q) flag and passed to the new pane as the
+# EUCLID_CMD environment variable; the pane only ever types `eval "$EUCLID_CMD"`.
+# Quotes, $(...) or backticks in the query never run.
+#
+#   HERDR_RUN_APP=Ghostty   app hosting herdr, brought to the front (empty = don't)
+#   HERDR_RUN_FOCUS=0       create in the background, don't switch to it
+# The pane's own interactive shell runs the command, so ~/.zshrc exports apply.
+# Installed by Euclid. Edit freely: once edited, Euclid never overwrites it.
+set -eu
+
+place=${1:-}
+case $place in
+  tab|split|split-down) shift ;;
+  *) print -u2 "usage: herdr-run tab|split|split-down <command> [args...]"; exit 64 ;;
+esac
+(( $# )) || { print -u2 "herdr-run: missing command"; exit 64 }
+command -v herdr >/dev/null || { print -u2 "herdr-run: herdr not found on PATH"; exit 69 }
+command -v jq >/dev/null || { print -u2 "herdr-run: jq not found on PATH"; exit 69 }
+
+inner=${(j: :)${(q)@}}
+focus=--focus
+[[ ${HERDR_RUN_FOCUS:-1} == 0 ]] && focus=--no-focus
+
+case $place in
+  tab)
+    res=$(herdr tab create $focus --label "${1:t}" --env "EUCLID_CMD=$inner")
+    pane=$(jq -r '.result.root_pane.pane_id' <<<"$res") ;;
+  split|split-down)
+    dir=right; [[ $place == split-down ]] && dir=down
+    res=$(herdr pane split --direction $dir $focus --env "EUCLID_CMD=$inner")
+    pane=$(jq -r '.result.pane.pane_id' <<<"$res") ;;
+esac
+[[ -n $pane && $pane != null ]] || { print -u2 "herdr-run: unexpected herdr response: $res"; exit 70 }
+
+herdr pane run "$pane" 'eval "$EUCLID_CMD"' >/dev/null
+
+app=${HERDR_RUN_APP-Ghostty}
+[[ $focus == --focus && -n $app ]] && open -a "$app"
+exit 0
 """#
 }

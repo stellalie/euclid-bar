@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import TOMLDecoder
 
@@ -7,6 +8,9 @@ public struct EuclidConfig: Equatable, Sendable {
     public var clipboardLimit = 5_000
     public var ignoredApps: Set<String> = []
     public var shellPath = "/bin/zsh"
+    /// Extra environment for every action (`[env]`). For variables your shell only
+    /// sets in interactive mode (~/.zshrc), which background actions don't load.
+    public var environment: [String: String] = [:]
     /// Enabled actions, in file order. Position = number shortcut (⌘1 = first).
     public var actions: [Action] = []
 
@@ -55,7 +59,7 @@ public enum ConfigLoader {
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "action"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "action"], in: "top level", &issues)
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -102,6 +106,22 @@ public enum ConfigLoader {
                 }
             } else {
                 issues.append(.warning("shell must be a table: [shell]"))
+            }
+        }
+
+        if root.contains(key: "env") {
+            if let t = try? root.table(forKey: "env") {
+                for key in t.keys.sorted() {
+                    guard key.range(of: #"^[A-Za-z_][A-Za-z0-9_]*$"#, options: .regularExpression) != nil else {
+                        issues.append(.warning("env: '\(key)' isn't a valid variable name")); continue
+                    }
+                    guard let value = try? t.string(forKey: key) else {
+                        issues.append(.warning("env.\(key) must be a string (use quotes)")); continue
+                    }
+                    config.environment[key] = value
+                }
+            } else {
+                issues.append(.warning("env must be a table: [env]"))
             }
         }
 
@@ -157,14 +177,18 @@ public enum ConfigLoader {
         }
     }
 
-    /// Install helper scripts (e.g. `ghostty-run`) into `<config>/bin` if missing.
-    /// Existing files are never touched: they're the user's to edit.
+    /// Install helper scripts (e.g. `ghostty-run`) into `<config>/bin` if missing,
+    /// or upgrade them if they're an unmodified older version. Edited files are never touched.
     public static func installDefaultScripts(in binDirectory: URL) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: binDirectory, withIntermediateDirectories: true)
         for script in DefaultScripts.all {
             let url = binDirectory.appendingPathComponent(script.name)
-            guard !fm.fileExists(atPath: url.path) else { continue }
+            if let existing = fm.contents(atPath: url.path) {
+                let hash = SHA256.hash(data: existing).map { String(format: "%02x", $0) }.joined()
+                let isUnmodifiedOldVersion = DefaultScripts.previousVersions[script.name]?.contains(hash) ?? false
+                guard isUnmodifiedOldVersion else { continue } // current, or edited by the user
+            }
             try script.text.write(to: url, atomically: true, encoding: .utf8)
             try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         }

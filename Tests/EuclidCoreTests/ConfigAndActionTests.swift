@@ -84,6 +84,19 @@ import Testing
         #expect(messages.contains("use run = 'ghostty-run tab <command>'"))
     }
 
+    @Test func envTable() throws {
+        let toml = """
+        [env]
+        AWS_PROFILE = "dev"
+        AWS_REGION = "us-east-1"
+        "BAD-NAME" = "x"
+        NUM = 3
+        """
+        let loaded = try ConfigLoader.parse(toml)
+        #expect(loaded.config.environment == ["AWS_PROFILE": "dev", "AWS_REGION": "us-east-1"])
+        #expect(loaded.issues.count == 2)
+    }
+
     @Test func clipboardAndShellSettings() throws {
         let toml = """
         [clipboard]
@@ -171,6 +184,24 @@ import Testing
         #expect(throws: Never.self) { try r.get() }
     }
 
+    /// The login profile reorders PATH; scripts in the bin dir must still win.
+    @Test func binDirectoryWinsOverLoginProfilePath() async throws {
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        let shadow = bin.appendingPathComponent("ls") // collides with /bin/ls
+        try "#!/bin/sh\necho fake\n".write(to: shadow, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shadow.path)
+        let p = CommandRunner.makeProcess(shell: "/bin/zsh", command: "command -v ls", query: "",
+                                          pathPrefix: bin.path, baseEnvironment: ["HOME": NSHomeDirectory()])
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try p.run()
+        p.waitUntilExit()
+        let found = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        #expect(found.trimmingCharacters(in: .whitespacesAndNewlines) == shadow.path)
+    }
+
     @Test func urlEncodingIsStrict() {
         #expect(CommandRunner.urlEncode("a b&c=d/é+#") == "a%20b%26c%3Dd%2F%C3%A9%2B%23")
     }
@@ -223,5 +254,87 @@ import Testing
         try "# mine".write(to: script, atomically: true, encoding: .utf8)
         try ConfigLoader.installDefaultScripts(in: bin)
         #expect(try String(contentsOf: script, encoding: .utf8) == "# mine")
+    }
+
+    /// An unmodified older version is upgraded; that's how ghostty-run v1 users get the fix.
+    @Test func installDefaultScriptsUpgradesUnmodifiedOldVersions() throws {
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let script = bin.appendingPathComponent("ghostty-run")
+        try Self.ghosttyRunV1.write(to: script, atomically: true, encoding: .utf8)
+        try ConfigLoader.installDefaultScripts(in: bin)
+        #expect(try String(contentsOf: script, encoding: .utf8) == DefaultScripts.ghosttyRun)
+    }
+
+    /// The exact v1 text, from git history (commit c92f825).
+    static var ghosttyRunV1: String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        p.arguments = ["-C", #filePath.components(separatedBy: "/Tests/")[0], "show", "c92f825:Sources/EuclidCore/Config/DefaultScripts.swift"]
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try? p.run()
+        let src = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        p.waitUntilExit()
+        return src.components(separatedBy: "ghosttyRun = #\"\"\"\n")[1].components(separatedBy: "\n\"\"\"#")[0]
+    }
+
+    /// herdr-run against a fake `herdr` that answers like the real CLI (JSON IDs)
+    /// and, for `pane run`, types the text into a shell with the pane's --env set.
+    @Test(arguments: ["tab", "split", "split-down"])
+    func herdrRunScriptKeepsQueryInert(place: String) async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bin = dir.appendingPathComponent("bin")
+        try ConfigLoader.installDefaultScripts(in: bin)
+        let fake = bin.appendingPathComponent("herdr")
+        try #"""
+        #!/bin/zsh
+        state=${0:h}/../state; mkdir -p $state
+        print -r -- "$*" >> $state/calls
+        for a in "$@"; do [[ $a == EUCLID_CMD=* ]] && print -rn -- "${a#EUCLID_CMD=}" > $state/env; done
+        case "$1 $2" in
+          "tab create") print '{"result":{"root_pane":{"pane_id":"w:p1"},"tab":{"tab_id":"w:t1"}}}' ;;
+          "pane split") print '{"result":{"pane":{"pane_id":"w:p2"}}}' ;;
+          "pane run")   EUCLID_CMD="$(<$state/env)" /bin/zsh -c "$4" ;;
+        esac
+        """#.write(to: fake, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+
+        let env = ["HOME": NSHomeDirectory(), "HERDR_RUN_APP": ""]
+        // Safety first: never let this test reach the user's real herdr session.
+        let resolved = Pipe()
+        let check = CommandRunner.makeProcess(shell: "/bin/zsh", command: "command -v herdr", query: "",
+                                              pathPrefix: bin.path, baseEnvironment: env)
+        check.standardOutput = resolved
+        try check.run()
+        check.waitUntilExit()
+        let herdrPath = String(decoding: resolved.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        try #require(herdrPath.trimmingCharacters(in: .whitespacesAndNewlines) == fake.path,
+                     "fake herdr is shadowed by \(herdrPath); refusing to run")
+
+        let out = dir.appendingPathComponent("out").path
+        let pwned = dir.appendingPathComponent("pwned").path
+        let evil = "it's \"q\" $(touch \(pwned)) `touch \(pwned)` a\\b\nline2"
+        let command = #"herdr-run "#  + place + #" zsh -c 'printf "%s" "$1" > "$2"' x "$1" "# + out
+        let r = await withCheckedContinuation { c in
+            CommandRunner.runInBackground(shell: "/bin/zsh", command: command, query: evil, pathPrefix: bin.path,
+                                          baseEnvironment: env) {
+                c.resume(returning: $0)
+            }
+        }
+        #expect(throws: Never.self) { try r.get() }
+        #expect(try String(contentsOfFile: out, encoding: .utf8) == evil)
+        #expect(!FileManager.default.fileExists(atPath: pwned))
+
+        let calls = try String(contentsOf: dir.appendingPathComponent("state/calls"), encoding: .utf8)
+        let first = calls.split(separator: "\n").first.map(String.init) ?? ""
+        switch place {
+        case "tab": #expect(first.hasPrefix("tab create --focus --label zsh"))
+        case "split": #expect(first.hasPrefix("pane split --direction right --focus"))
+        default: #expect(first.hasPrefix("pane split --direction down --focus"))
+        }
+        #expect(calls.contains("pane run w:p"))
     }
 }
