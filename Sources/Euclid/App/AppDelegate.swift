@@ -1,4 +1,5 @@
 import AppKit
+import EuclidCore
 import KeyboardShortcuts
 
 @MainActor
@@ -12,6 +13,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = MainMenu.make() // needed for ⌘C/⌘V/⌘A in the search field
 
         config = ConfigService()
+        do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
+            perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
+        }
         let settings = config.current.config
         clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, limit: settings.clipboardLimit)
         panel = PanelController(clipboard: clipboard, config: config)

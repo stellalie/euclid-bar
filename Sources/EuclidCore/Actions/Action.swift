@@ -1,27 +1,13 @@
 /// A user-defined action: a shell command run with the query as `$1`.
 public struct Action: Equatable, Sendable {
+    /// Where the command's output goes. Terminals (Ghostty, herdr…) are not
+    /// outputs: they're just commands, e.g. `ghostty-run tab pi "$1"`.
     public enum Output: String, Sendable, CaseIterable {
         case background
         case panel
-        case ghosttyTab = "ghostty-tab"
-        case ghosttySplit = "ghostty-split"
-        case herdrTab = "herdr-tab"
-        case herdrPane = "herdr-pane"
 
         /// Outputs implemented so far. Others parse, but the action is disabled with a warning.
-        public var isAvailable: Bool { [.background, .ghosttyTab, .ghosttySplit].contains(self) }
-
-        /// Short label for the UI.
-        public var label: String? {
-            switch self {
-            case .background: nil
-            case .panel: "panel"
-            case .ghosttyTab: "Ghostty tab"
-            case .ghosttySplit: "Ghostty split"
-            case .herdrTab: "herdr tab"
-            case .herdrPane: "herdr pane"
-            }
-        }
+        public var isAvailable: Bool { self == .background }
     }
 
     public let name: String

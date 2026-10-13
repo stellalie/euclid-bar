@@ -135,6 +135,11 @@ public enum ConfigLoader {
         if t.contains(key: "output") {
             let raw = (try? t.string(forKey: "output")) ?? ""
             guard let o = Action.Output(rawValue: raw) else {
+                if raw.hasPrefix("ghostty-") {
+                    let place = raw.dropFirst("ghostty-".count)
+                    issues.append(.warning("\(label): output '\(raw)' was replaced by a script: remove output and use run = 'ghostty-run \(place) <command>', skipped"))
+                    return nil
+                }
                 let valid = Action.Output.allCases.map(\.rawValue).joined(separator: ", ")
                 issues.append(.warning("\(label): unknown output '\(raw)' (use \(valid)), skipped")); return nil
             }
@@ -149,6 +154,19 @@ public enum ConfigLoader {
     private static func warnUnknownKeys(_ t: TOMLTable, known: Set<String>, in place: String, _ issues: inout [ConfigIssue]) {
         for key in t.keys.sorted() where !known.contains(key) {
             issues.append(.warning("\(place): unknown key '\(key)'"))
+        }
+    }
+
+    /// Install helper scripts (e.g. `ghostty-run`) into `<config>/bin` if missing.
+    /// Existing files are never touched: they're the user's to edit.
+    public static func installDefaultScripts(in binDirectory: URL) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+        for script in DefaultScripts.all {
+            let url = binDirectory.appendingPathComponent(script.name)
+            guard !fm.fileExists(atPath: url.path) else { continue }
+            try script.text.write(to: url, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         }
     }
 

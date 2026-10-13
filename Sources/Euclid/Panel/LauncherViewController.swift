@@ -376,9 +376,7 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             cell.configure(icon: "doc.on.clipboard", title: item.title, subtitle: ResultCell.clipSubtitle(item))
         case .action(let n, let action):
             let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
-            let icon = action.output == .background ? "bolt" : "terminal"
-            let detail = [action.output.label, key.isEmpty ? nil : key].compactMap { $0 }.joined(separator: " · ")
-            cell.configure(icon: icon, title: action.name, subtitle: detail)
+            cell.configure(icon: "bolt", title: action.name, subtitle: key)
         case .builtin(let b, _):
             cell.configure(icon: b.icon, title: b.rawValue, subtitle: b.hint)
         }

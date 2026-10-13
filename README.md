@@ -40,7 +40,14 @@ run  = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
 
 Actions run as `<shell> -l -c '<run>' euclid "<query>"`: the query is `$1` /
 `$EUCLID_QUERY` (`$EUCLID_QUERY_URL` URL-encoded) and is never spliced into the
-command. Validate with `build/Euclid.app/Contents/MacOS/Euclid --check-config`.
+command. Scripts in `~/.config/euclid/bin` are on PATH; Euclid installs
+`ghostty-run tab|split|window <cmd…>` there (never overwritten, edit freely):
+
+```toml
+run = 'ghostty-run tab pi "$1"'
+```
+
+Validate with `build/Euclid.app/Contents/MacOS/Euclid --check-config`.
 
 Data (clipboard history) stays in `~/Library/Application Support/Euclid`
 (or `$EUCLID_DATA_DIR`), so it never ends up in dotfiles. Password-manager

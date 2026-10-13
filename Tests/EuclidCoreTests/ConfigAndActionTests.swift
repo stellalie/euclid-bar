@@ -59,7 +59,12 @@ import Testing
         [[action]]
         name = "Later"
         run = "true"
-        output = "herdr-tab"
+        output = "panel"
+
+        [[action]]
+        name = "Old ghostty"
+        run = "pi"
+        output = "ghostty-tab"
 
         [[action]]
         name = "Good"
@@ -76,6 +81,7 @@ import Testing
         #expect(messages.contains("'No command': missing run"))
         #expect(messages.contains("unknown output 'pannel'"))
         #expect(messages.contains("isn't supported yet"))
+        #expect(messages.contains("use run = 'ghostty-run tab <command>'"))
     }
 
     @Test func clipboardAndShellSettings() throws {
@@ -169,34 +175,53 @@ import Testing
         #expect(CommandRunner.urlEncode("a b&c=d/é+#") == "a%20b%26c%3Dd%2F%C3%A9%2B%23")
     }
 
-    /// Mirrors what Ghostty does with `command`: `/bin/sh -c <command>` with EUCLID_QUERY in env.
-    @Test func terminalCommandQuotesTemplateAndKeepsQueryInert() async throws {
+    /// Full chain for `run = 'ghostty-run tab printf "%s" "$1"'`:
+    /// Euclid → login shell → ghostty-run (dry run: prints what Ghostty would get)
+    /// → `/bin/sh -c <command>` with EUCLID_CMD in env, exactly like Ghostty.
+    @Test func ghosttyRunScriptKeepsQueryInert() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let out = dir.appendingPathComponent("out").path
+        let bin = dir.appendingPathComponent("bin")
+        try ConfigLoader.installDefaultScripts(in: bin)
         let pwned = dir.appendingPathComponent("pwned").path
-        let evil = #"it's "$(touch \#(pwned))" `touch \#(pwned)`"#
-        // Template itself contains single quotes, which must survive the outer quoting.
-        let run = #"printf '%s' "$1" > \#(out)"#
-        let command = CommandRunner.terminalCommand(shell: "/bin/zsh", run: run, keepShell: false)
+        let out = dir.appendingPathComponent("out").path
+        let evil = "it's \"q\" $(touch \(pwned)) `touch \(pwned)` a\\b\nline2"
 
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", command]
-        var env = ProcessInfo.processInfo.environment
-        for entry in CommandRunner.euclidEnvironmentEntries(query: evil) {
-            let kv = entry.split(separator: "=", maxSplits: 1).map(String.init)
-            env[kv[0]] = kv[1]
-        }
-        p.environment = env
-        let result = await withCheckedContinuation { c in CommandRunner.run(p) { c.resume(returning: $0) } }
-        #expect(throws: Never.self) { try result.get() }
+        // 1. What ghostty-run would hand to Ghostty.
+        let p = CommandRunner.makeProcess(shell: "/bin/zsh", command: #"ghostty-run tab printf "%s" "$1""#, query: evil,
+                                          pathPrefix: bin.path,
+                                          baseEnvironment: ["HOME": NSHomeDirectory(), "GHOSTTY_RUN_DRY": "1"])
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        try p.run()
+        let printed = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        p.waitUntilExit()
+        #expect(p.terminationStatus == 0)
+        let lines = printed.split(separator: "\n", maxSplits: 1).map(String.init)
+        let termCommand = try #require(lines.first)
+        let envValue = try #require(lines.last?.trimmingCharacters(in: .newlines))
+        #expect(envValue.hasPrefix("EUCLID_CMD="))
+
+        // 2. Do what Ghostty does. Swap the trailing interactive shell for a no-op.
+        let g = Process()
+        g.executableURL = URL(fileURLWithPath: "/bin/sh")
+        g.arguments = ["-c", termCommand]
+        g.environment = ["HOME": NSHomeDirectory(), "SHELL": "/usr/bin/true",
+                         "EUCLID_CMD": String(envValue.dropFirst("EUCLID_CMD=".count)) + " > \(out)"]
+        try g.run()
+        g.waitUntilExit()
         #expect(try String(contentsOfFile: out, encoding: .utf8) == evil)
         #expect(!FileManager.default.fileExists(atPath: pwned))
     }
 
-    @Test func shellQuoteHandlesSingleQuotes() {
-        #expect(CommandRunner.shellQuote("it's") == #"'it'\''s'"#)
+    @Test func installDefaultScriptsNeverOverwrites() throws {
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        try ConfigLoader.installDefaultScripts(in: bin)
+        let script = bin.appendingPathComponent("ghostty-run")
+        #expect(FileManager.default.isExecutableFile(atPath: script.path))
+        try "# mine".write(to: script, atomically: true, encoding: .utf8)
+        try ConfigLoader.installDefaultScripts(in: bin)
+        #expect(try String(contentsOf: script, encoding: .utf8) == "# mine")
     }
 }

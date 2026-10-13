@@ -55,11 +55,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 self?.content.notice = "⚠︎ “\(name)” failed (\(failure.description))"
             }
         }
-        switch action.output {
-        case .ghosttyTab: GhosttyLauncher.open(action, placement: .tab, query: query, shell: shell, completion: completion)
-        case .ghosttySplit: GhosttyLauncher.open(action, placement: .split, query: query, shell: shell, completion: completion)
-        default: CommandRunner.runInBackground(shell: shell, command: action.run, query: query, completion: completion)
-        }
+        CommandRunner.runInBackground(shell: shell, command: action.run, query: query,
+                                      pathPrefix: config.paths.binDirectory.path, completion: completion)
     }
 
     /// Enter: put the entry on the pasteboard, hide, and ⌘V into the previous app.

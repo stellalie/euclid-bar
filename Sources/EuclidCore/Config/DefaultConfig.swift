@@ -27,12 +27,10 @@ path = "/bin/zsh"            # actions run as a login shell (-l), so your PATH i
 # so quotes or $(...) in what you type can't run anything.
 # Tip: use 'single quotes' around run, so double quotes inside need no escaping.
 #
-# output:
-#   "background"     (default) run it and stay out of the way
-#   "ghostty-tab"    new tab in the front Ghostty window (new window if none)
-#   "ghostty-split"  split the focused Ghostty pane to the right
-#   (the tab drops into your shell when the command exits)
-# Coming next: "panel", "herdr-tab", "herdr-pane".
+# Commands run in the background. Anything goes: open URLs, call CLIs, scripts.
+# Scripts in ~/.config/euclid/bin are on PATH. Euclid installs one you can edit:
+#   ghostty-run tab|split|window <command...>   run a command in Ghostty
+# Coming next: output = "panel" streams a command's output into Euclid.
 # ---------------------------------------------------------------------------
 
 [[action]]
@@ -49,8 +47,7 @@ run  = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # output = "panel"
 
 # [[action]]
-# name   = "pi in Ghostty"
-# run    = 'pi "$1"'
-# output = "ghostty-tab"
+# name = "pi in Ghostty"
+# run  = 'ghostty-run tab pi "$1"'          # or: split, window
 """#
 }

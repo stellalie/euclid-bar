@@ -8,6 +8,8 @@ public struct EuclidPaths: Sendable {
     public let dataDirectory: URL
 
     public var configFile: URL { configDirectory.appendingPathComponent("config.toml") }
+    /// Helper scripts; on PATH for every action.
+    public var binDirectory: URL { configDirectory.appendingPathComponent("bin") }
     public var historyDatabase: URL { dataDirectory.appendingPathComponent("history.sqlite") }
 
     public init(environment env: [String: String] = ProcessInfo.processInfo.environment) {
