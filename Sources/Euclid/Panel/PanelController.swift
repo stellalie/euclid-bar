@@ -11,15 +11,46 @@ let signposter = OSSignposter(subsystem: "dev.euclid", category: "perf")
 final class PanelController: NSObject, NSWindowDelegate {
     private let panel: LauncherPanel
     private let content: LauncherViewController
+    private let clipboard: ClipboardService
 
-    init(items: [SearchItem]) {
-        content = LauncherViewController(items: items)
+    init(clipboard: ClipboardService) {
+        self.clipboard = clipboard
+        content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
         panel.contentViewController = content
         panel.setContentSize(LauncherViewController.size)
         panel.delegate = self
         content.onClose = { [weak self] in self?.hide() }
+        content.onPaste = { [weak self] id in self?.paste(id: id) }
+        content.onCopy = { [weak self] id in self?.copy(id: id) }
+        content.onDelete = { [weak clipboard] id in clipboard?.delete(id: id) }
+        clipboard.onChange = { [weak self] in
+            guard let self, self.panel.isVisible else { return }
+            self.content.reload()
+        }
+    }
+
+    /// Enter: put the entry on the pasteboard, hide, and ⌘V into the previous app.
+    /// Without Accessibility permission we fall back to copy-only and ask once.
+    private func paste(id: Int) {
+        guard let clip = clipboard.history.clip(id: id) else { return }
+        Paster.copy(clip.content)
+        clipboard.markUsed(id: id)
+        hide()
+        guard Paster.isTrusted else {
+            Paster.requestPermission()
+            return
+        }
+        // Give the previous app's window a beat to become key again.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { Paster.pasteIntoFrontApp() }
+    }
+
+    private func copy(id: Int) {
+        guard let clip = clipboard.history.clip(id: id) else { return }
+        Paster.copy(clip.content)
+        clipboard.markUsed(id: id)
+        hide()
     }
 
     func toggle() { panel.isVisible ? hide() : show() }

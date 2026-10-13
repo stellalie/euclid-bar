@@ -8,11 +8,14 @@ extension KeyboardShortcuts.Name {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panel: PanelController!
+    private var clipboard: ClipboardService!
     private var statusItem: NSStatusItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make() // needed for ⌘C/⌘V/⌘A in the search field
-        panel = PanelController(items: SampleData.make())
+        clipboard = ClipboardService()
+        panel = PanelController(clipboard: clipboard)
+        clipboard.start()
         setUpStatusItem()
 
         KeyboardShortcuts.onKeyDown(for: .togglePanel) { [weak self] in
@@ -37,10 +40,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = NSImage(systemSymbolName: "function", accessibilityDescription: "Euclid")
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Euclid", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
     }
 
     @objc private func openPanel() { panel.show() }
+
+    @objc private func clearHistory() {
+        let alert = NSAlert()
+        alert.messageText = "Clear all \(clipboard.history.count) clipboard entries?"
+        alert.informativeText = "This can't be undone."
+        alert.addButton(withTitle: "Clear").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn { clipboard.clearAll() }
+    }
 }

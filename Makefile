@@ -1,4 +1,4 @@
-.PHONY: app run test perf log clean
+.PHONY: app run test perf log cert clean
 
 app:
 	scripts/bundle.sh release
@@ -17,6 +17,9 @@ perf:
 # Live timing for hotkey → visible and keystroke → results
 log:
 	log stream --level info --predicate 'subsystem == "dev.euclid"'
+
+cert:
+	scripts/make-dev-cert.sh
 
 clean:
 	rm -rf .build build

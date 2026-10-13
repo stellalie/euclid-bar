@@ -16,7 +16,10 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 # SwiftPM resource bundles (e.g. KeyboardShortcuts localizations)
 find "$BIN" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;
 
-# Ad-hoc sign. Note: each rebuild changes the signature, so macOS will
-# re-ask for Accessibility permission (needed from step 2 for paste).
-codesign --force --deep --sign - "$APP"
-echo "$APP"
+# Sign with the stable "Euclid Dev" identity if present (scripts/make-dev-cert.sh),
+# so macOS keeps the Accessibility grant across rebuilds. Fall back to ad-hoc,
+# which changes every build and makes macOS re-ask for permission.
+IDENTITY="-"
+if security find-certificate -c "Euclid Dev" >/dev/null 2>&1; then IDENTITY="Euclid Dev"; fi
+codesign --force --deep --sign "$IDENTITY" "$APP"
+echo "$APP (signed: $IDENTITY)"

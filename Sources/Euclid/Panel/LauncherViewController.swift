@@ -6,17 +6,22 @@ final class LauncherViewController: NSViewController {
     static let size = NSSize(width: 680, height: 440)
 
     var onClose: (() -> Void)?
+    var onPaste: ((Int) -> Void)?
+    var onCopy: ((Int) -> Void)?
+    var onDelete: ((Int) -> Void)?
 
-    private let items: [SearchItem]
+    private let itemsProvider: () -> [SearchItem]
     private var results: [SearchItem] = []
+    private var keyMonitor: Any?
 
     private let searchField = NSTextField()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
-    private let footer = NSTextField(labelWithString: "↵ Copy    ⌘↵ Ask AI    ⌥↵ Google    esc Close")
+    private let emptyLabel = NSTextField(labelWithString: "")
+    private let footer = NSTextField(labelWithString: "↵ Paste    ⌘C Copy    ⌘⌫ Delete    esc Close")
 
-    init(items: [SearchItem]) {
-        self.items = items
+    init(items: @escaping () -> [SearchItem]) {
+        self.itemsProvider = items
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -68,8 +73,10 @@ final class LauncherViewController: NSViewController {
         footerDivider.boxType = .separator
         footer.font = .systemFont(ofSize: 11)
         footer.textColor = .secondaryLabelColor
+        emptyLabel.font = .systemFont(ofSize: 13)
+        emptyLabel.textColor = .tertiaryLabelColor
 
-        for v in [searchField, divider, scrollView, footerDivider, footer] {
+        for v in [searchField, divider, scrollView, emptyLabel, footerDivider, footer] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
         }
@@ -94,28 +101,41 @@ final class LauncherViewController: NSViewController {
             footer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
             footer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
             footer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -9),
+
+            emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
+        installKeyMonitor()
         runSearch()
     }
 
     /// Called right before the panel is shown: clear the query, focus the field.
     func prepareForShow() {
-        if !searchField.stringValue.isEmpty {
-            searchField.stringValue = ""
-            runSearch()
-        }
+        searchField.stringValue = ""
+        runSearch()
         view.window?.makeFirstResponder(searchField)
+    }
+
+    /// History changed while the panel may be visible: refresh, keep the selected entry if it survived.
+    func reload() {
+        guard isViewLoaded else { return }
+        let selectedID = results.indices.contains(tableView.selectedRow) ? results[tableView.selectedRow].id : nil
+        runSearch()
+        if let selectedID, let row = results.firstIndex(where: { $0.id == selectedID }) { select(row: row) }
     }
 
     private func runSearch() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("search")
-        results = FuzzyMatcher.search(searchField.stringValue, in: items)
+        let all = itemsProvider()
+        results = FuzzyMatcher.search(searchField.stringValue, in: all)
         tableView.reloadData()
         select(row: 0)
+        emptyLabel.stringValue = all.isEmpty ? "Copy something — it will show up here." : "No matches"
+        emptyLabel.isHidden = !results.isEmpty
         tableView.displayIfNeeded()
         signposter.endInterval("search", state)
-        perfLog.notice("search '\(self.searchField.stringValue, privacy: .private)' -> \(self.results.count) rows in \(String(describing: ContinuousClock.now - start), privacy: .public)")
+        perfLog.notice("search -> \(self.results.count) of \(all.count) rows in \(String(describing: ContinuousClock.now - start), privacy: .public)")
     }
 
     private func select(row: Int) {
@@ -125,14 +145,45 @@ final class LauncherViewController: NSViewController {
         tableView.scrollRowToVisible(r)
     }
 
+    private var selectedID: Int? {
+        results.indices.contains(tableView.selectedRow) ? results[tableView.selectedRow].id : nil
+    }
+
     @objc private func activateSelection() {
-        let row = tableView.selectedRow
-        guard results.indices.contains(row) else { return }
-        // Step 1: copy. Step 2 adds paste-into-previous-app.
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(results[row].title, forType: .string)
-        onClose?()
+        if let id = selectedID { onPaste?(id) }
+    }
+
+    /// ⌘C (copy entry, unless text is selected in the field) and ⌘⌫ (delete entry).
+    /// Handled here because they're key equivalents, which bypass the text field delegate.
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Local monitors run on the main thread.
+            let keyCode = event.keyCode
+            let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let window = event.window.map(ObjectIdentifier.init)
+            let consumed = MainActor.assumeIsolated {
+                self?.handleKey(keyCode: keyCode, mods: mods, window: window) ?? false
+            }
+            return consumed ? nil : event
+        }
+    }
+
+    private func handleKey(keyCode: UInt16, mods: NSEvent.ModifierFlags, window: ObjectIdentifier?) -> Bool {
+        guard let own = view.window, window == ObjectIdentifier(own),
+              mods == .command, let id = selectedID else { return false }
+        switch keyCode {
+        case 8: // C
+            if let editor = searchField.currentEditor(), editor.selectedRange.length > 0 { return false } // normal text copy
+            onCopy?(id)
+            return true
+        case 51: // Delete
+            let row = tableView.selectedRow
+            onDelete?(id)
+            select(row: row) // keep the cursor in place
+            return true
+        default:
+            return false
+        }
     }
 }
 
@@ -202,9 +253,16 @@ final class ResultCell: NSTableCellView {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func configure(_ item: SearchItem) {
-        // Never lay out megabytes: show the first line, capped.
+        // Never lay out megabytes: show the first non-empty line, capped.
         let firstLine = item.title.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        title.stringValue = firstLine
-        subtitle.stringValue = item.subtitle
+        title.stringValue = firstLine.trimmingCharacters(in: .whitespaces)
+        let age = item.date.map { Self.ageFormatter.localizedString(for: $0, relativeTo: Date()) }
+        subtitle.stringValue = [item.subtitle, age].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
     }
+
+    private static let ageFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
+        return f
+    }()
 }

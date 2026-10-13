@@ -6,12 +6,14 @@ public struct SearchItem: Sendable, Identifiable {
     public let id: Int
     public let title: String
     public let subtitle: String
+    public let date: Date?
     let key: [UInt8]
 
-    public init(id: Int, title: String, subtitle: String = "") {
+    public init(id: Int, title: String, subtitle: String = "", date: Date? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
+        self.date = date
         self.key = SearchKey.make(title)
     }
 }
