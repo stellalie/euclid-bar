@@ -1,11 +1,11 @@
-# Euclid
+# euclid-bar
 
 Fast macOS launcher: clipboard history + calculator + AI. Swift + AppKit.
 
 ## Run
 
 ```sh
-make run     # build build/Euclid.app and launch it
+make run     # build build/euclid-bar.app and launch it
 make test    # unit tests
 make perf    # release-mode search benchmark
 make log     # live timings (show / search)
@@ -47,7 +47,7 @@ command. Scripts in `~/.config/euclid/bin` are on PATH; Euclid installs
 run = 'ghostty-run tab pi "$1"'
 ```
 
-Validate with `build/Euclid.app/Contents/MacOS/Euclid --check-config`.
+Validate with `build/euclid-bar.app/Contents/MacOS/euclid-bar --check-config`.
 
 Data (clipboard history) stays in `~/Library/Application Support/Euclid`
 (or `$EUCLID_DATA_DIR`), so it never ends up in dotfiles. Password-manager
@@ -65,6 +65,6 @@ copies (`org.nspasteboard.ConcealedType` etc.) are never recorded.
 
 ```
 Sources/EuclidCore   UI-free logic (search; later calculator, AI)
-Sources/Euclid       AppKit app (hotkey, panel, results)
+Sources/EuclidBar    AppKit app (hotkey, panel, results)
 Tests/               Swift Testing
 ```

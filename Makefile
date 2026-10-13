@@ -4,8 +4,8 @@ app:
 	scripts/bundle.sh release
 
 run: app
-	-pkill -x Euclid
-	open build/Euclid.app
+	-pkill -x euclid-bar
+	open build/euclid-bar.app
 
 test:
 	swift test

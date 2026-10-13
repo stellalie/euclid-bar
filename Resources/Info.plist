@@ -5,11 +5,11 @@
 	<key>CFBundleIdentifier</key>
 	<string>dev.euclid.Euclid</string>
 	<key>CFBundleName</key>
-	<string>Euclid</string>
+	<string>euclid-bar</string>
 	<key>CFBundleDisplayName</key>
-	<string>Euclid</string>
+	<string>euclid-bar</string>
 	<key>CFBundleExecutable</key>
-	<string>Euclid</string>
+	<string>euclid-bar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -21,7 +21,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Euclid opens your actions in terminal apps like Ghostty.</string>
+	<string>euclid-bar opens your actions in terminal apps like Ghostty.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>CFBundleURLTypes</key>

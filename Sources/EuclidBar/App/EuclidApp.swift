@@ -16,7 +16,7 @@ enum EuclidApp {
         app.run()
     }
 
-    /// `Euclid --check-config`: validate config.toml and print problems. Exit 0 = clean.
+    /// `euclid-bar --check-config`: validate config.toml and print problems. Exit 0 = clean.
     private static func checkConfig() -> Int32 {
         let paths = EuclidPaths()
         print("config: \(paths.configFile.path)")

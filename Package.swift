@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "Euclid",
+    name: "euclid-bar",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "1.10.0"),
@@ -20,9 +20,9 @@ let package = Package(
             path: "Sources/EuclidCore"
         ),
         .executableTarget(
-            name: "Euclid",
+            name: "euclid-bar",
             dependencies: ["EuclidCore", "KeyboardShortcuts"],
-            path: "Sources/Euclid"
+            path: "Sources/EuclidBar"
         ),
         .testTarget(name: "EuclidCoreTests", dependencies: ["EuclidCore"], path: "Tests/EuclidCoreTests"),
     ]

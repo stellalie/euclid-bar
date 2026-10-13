@@ -3,7 +3,7 @@ public enum DefaultConfig {
     public static let text = #"""
 # Euclid configuration. Changes apply on save, no restart needed
 # (except clipboard.limit, which applies on next launch).
-# Check from a terminal: Euclid.app/Contents/MacOS/Euclid --check-config
+# Check from a terminal: euclid-bar.app/Contents/MacOS/euclid-bar --check-config
 
 # Global hotkey that opens the panel. When set here, it wins over the app.
 # Modifiers: cmd, opt, ctrl, shift. Keys: a–z, 0–9, space, return, tab, f1–f12.
