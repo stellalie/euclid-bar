@@ -9,6 +9,8 @@ public enum DefaultScripts {
     public static let previousVersions: [String: Set<String>] = [
         // v1: ran the command in a non-interactive shell, so ~/.zshrc exports were missing.
         "ghostty-run": ["aaecd6d1093bc03da602c20138539c4e41c650638fcd68f782896df35a0141dd"],
+        // v1: activated Ghostty but not the Ghostty tab running herdr.
+        "herdr-run": ["0bc59f88e3b8160b5a2af785264bedafbe31e57cb1890fc656658155e750cc45"],
     ]
 
     /// Ghostty's CLI can't open tabs or splits on macOS (`+new-window is not
@@ -77,6 +79,9 @@ APPLESCRIPT
 #
 #   HERDR_RUN_APP=Ghostty   app hosting herdr, brought to the front (empty = don't)
 #   HERDR_RUN_FOCUS=0       create in the background, don't switch to it
+#   HERDR_RUN_TITLE=...     Ghostty title of the terminal running herdr
+#                           (default "<hostname -s>: <workspace label>", herdr's own title)
+# With Ghostty, the exact terminal running herdr is focused, not just the app.
 # The pane's own interactive shell runs the command, so ~/.zshrc exports apply.
 # Installed by Euclid. Edit freely: once edited, Euclid never overwrites it.
 set -eu
@@ -107,8 +112,29 @@ esac
 
 herdr pane run "$pane" 'eval "$EUCLID_CMD"' >/dev/null
 
+[[ $focus == --focus ]] || exit 0
 app=${HERDR_RUN_APP-Ghostty}
-[[ $focus == --focus && -n $app ]] && open -a "$app"
+[[ -n $app ]] || exit 0
+if [[ $app != Ghostty ]]; then open -a "$app"; exit 0; fi
+
+# Find the Ghostty terminal showing herdr. herdr titles it "<host>: <workspace label>".
+ws=$(jq -r '(.result.root_pane // .result.pane).workspace_id // empty' <<<"$res")
+label=$(herdr workspace list | jq -r --arg ws "$ws" '.result.workspaces[] | select(.workspace_id == $ws) | .label')
+title=${HERDR_RUN_TITLE:-"$(hostname -s): $label"}
+osascript - "$title" >/dev/null <<'APPLESCRIPT' || open -a Ghostty
+on run argv
+  tell application "Ghostty"
+    repeat with term in terminals
+      if name of term is (item 1 of argv) then
+        focus term
+        activate
+        return
+      end if
+    end repeat
+  end tell
+  error "no Ghostty terminal titled " & (item 1 of argv)
+end run
+APPLESCRIPT
 exit 0
 """#
 }
