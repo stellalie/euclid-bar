@@ -293,7 +293,7 @@ enum DemoRenderer {
             let s = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
             s.draw(at: NSPoint(x: (canvas.width - s.size().width) / 2, y: y))
         }
-        if let icon = NSImage(systemSymbolName: "function", accessibilityDescription: nil)?
+        if let icon = NSImage(systemSymbolName: "brain", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 64, weight: .semibold).applying(.init(paletteColors: [.white]))) {
             icon.draw(in: NSRect(x: canvas.width / 2 - 40, y: 390, width: 80, height: 80))
         }

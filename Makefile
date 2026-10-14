@@ -1,4 +1,4 @@
-.PHONY: app run test perf log cert demo clean
+.PHONY: app run test perf log cert demo icon clean
 
 app:
 	scripts/bundle.sh release
@@ -22,6 +22,11 @@ log:
 demo:
 	swift build -c release
 	$$(swift build -c release --show-bin-path)/euclid-bar --render-demo docs
+
+# Re-render Resources/AppIcon.icns
+icon:
+	swift build -c release
+	$$(swift build -c release --show-bin-path)/euclid-bar --render-icon Resources/AppIcon.icns
 
 cert:
 	scripts/make-dev-cert.sh

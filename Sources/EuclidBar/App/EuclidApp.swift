@@ -9,6 +9,12 @@ enum EuclidApp {
 
     static func main() {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-icon") {
+            _ = NSApplication.shared
+            let out = CommandLine.arguments.dropFirst(i + 1).first ?? "Resources/AppIcon.icns"
+            do { try IconRenderer.render(to: URL(fileURLWithPath: out)) } catch { print("error: \(error)"); exit(1) }
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--render-demo") {
             _ = NSApplication.shared
             let dir = CommandLine.arguments.dropFirst(i + 1).first ?? "docs"

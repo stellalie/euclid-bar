@@ -52,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func setUpStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "function", accessibilityDescription: "euclid-bar")
+        statusItem.button?.image = NSImage(systemSymbolName: "brain", accessibilityDescription: "euclid-bar")
         let menu = NSMenu()
         menu.addItem(withTitle: "Open euclid-bar", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
