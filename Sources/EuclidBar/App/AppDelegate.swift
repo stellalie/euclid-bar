@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var config: ConfigService!
     private var panel: PanelController!
     private var clipboard: ClipboardService!
+    private let history = HistoryService()
     private var statusItem: NSStatusItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -18,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let settings = config.current.config
         clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, limit: settings.clipboardLimit)
-        panel = PanelController(clipboard: clipboard, config: config)
+        panel = PanelController(clipboard: clipboard, config: config, history: history)
         applyConfig()
         config.onChange = { [weak self] in self?.applyConfig() }
         config.startWatching()
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         if let hotkey = settings.hotkey { HotkeyBinding.apply(hotkey) }
         clipboard.ignoredBundleIDs = settings.ignoredApps
+        history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         panel.configDidChange()
     }
 

@@ -9,12 +9,13 @@ public struct SearchItem: Sendable, Identifiable {
     public let date: Date?
     let key: [UInt8]
 
-    public init(id: Int, title: String, subtitle: String = "", date: Date? = nil) {
+    /// `searchText` is what matching runs against (defaults to the title).
+    public init(id: Int, title: String, subtitle: String = "", date: Date? = nil, searchText: String? = nil) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.date = date
-        self.key = SearchKey.make(title)
+        self.key = SearchKey.make(searchText ?? title)
     }
 }
 

@@ -11,6 +11,10 @@ public struct EuclidConfig: Equatable, Sendable {
     /// Extra environment for every action (`[env]`). For variables your shell only
     /// sets in interactive mode (~/.zshrc), which background actions don't load.
     public var environment: [String: String] = [:]
+    /// Browser history search (`[history]`).
+    public var historyEnabled = true
+    public var historyBrowsers: Set<String>? = nil   // nil = every browser found
+    public var historyLimit = 5_000
     /// Enabled actions, in file order. Position = number shortcut (⌘1 = first).
     public var actions: [Action] = []
 
@@ -59,7 +63,7 @@ public enum ConfigLoader {
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "action"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "action"], in: "top level", &issues)
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -122,6 +126,38 @@ public enum ConfigLoader {
                 }
             } else {
                 issues.append(.warning("env must be a table: [env]"))
+            }
+        }
+
+        if root.contains(key: "history") {
+            if let t = try? root.table(forKey: "history") {
+                warnUnknownKeys(t, known: ["enabled", "browsers", "limit"], in: "[history]", &issues)
+                if t.contains(key: "enabled") {
+                    if let b = try? t.bool(forKey: "enabled") { config.historyEnabled = b }
+                    else { issues.append(.warning("history.enabled must be true or false")) }
+                }
+                if t.contains(key: "limit") {
+                    if let n = try? t.integer(forKey: "limit"), (1...100_000).contains(n) { config.historyLimit = Int(n) }
+                    else { issues.append(.warning("history.limit must be a number from 1 to 100000")) }
+                }
+                if t.contains(key: "browsers") {
+                    if let a = try? t.array(forKey: "browsers") {
+                        var keys = Set<String>()
+                        for i in 0..<a.count {
+                            guard let k = try? a.string(atIndex: i) else { continue }
+                            if BrowserHistory.knownKeys.contains(k.lowercased()) { keys.insert(k.lowercased()) }
+                            else {
+                                let valid = BrowserHistory.knownKeys.sorted().joined(separator: ", ")
+                                issues.append(.warning("history.browsers: unknown browser '\(k)' (use \(valid))"))
+                            }
+                        }
+                        config.historyBrowsers = keys
+                    } else {
+                        issues.append(.warning("history.browsers must be a list, e.g. [\"dia\", \"safari\"]"))
+                    }
+                }
+            } else {
+                issues.append(.warning("history must be a table: [history]"))
             }
         }
 

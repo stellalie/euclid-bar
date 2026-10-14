@@ -13,10 +13,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let content: LauncherViewController
     private let clipboard: ClipboardService
     private let config: ConfigService
+    private let history: HistoryService
 
-    init(clipboard: ClipboardService, config: ConfigService) {
+    init(clipboard: ClipboardService, config: ConfigService, history: HistoryService) {
         self.clipboard = clipboard
         self.config = config
+        self.history = history
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
@@ -28,6 +30,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.onCopy = { [weak self] id in self?.copy(id: id) }
         content.onDelete = { [weak clipboard] id in clipboard?.delete(id: id) }
         content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
+        content.historyProvider = { [unowned history] in history.items }
+        content.onOpenHistory = { [weak self] id in self?.openHistory(id: id) }
+        content.onCopyHistory = { [weak self] id in
+            guard let self, let entry = self.history.entry(id: id) else { return }
+            Paster.copy(entry.url)
+            self.hide()
+        }
+        history.onChange = { [weak self] in
+            guard let self else { return }
+            self.updateProblem()
+            if self.panel.isVisible { self.content.refreshAfterExternalChange() }
+        }
         clipboard.onChange = { [weak self] in
             guard let self, self.panel.isVisible else { return }
             self.content.refreshAfterExternalChange()
@@ -38,7 +52,25 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Push the current config into the panel (called on launch and every reload).
     func configDidChange() {
         content.actions = config.current.config.actions
-        content.problem = config.problemSummary
+        updateProblem()
+    }
+
+    private func updateProblem() {
+        content.problem = config.problemSummary ?? history.problem
+    }
+
+    /// Open a history entry in the browser it came from.
+    private func openHistory(id: Int) {
+        guard let entry = history.entry(id: id), let url = URL(string: entry.url) else { return }
+        hide()
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        p.arguments = ["-a", entry.browser, url.absoluteString]
+        p.terminationHandler = { proc in
+            // Display name isn't always the app name: fall back to the default browser.
+            if proc.terminationStatus != 0 { _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: [url.absoluteString]) }
+        }
+        try? p.run()
     }
 
     /// Run an action on the query. Hides first so the result (a browser tab,
@@ -89,6 +121,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("show")
         position()
+        history.refreshIfStale()
         content.prepareForShow()
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()

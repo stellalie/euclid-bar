@@ -5,6 +5,7 @@ import EuclidCore
 /// One row in the results list.
 enum Row {
     case clip(SearchItem)
+    case history(SearchItem)
     /// `number` is the 1-based position in the action list (⌘1 = 1).
     case action(number: Int, Action)
     case builtin(Builtin, clipID: Int)
@@ -26,6 +27,10 @@ final class LauncherViewController: NSViewController {
     var onCopy: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
     var onRunAction: ((Action, _ query: String) -> Void)?
+    var onOpenHistory: ((Int) -> Void)?
+    var onCopyHistory: ((Int) -> Void)?
+    /// Browser history (searched only when there's a query).
+    var historyProvider: () -> [SearchItem] = { [] }
 
     /// Enabled actions from config, in order.
     var actions: [Action] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
@@ -180,7 +185,7 @@ final class LauncherViewController: NSViewController {
     private func enterSearchMode(query: String) {
         mode = .search
         searchField.stringValue = query
-        searchField.placeholderString = "Search clipboard…"
+        searchField.placeholderString = "Search clipboard and history…"
         modeLabel.stringValue = ""
         runSearch()
         searchField.currentEditor()?.moveToEndOfDocument(nil)
@@ -212,7 +217,20 @@ final class LauncherViewController: NSViewController {
         switch mode {
         case .search:
             let all = itemsProvider()
-            rows = FuzzyMatcher.search(text, in: all).map(Row.clip)
+            if text.isEmpty {
+                rows = FuzzyMatcher.search(text, in: all).map(Row.clip)
+            } else {
+                // Merge clips and history by match quality; clips win ties.
+                let clips = FuzzyMatcher.scoredSearch(text, in: all, limit: 50).map { ($0.score, 0, Row.clip($0.item)) }
+                let pages = FuzzyMatcher.scoredSearch(text, in: historyProvider(), limit: 30).map { ($0.score, 1, Row.history($0.item)) }
+                rows = (clips + pages)
+                    .enumerated()
+                    .sorted { a, b in
+                        a.element.0 != b.element.0 ? a.element.0 > b.element.0
+                            : a.element.1 != b.element.1 ? a.element.1 < b.element.1 : a.offset < b.offset
+                    }
+                    .prefix(50).map(\.element.2)
+            }
             // Nothing matched: offer the actions instead, Raycast-style.
             if rows.isEmpty, !text.isEmpty { rows = actionRows(filter: "") }
             emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
@@ -254,10 +272,16 @@ final class LauncherViewController: NSViewController {
         switch mode {
         case .search:
             var hints: [String] = []
-            if case .clip? = selectedRow { hints.append("↵ Paste") } else if !rows.isEmpty { hints.append("↵ Run") }
+            switch selectedRow {
+            case .clip?: hints.append("↵ Paste")
+            case .history(let item)?: hints.append("↵ Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")")
+            case nil: break
+            default: hints.append("↵ Run")
+            }
             if let first = actions.first { hints.append("⌘↵ \(first.name)") }
             hints.append("⌘K Actions")
             if case .clip? = selectedRow { hints += ["⌘C Copy", "⌘⌫ Delete"] }
+            if case .history? = selectedRow { hints.append("⌘C Copy URL") }
             footer.stringValue = hints.joined(separator: "    ")
         case .actions:
             footer.stringValue = "↵ Run    1–9 Run    type to filter    esc Back"
@@ -273,6 +297,7 @@ final class LauncherViewController: NSViewController {
     private func rowKey(_ row: Row) -> String {
         switch row {
         case .clip(let item): "c\(item.id)"
+        case .history(let item): "h\(item.title)\(item.subtitle)"
         case .action(let n, _): "a\(n)"
         case .builtin(let b, _): "b\(b.rawValue)"
         }
@@ -290,6 +315,7 @@ final class LauncherViewController: NSViewController {
         guard let row = selectedRow else { return }
         switch row {
         case .clip(let item): onPaste?(item.id)
+        case .history(let item): onOpenHistory?(item.id)
         case .action(_, let action): onRunAction?(action, query)
         case .builtin(.paste, let id): onPaste?(id)
         case .builtin(.copy, let id): onCopy?(id)
@@ -340,9 +366,13 @@ final class LauncherViewController: NSViewController {
             runAction(number: digit!)
             return true
         case (.command, kVK_ANSI_C):
-            guard case .clip(let item)? = selectedRow, !inActions else { return false }
+            guard !inActions else { return false }
             if let editor = searchField.currentEditor(), editor.selectedRange.length > 0 { return false } // normal text copy
-            onCopy?(item.id)
+            switch selectedRow {
+            case .clip(let item)?: onCopy?(item.id)
+            case .history(let item)?: onCopyHistory?(item.id)
+            default: return false
+            }
             return true
         case (.command, kVK_Delete):
             guard case .clip(let item)? = selectedRow, !inActions else { return false }
@@ -381,6 +411,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         switch rows[row] {
         case .clip(let item):
             cell.configure(icon: "doc.on.clipboard", title: item.title, subtitle: ResultCell.clipSubtitle(item))
+        case .history(let item):
+            cell.configure(icon: "globe", title: item.title, subtitle: ResultCell.clipSubtitle(item))
         case .action(let n, let action):
             let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
             cell.configure(icon: "bolt", title: action.name, subtitle: key)

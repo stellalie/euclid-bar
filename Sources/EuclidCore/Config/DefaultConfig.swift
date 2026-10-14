@@ -22,6 +22,14 @@ path = "/bin/zsh"            # actions run as a login shell (-l): ~/.zprofile lo
 # AWS_PROFILE = "my-profile"
 # AWS_REGION  = "us-east-1"
 
+# Browser history shows up in search next to your clipboard (↵ opens the page).
+# Read locally from each browser's own history file; nothing leaves your Mac.
+[history]
+enabled  = true
+# browsers = ["dia", "safari"]   # default: every browser found
+#                                # (dia, arc, chrome, brave, edge, vivaldi, chromium, safari)
+limit    = 5000                  # most recent pages kept in search
+
 # ---------------------------------------------------------------------------
 # Actions, in order. The first is ⌘↵; ⌘1–⌘9 run the first nine; ⌘K lists all.
 #

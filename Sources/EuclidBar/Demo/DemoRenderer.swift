@@ -30,6 +30,8 @@ enum DemoRenderer {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let history = sampleHistory()
         let vc = LauncherViewController(items: { history.items })
+        let pages = samplePages()
+        vc.historyProvider = { pages }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
             Action(name: "pi in herdr", run: #"herdr-run tab pi "$1""#),
@@ -53,17 +55,19 @@ enum DemoRenderer {
         }
 
         // 1. Summon
-        shot(.panel(caption: "⌥Space opens it, instantly, over any app", key: "⌥ Space"), 1.6)
-        // 2. Fuzzy clipboard search
-        let searchCaption = "Fuzzy-search your clipboard history: 5,000 clips in under 1 ms"
+        shot(.panel(caption: "⌥Space summons it, instantly, over any app", key: "⌥ Space"), 1.6)
+        // 2. Fuzzy search: clipboard + browser history together
+        let searchCaption = "Clipboard + browser history: 10,000 items searched in under 1 ms"
         type("rebase", caption: searchCaption)
         shot(.panel(caption: searchCaption, key: nil), 1.4)
-        vc.demoSelect(row: 1)
-        shot(.panel(caption: "↵ pastes it straight into the app you were in", key: "↵"), 1.8)
+        vc.demoSelect(row: 0)
+        shot(.panel(caption: "↵ pastes a clip straight into the app you were in", key: "↵"), 1.8)
+        vc.demoSelect(row: 2)
+        shot(.panel(caption: "…or reopens that page you half-remember", key: "↵"), 1.8)
 
         // 3. No match → actions
         vc.demoSetQuery("")
-        let question = "how do I squash my last 3 commits"
+        let question = "explain git reflog like I'm five"
         type(question, caption: "No match? Your actions are right there")
         precondition(vc.demoRowCount == vc.actions.count, "demo query matched clips; pick another")
         shot(.panel(caption: "No match? Your actions are right there", key: nil), 1.4)
@@ -77,12 +81,13 @@ enum DemoRenderer {
         shot(.terminal(caption: "…and pi answers in a new Ghostty tab", lines: [
             "❯ pi \"\(question)\"",
             "",
-            "  Use an interactive rebase on the last 3 commits:",
+            "  The reflog is git's diary: every time HEAD moves",
+            "  (commit, rebase, reset), it writes a line.",
             "",
-            "    git rebase -i HEAD~3",
+            "    git reflog",
+            "    git reset --hard HEAD@{2}",
             "",
-            "  Keep the first line as `pick`, change the other two",
-            "  to `squash` (or `s`), save, then edit the message.",
+            "  Lost a commit? It's almost always still in there.",
         ]), 3.2)
 
         // 6. Config
@@ -103,6 +108,19 @@ enum DemoRenderer {
         try writeMP4(frames, to: dir.appendingPathComponent("demo.mp4"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(frames.count) frames, \(String(format: "%.1f", total))s → \(dir.path)")
+    }
+
+    static func samplePages() -> [SearchItem] {
+        let now = Date()
+        return [
+            HistoryEntry(url: "https://git-scm.com/docs/git-rebase", title: "Git - git-rebase Documentation",
+                         browser: "Dia", lastVisit: now.addingTimeInterval(-40 * 60), visitCount: 4),
+            HistoryEntry(url: "https://stackoverflow.com/questions/5189560/how-do-i-squash-my-last-n-commits-together",
+                         title: "How do I squash my last N commits together? - Stack Overflow",
+                         browser: "Dia", lastVisit: now.addingTimeInterval(-26 * 3600), visitCount: 2),
+            HistoryEntry(url: "https://developer.apple.com/documentation/appkit/nspanel", title: "NSPanel | Apple Developer Documentation",
+                         browser: "Safari", lastVisit: now.addingTimeInterval(-3 * 3600), visitCount: 1),
+        ].enumerated().map { $0.element.searchItem(id: $0.offset) }
     }
 
     static func sampleHistory() -> ClipHistory {
@@ -297,12 +315,12 @@ enum DemoRenderer {
             .withSymbolConfiguration(.init(pointSize: 64, weight: .semibold).applying(.init(paletteColors: [.white]))) {
             icon.draw(in: NSRect(x: canvas.width / 2 - 40, y: 390, width: 80, height: 80))
         }
-        centered("euclid-bar", .systemFont(ofSize: 56, weight: .bold), .white, y: 300)
-        centered("Clipboard history + actions launcher for macOS", .systemFont(ofSize: 24, weight: .medium),
-                 NSColor.white.withAlphaComponent(0.9), y: 255)
-        centered("⚡ sub-millisecond search   ·   🔒 skips passwords   ·   🧩 any CLI as an action",
+        centered("Meet Euclid", .systemFont(ofSize: 56, weight: .bold), .white, y: 300)
+        centered("Your blazing fast, fully customisable search-anything companion", .systemFont(ofSize: 23, weight: .medium),
+                 NSColor.white.withAlphaComponent(0.92), y: 255)
+        centered("⚡ sub-millisecond search   ·   🧩 any CLI is an action   ·   🔒 stays on your Mac",
                  .systemFont(ofSize: 18, weight: .regular), NSColor.white.withAlphaComponent(0.85), y: 190)
-        centered("Native Swift + AppKit · ~19 MB of RAM", .systemFont(ofSize: 16, weight: .regular),
+        centered("Built for developers · native Swift · free & open source", .systemFont(ofSize: 16, weight: .regular),
                  NSColor.white.withAlphaComponent(0.7), y: 150)
         centered("github.com/stellalie/euclid-bar", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
     }

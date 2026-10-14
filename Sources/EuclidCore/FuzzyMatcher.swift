@@ -5,8 +5,13 @@
 /// - subsequence:          < 1000 (bonus for consecutive and word-boundary hits)
 public enum FuzzyMatcher {
     public static func search(_ query: String, in items: [SearchItem], limit: Int = 50) -> [SearchItem] {
+        scoredSearch(query, in: items, limit: limit).map(\.item)
+    }
+
+    /// Like `search`, but keeps scores so results from different sources can be merged.
+    public static func scoredSearch(_ query: String, in items: [SearchItem], limit: Int = 50) -> [(score: Int, item: SearchItem)] {
         let q = SearchKey.make(query)
-        if q.isEmpty { return Array(items.prefix(limit)) }
+        if q.isEmpty { return items.prefix(limit).map { (0, $0) } }
 
         var hits: [(score: Int, index: Int)] = []
         hits.reserveCapacity(256)
@@ -15,7 +20,7 @@ public enum FuzzyMatcher {
         }
         // Stable on ties: keep original order (later: recency/frecency).
         hits.sort { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
-        return hits.prefix(limit).map { items[$0.index] }
+        return hits.prefix(limit).map { ($0.score, items[$0.index]) }
     }
 
     public static func score(query: String, in text: String) -> Int? {
