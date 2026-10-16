@@ -140,7 +140,16 @@ never ends up in your dotfiles repo.
 
 ## Build from source
 
-Requires Xcode 16+ (Swift 6) on macOS 14+.
+Requires Xcode 16+ (Swift 6) on macOS 14+. Check what your Mac will build with:
+
+```sh
+swift --version   # needs "Swift version 6" or newer
+xcode-select -p   # which Xcode or Command Line Tools is active
+```
+
+If it says Swift 5, point it at a newer Xcode with `sudo xcode-select -s /Applications/Xcode.app`, or
+for one build without sudo, `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer make run`. Every
+`make` target checks this first and prints the fix.
 
 ```sh
 git clone https://github.com/stellalie/euclid-bar && cd euclid-bar
@@ -157,7 +166,7 @@ make demo     # re-render docs/demo.gif from the real UI
 Sources/EuclidCore   UI-free logic: search, clipboard store, browser history, config, actions
 Sources/EuclidBar    AppKit app: hotkey, panel, menu bar, demo/icon renderers
 Tests/               Swift Testing
-scripts/             bundle.sh, release.sh, make-dev-cert.sh
+scripts/             bundle.sh, release.sh, make-dev-cert.sh, check-toolchain.sh
 ```
 
 `make cert` creates a local signing identity so macOS keeps Accessibility permission across rebuilds.
