@@ -30,8 +30,34 @@ enabled  = true
 #                                # (dia, arc, chrome, brave, edge, vivaldi, chromium, safari)
 limit    = 5000                  # most recent pages kept in search
 
+# Installed apps show up in search (↵ opens or focuses the app).
+[apps]
+enabled = true
+# folders = ["~/Tools"]          # extra folders, on top of /Applications and friends
+
+# Git repos under these folders show up in search (↵ runs `open` with the repo as $1).
+[projects]
+roots = ["~/code", "~/src", "~/dev", "~/Developer", "~/projects", "~/work"]
+depth = 3                        # how deep to look for repos under each root
+open  = 'open "$1"'              # e.g. 'code "$1"', 'zed "$1"', 'ghostty-run tab nvim "$1"'
+
+# Files by name, via Spotlight. Shown below everything else, after 3+ letters.
+[files]
+enabled = true
+limit   = 8
+
+[search]
+# Shown first when the search box is empty, by name (apps, projects or actions).
+favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
+
+# Type the alias to jump straight to an app, project or action.
+# For an action, "alias text" runs it on "text": `gh swift testing`.
+[aliases]
+# code = "Visual Studio Code"
+
 # ---------------------------------------------------------------------------
 # Actions, in order. The first is ⌘↵; ⌘1–⌘9 run the first nine; ⌘K lists all.
+# Optional `alias = "gh"`: type "gh something" to run it on "something".
 #
 # Each action runs:   <shell> -l -c '<run>' euclid "<query>"
 # so inside `run`:
@@ -49,12 +75,14 @@ limit    = 5000                  # most recent pages kept in search
 # ---------------------------------------------------------------------------
 
 [[action]]
-name = "Search web"
-run  = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
+name  = "Search web"
+alias = "g"
+run   = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
 
 [[action]]
-name = "Search GitHub"
-run  = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
+name  = "Search GitHub"
+alias = "gh"
+run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 
 # [[action]]
 # name   = "Ask pi"

@@ -17,6 +17,21 @@ public struct EuclidConfig: Equatable, Sendable {
     public var historyLimit = 5_000
     /// Enabled actions, in file order. Position = number shortcut (⌘1 = first).
     public var actions: [Action] = []
+    /// Installed apps in search (`[apps]`).
+    public var appsEnabled = true
+    public var appFolders: [String] = AppIndex.defaultFolders
+    /// Git repos in search (`[projects]`). Roots that don't exist are skipped.
+    public var projectRoots: [String] = ["~/code", "~/src", "~/dev", "~/Developer", "~/projects", "~/work"]
+    public var projectDepth = 3
+    /// Shell command that opens a project; its path is `$1`.
+    public var projectOpen = #"open "$1""#
+    /// Spotlight file search (`[files]`).
+    public var filesEnabled = true
+    public var filesLimit = 8
+    /// Shown when the search box is empty (`[search] favorites`), by title.
+    public var favorites: [String] = []
+    /// `[aliases]` plus every action's `alias`.
+    public var aliases = Aliases()
 
     public init() {}
 }
@@ -63,7 +78,7 @@ public enum ConfigLoader {
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "action"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action"], in: "top level", &issues)
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -161,6 +176,49 @@ public enum ConfigLoader {
             }
         }
 
+        if let t = table(root, "apps", &issues) {
+            warnUnknownKeys(t, known: ["enabled", "folders"], in: "[apps]", &issues)
+            if let b = bool(t, "enabled", in: "apps", &issues) { config.appsEnabled = b }
+            if let a = strings(t, "folders", in: "apps", &issues) { config.appFolders = AppIndex.defaultFolders + a }
+        }
+
+        if let t = table(root, "projects", &issues) {
+            warnUnknownKeys(t, known: ["roots", "depth", "open"], in: "[projects]", &issues)
+            if let a = strings(t, "roots", in: "projects", &issues) { config.projectRoots = a }
+            if t.contains(key: "depth") {
+                if let n = try? t.integer(forKey: "depth"), (1...6).contains(n) { config.projectDepth = Int(n) }
+                else { issues.append(.warning("projects.depth must be a number from 1 to 6")) }
+            }
+            if t.contains(key: "open") {
+                if let s = try? t.string(forKey: "open"), !s.trimmingCharacters(in: .whitespaces).isEmpty { config.projectOpen = s }
+                else { issues.append(.warning("projects.open must be a command, e.g. 'code \"$1\"'")) }
+            }
+        }
+
+        if let t = table(root, "files", &issues) {
+            warnUnknownKeys(t, known: ["enabled", "limit"], in: "[files]", &issues)
+            if let b = bool(t, "enabled", in: "files", &issues) { config.filesEnabled = b }
+            if t.contains(key: "limit") {
+                if let n = try? t.integer(forKey: "limit"), (1...30).contains(n) { config.filesLimit = Int(n) }
+                else { issues.append(.warning("files.limit must be a number from 1 to 30")) }
+            }
+        }
+
+        if let t = table(root, "search", &issues) {
+            warnUnknownKeys(t, known: ["favorites"], in: "[search]", &issues)
+            if let a = strings(t, "favorites", in: "search", &issues) { config.favorites = a }
+        }
+
+        if let t = table(root, "aliases", &issues) {
+            for key in t.keys.sorted() {
+                guard let target = try? t.string(forKey: key), !target.isEmpty else {
+                    issues.append(.warning("aliases.\(key) must be the name of an app, project or action")); continue
+                }
+                guard !key.contains(" ") else { issues.append(.warning("aliases: '\(key)' can't contain spaces")); continue }
+                config.aliases.add(key, target: target)
+            }
+        }
+
         if root.contains(key: "action") {
             if let list = try? root.array(forKey: "action") {
                 for i in 0..<list.count {
@@ -168,7 +226,13 @@ public enum ConfigLoader {
                     guard let t = try? list.table(atIndex: i) else {
                         issues.append(.warning("\(label): use [[action]] blocks")); continue
                     }
-                    if let action = parseAction(t, label: label, &issues) { config.actions.append(action) }
+                    if let action = parseAction(t, label: label, &issues) {
+                        config.actions.append(action)
+                        if let alias = try? t.string(forKey: "alias") {
+                            if alias.contains(" ") || alias.isEmpty { issues.append(.warning("\(label): alias can't be empty or contain spaces")) }
+                            else { config.aliases.add(alias, target: action.name) }
+                        }
+                    }
                 }
             } else {
                 issues.append(.warning("actions must be [[action]] blocks"))
@@ -179,7 +243,7 @@ public enum ConfigLoader {
     }
 
     private static func parseAction(_ t: TOMLTable, label: String, _ issues: inout [ConfigIssue]) -> Action? {
-        warnUnknownKeys(t, known: ["name", "run", "output"], in: label, &issues)
+        warnUnknownKeys(t, known: ["name", "run", "output", "alias"], in: label, &issues)
         guard let name = try? t.string(forKey: "name"), !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             issues.append(.warning("\(label): missing name, skipped")); return nil
         }
@@ -205,6 +269,29 @@ public enum ConfigLoader {
             output = o
         }
         return Action(name: name, run: run, output: output)
+    }
+
+    /// `[name]` if present and a table; a warning if present but not a table.
+    private static func table(_ root: TOMLTable, _ name: String, _ issues: inout [ConfigIssue]) -> TOMLTable? {
+        guard root.contains(key: name) else { return nil }
+        if let t = try? root.table(forKey: name) { return t }
+        issues.append(.warning("\(name) must be a table: [\(name)]"))
+        return nil
+    }
+
+    private static func bool(_ t: TOMLTable, _ key: String, in place: String, _ issues: inout [ConfigIssue]) -> Bool? {
+        guard t.contains(key: key) else { return nil }
+        if let b = try? t.bool(forKey: key) { return b }
+        issues.append(.warning("\(place).\(key) must be true or false"))
+        return nil
+    }
+
+    private static func strings(_ t: TOMLTable, _ key: String, in place: String, _ issues: inout [ConfigIssue]) -> [String]? {
+        guard t.contains(key: key) else { return nil }
+        guard let a = try? t.array(forKey: key) else {
+            issues.append(.warning("\(place).\(key) must be a list of strings")); return nil
+        }
+        return (0..<a.count).compactMap { try? a.string(atIndex: $0) }
     }
 
     private static func warnUnknownKeys(_ t: TOMLTable, known: Set<String>, in place: String, _ issues: inout [ConfigIssue]) {
