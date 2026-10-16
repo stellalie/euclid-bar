@@ -76,23 +76,70 @@ public enum BrowserHistory {
         return sources
     }
 
-    /// Load the most recent pages from all sources, deduplicated by URL (latest visit wins).
+    /// Load the most recent pages from all sources, deduplicated (see `dedupe`).
     /// Returns entries newest first, plus per-source errors (e.g. Safari without Full Disk Access).
     public static func load(_ sources: [Source], limit: Int) -> (entries: [HistoryEntry], errors: [(Source, Error)]) {
-        var byURL: [String: HistoryEntry] = [:]
+        var all: [HistoryEntry] = []
         var errors: [(Source, Error)] = []
         for source in sources {
             do {
-                for e in try load(source, limit: limit) {
-                    if let existing = byURL[e.url], existing.lastVisit >= e.lastVisit { continue }
-                    byURL[e.url] = e
-                }
+                all += try load(source, limit: limit)
             } catch {
                 errors.append((source, error))
             }
         }
-        let entries = byURL.values.sorted { $0.lastVisit > $1.lastVisit }.prefix(limit)
-        return (Array(entries), errors)
+        return (Array(dedupe(all).prefix(limit)), errors)
+    }
+
+    /// One row per page, newest first. Two entries are the same page when their URLs match
+    /// after `normalizedURL`, or when they'd look identical in the list (same title on the same
+    /// site, e.g. an SPA whose URL changes but whose title doesn't). The latest visit wins and
+    /// visit counts add up.
+    public static func dedupe(_ entries: [HistoryEntry]) -> [HistoryEntry] {
+        var kept: [HistoryEntry] = []
+        var byKey: [String: Int] = [:]   // dedupe key → index in `kept`
+        for e in entries.sorted(by: { $0.lastVisit > $1.lastVisit }) {
+            let urlKey = "u:" + normalizedURL(e.url)
+            let title = e.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let titleKey = title.isEmpty ? nil : "t:\(normalizedHost(e.host)) \(title)"
+            if let i = byKey[urlKey] ?? titleKey.flatMap({ byKey[$0] }) {
+                let k = kept[i]
+                kept[i] = HistoryEntry(url: k.url, title: k.title, browser: k.browser, lastVisit: k.lastVisit,
+                                       visitCount: k.visitCount + e.visitCount)
+                byKey[urlKey] = i
+                if let titleKey { byKey[titleKey] = i }
+                continue
+            }
+            byKey[urlKey] = kept.count
+            if let titleKey { byKey[titleKey] = kept.count }
+            kept.append(e)
+        }
+        return kept
+    }
+
+    /// Query parameters that only track where a click came from.
+    static let trackingParams: Set<String> = ["fbclid", "gclid", "dclid", "msclkid", "mc_cid", "mc_eid", "igshid", "si", "ref_src"]
+
+    /// The page a URL points at: http/https and "www." ignored, host lowercased, no fragment,
+    /// no trailing slash, no tracking parameters (utm_*, fbclid, …).
+    public static func normalizedURL(_ url: String) -> String {
+        guard var c = URLComponents(string: url), let host = c.host else { return url }
+        var path = c.percentEncodedPath
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        if path == "/" { path = "" }
+        let items = (c.queryItems ?? []).filter { item in
+            let name = item.name.lowercased()
+            return !name.hasPrefix("utm_") && !trackingParams.contains(name)
+        }
+        c.queryItems = items.isEmpty ? nil : items
+        let port = c.port.map { ":\($0)" } ?? ""
+        let query = c.percentEncodedQuery.map { "?" + $0 } ?? ""
+        return normalizedHost(host) + port + path + query
+    }
+
+    static func normalizedHost(_ host: String) -> String {
+        let h = host.lowercased()
+        return h.hasPrefix("www.") ? String(h.dropFirst(4)) : h
     }
 
     public static func load(_ source: Source, limit: Int) throws -> [HistoryEntry] {

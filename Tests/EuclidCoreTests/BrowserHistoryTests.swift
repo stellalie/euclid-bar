@@ -83,6 +83,51 @@ import Testing
         #expect(!FuzzyMatcher.search("github.com/stella", in: [item]).isEmpty)
     }
 
+    @Test func normalizesURLsForDedupe() {
+        let n = BrowserHistory.normalizedURL
+        #expect(n("https://www.GitHub.com/stellalie/euclid-bar/") == "github.com/stellalie/euclid-bar")
+        #expect(n("http://github.com/stellalie/euclid-bar#readme") == "github.com/stellalie/euclid-bar")
+        #expect(n("https://example.com/?utm_source=x&utm_medium=y") == "example.com")
+        #expect(n("https://example.com/a?id=1&fbclid=abc") == "example.com/a?id=1")
+        #expect(n("https://example.com/search?q=swift") != n("https://example.com/search?q=rust"))
+        #expect(n("http://localhost:3000/") == "localhost:3000")
+    }
+
+    @Test func dedupesNearDuplicatesKeepingLatestVisit() {
+        let t0 = Date(timeIntervalSince1970: 1_767_225_600)
+        func e(_ url: String, _ title: String, _ browser: String, _ minutes: Double) -> HistoryEntry {
+            HistoryEntry(url: url, title: title, browser: browser, lastVisit: t0 + minutes * 60, visitCount: 2)
+        }
+        let out = BrowserHistory.dedupe([
+            e("https://github.com/stellalie/euclid-bar", "euclid-bar", "Dia", 1),
+            e("https://github.com/stellalie/euclid-bar/#readme", "euclid-bar", "Safari", 5),   // same page
+            e("https://app.example.com/inbox/123", "Inbox", "Chrome", 2),
+            e("https://app.example.com/inbox/456", "Inbox", "Chrome", 3),                    // looks identical
+            e("https://news.example.com/", "", "Arc", 4),
+            e("https://news.example.com/?utm_source=hn", "", "Arc", 0),                       // tracking only
+            e("https://other.example.com/inbox", "Inbox", "Chrome", 1),                        // same title, other site
+        ])
+        #expect(out.map(\.url) == [
+            "https://github.com/stellalie/euclid-bar/#readme",
+            "https://news.example.com/",
+            "https://app.example.com/inbox/456",
+            "https://other.example.com/inbox",
+        ])
+        #expect(out[0].browser == "Safari")
+        #expect(out[0].lastVisit == t0 + 300)
+        #expect(out[0].visitCount == 4)
+    }
+
+    @Test func shortRelativeAge() {
+        let now = Date(timeIntervalSince1970: 1_767_225_600)
+        #expect(RelativeAge.short(now - 20, now: now) == "just now")
+        #expect(RelativeAge.short(now - 5 * 60, now: now) == "5m ago")
+        #expect(RelativeAge.short(now - 2 * 3_600, now: now) == "2h ago")
+        #expect(RelativeAge.short(now - 3 * 86_400, now: now) == "3d ago")
+        #expect(RelativeAge.short(now - 15 * 86_400, now: now) == "2w ago")
+        #expect(RelativeAge.short(now + 30, now: now) == "just now")   // clock skew
+    }
+
     @Test func unreadableSourceIsReportedNotFatal() {
         let bogus = BrowserHistory.Source(browser: "Safari", key: "safari", kind: .safari,
                                           database: URL(fileURLWithPath: "/nonexistent/History.db"))
