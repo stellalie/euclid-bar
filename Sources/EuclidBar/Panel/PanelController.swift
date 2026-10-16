@@ -84,9 +84,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         files.enabled = settings.filesEnabled
         files.limit = settings.filesLimit
         let folders = settings.appFolders
-        apps.configure(settings.appsEnabled ? { AppIndex.scan(folders: folders) } : nil)
+        if settings.appsEnabled { apps.configure { AppIndex.scan(folders: folders) } } else { apps.configure(nil) }
         let roots = settings.projectRoots, depth = settings.projectDepth
-        projects.configure(roots.isEmpty ? nil : { ProjectScanner.scan(roots: roots, maxDepth: depth) })
+        if roots.isEmpty { projects.configure(nil) } else {
+            projects.configure { ProjectScanner.scan(roots: roots, maxDepth: depth) }
+        }
         updateProblem()
     }
 
