@@ -5,6 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:?usage: scripts/release.sh <version>}"
 
+scripts/check-toolchain.sh
 swift test
 UNIVERSAL=1 VERSION="$VERSION" scripts/bundle.sh release
 ZIP="build/euclid-bar-$VERSION-macos-universal.zip"
