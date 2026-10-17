@@ -412,7 +412,7 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .clip(let item):
             cell.configure(icon: "doc.on.clipboard", title: item.title, subtitle: ResultCell.clipSubtitle(item))
         case .history(let item):
-            cell.configure(icon: "globe", title: item.title, subtitle: ResultCell.clipSubtitle(item))
+            cell.configure(icon: "globe", title: item.title, subtitle: ResultCell.historySubtitle(item))
         case .action(let n, let action):
             let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
             cell.configure(icon: "bolt", title: action.name, subtitle: key)
@@ -475,6 +475,12 @@ final class ResultCell: NSTableCellView {
     static func clipSubtitle(_ item: SearchItem) -> String {
         let age = item.date.map { ageFormatter.localizedString(for: $0, relativeTo: Date()) }
         return [item.subtitle, age].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
+    }
+
+    /// "Dia · github.com · visited 2h ago"
+    static func historySubtitle(_ item: SearchItem) -> String {
+        let visited = item.date.map { "visited \(RelativeAge.short($0))" }
+        return [item.subtitle, visited].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
     }
 
     private static let ageFormatter: RelativeDateTimeFormatter = {
