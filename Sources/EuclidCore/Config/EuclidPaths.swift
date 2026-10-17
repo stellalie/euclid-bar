@@ -11,6 +11,8 @@ public struct EuclidPaths: Sendable {
     /// Helper scripts; on PATH for every action.
     public var binDirectory: URL { configDirectory.appendingPathComponent("bin") }
     public var historyDatabase: URL { dataDirectory.appendingPathComponent("history.sqlite") }
+    /// What you picked for what you typed (learned ranking).
+    public var rankingDatabase: URL { dataDirectory.appendingPathComponent("ranking.sqlite") }
 
     public init(environment env: [String: String] = ProcessInfo.processInfo.environment) {
         let home = FileManager.default.homeDirectoryForCurrentUser

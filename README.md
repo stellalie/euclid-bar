@@ -25,9 +25,11 @@ gets out of your way.
 
 - ⚡ **Blazing fast.** Native Swift + AppKit, no Electron, no web views. Searches **10,000 items in under
   a millisecond**, opens in ~20 ms, idles at ~0% CPU and ~30 MB of RAM.
-- 🔎 **Search anything.** Your **clipboard history** and **browser history** (Dia, Arc, Chrome, Brave,
-  Edge, Vivaldi, Safari) in one fuzzy-matched list. `↵` pastes a clip into the app you were in, or
-  reopens the page.
+- 🔎 **Search anything.** **Apps**, your **git projects**, **files** (via Spotlight), **clipboard
+  history** and **browser history** (Dia, Arc, Chrome, Brave, Edge, Vivaldi, Safari) in one
+  fuzzy-matched list, plus an inline **calculator** (`12 * 3.5`, `1.5 gb in mb`, `72 f in c`).
+- 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
+  anything a short **alias** (`gh swift testing` searches GitHub) and pin **favorites** to the empty box.
 - 🧩 **Fully customisable.** Every action is **one shell command** in a TOML file. If it runs in your
   terminal, it's an Euclid action. No extension SDK, no marketplace, no JavaScript.
 - 🛠️ **Built for developers.** Dotfiles-friendly config in `~/.config/euclid`, live reload on save,
@@ -41,12 +43,12 @@ gets out of your way.
 | Key | What happens |
 |---|---|
 | `⌥Space` | Summon Euclid over any app (configurable) |
-| *type* | Fuzzy-search clipboard + browser history, instantly |
-| `↵` | Paste the clip into the previous app · open the page · run the action |
+| *type* | Fuzzy-search apps, projects, files, clipboard and browser history, instantly |
+| `↵` | Open the app, project or file · paste the clip into the previous app · open the page · run the action · copy the answer |
 | `⌘↵` | Run your **#1 action** on what you typed |
 | `⌘1`–`⌘9` | Run action N |
 | `⌘K` | Action palette: `↑↓` `↵`, `1`–`9`, type to filter |
-| `⌘C` / `⌘⌫` | Copy / delete the selected clip (`⌘C` on a page copies its URL) |
+| `⌘C` / `⌘⌫` | Copy / delete the selected clip (`⌘C` on a page copies its URL, on an app, project or file its path) |
 
 Nothing matches? Your actions show up instead, so a question is always one `↵` away from your AI agent.
 
@@ -125,9 +127,29 @@ enabled  = true
 browsers = ["dia", "safari"]                  # default: every browser found
 limit    = 5000
 
+[apps]
+enabled = true                                # /Applications, /System/Applications, ~/Applications
+
+[projects]
+roots = ["~/code"]                            # git repos under these show up in search
+open  = 'code "$1"'                           # how ↵ opens one ($1 = the repo's path)
+
+[files]
+enabled = true                                # Spotlight, by name, after 3+ letters
+limit   = 8
+
+[search]
+favorites = ["Ghostty", "euclid-bar"]         # shown first when the box is empty
+
+[aliases]
+code = "Visual Studio Code"                   # type `code` ↵
+
 [env]                                         # extra env vars for every action
 AWS_PROFILE = "my-profile"                    # e.g. what you only export in ~/.zshrc
 ```
+
+Any `[[action]]` can take an `alias`: with `alias = "gh"`, typing `gh swift testing` runs it on
+"swift testing".
 
 Validate it from a terminal (great in dotfiles CI):
 
@@ -135,8 +157,8 @@ Validate it from a terminal (great in dotfiles CI):
 /Applications/euclid-bar.app/Contents/MacOS/euclid-bar --check-config
 ```
 
-Clipboard history lives in `~/Library/Application Support/Euclid`, separate from the config, so it
-never ends up in your dotfiles repo.
+Clipboard history and learned ranking live in `~/Library/Application Support/Euclid`, separate from
+the config, so they never end up in your dotfiles repo.
 
 ## Build from source
 
@@ -166,7 +188,6 @@ scripts/             bundle.sh, release.sh, make-dev-cert.sh
 ## Roadmap
 
 - Stream an action's output into the panel (`output = "panel"`): ask `pi --print`, `↵` pastes the answer
-- Calculator in the search bar
 - Meaning-based search for browser history
 
 ## License

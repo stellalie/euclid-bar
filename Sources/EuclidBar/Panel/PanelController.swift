@@ -14,11 +14,19 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let clipboard: ClipboardService
     private let config: ConfigService
     private let history: HistoryService
+    private let apps: BackgroundIndex<AppEntry>
+    private let projects: BackgroundIndex<ProjectEntry>
+    private let files: FileSearchService
+    private let ranking: RankingService
 
     init(clipboard: ClipboardService, config: ConfigService, history: HistoryService) {
         self.clipboard = clipboard
         self.config = config
         self.history = history
+        apps = BackgroundIndex(name: "apps", maxAge: .seconds(60)) { $0.searchItem(id: $1) }
+        projects = BackgroundIndex(name: "projects", maxAge: .seconds(300)) { $0.searchItem(id: $1) }
+        files = FileSearchService()
+        ranking = RankingService(databaseURL: config.paths.rankingDatabase)
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
@@ -37,6 +45,24 @@ final class PanelController: NSObject, NSWindowDelegate {
             Paster.copy(entry.url)
             self.hide()
         }
+        content.appsProvider = { [unowned apps] in apps.items }
+        content.projectsProvider = { [unowned projects] in projects.items }
+        content.project = { [unowned projects] id in projects.entry(id: id) }
+        content.ranking = ranking
+        content.fileSearch = { [unowned files] text in files.search(text) }
+        files.onResults = { [weak self] text, hits in self?.content.setFileResults(hits, for: text) }
+        content.onOpenApp = { [weak self] path in self?.openApp(path: path) }
+        content.onOpenProject = { [weak self] path in self?.openProject(path: path) }
+        content.onOpenFile = { [weak self] path in
+            self?.hide()
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
+        content.onCopyText = { [weak self] text in
+            Paster.copy(text)
+            self?.hide()
+        }
+        apps.onChange = { [weak self] in self?.indexDidChange() }
+        projects.onChange = { [weak self] in self?.indexDidChange() }
         history.onChange = { [weak self] in
             guard let self else { return }
             self.updateProblem()
@@ -51,8 +77,42 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Push the current config into the panel (called on launch and every reload).
     func configDidChange() {
-        content.actions = config.current.config.actions
+        let settings = config.current.config
+        content.actions = settings.actions
+        content.aliases = settings.aliases
+        content.favorites = settings.favorites
+        files.enabled = settings.filesEnabled
+        files.limit = settings.filesLimit
+        let folders = settings.appFolders
+        if settings.appsEnabled { apps.configure { AppIndex.scan(folders: folders) } } else { apps.configure(nil) }
+        let roots = settings.projectRoots, depth = settings.projectDepth
+        if roots.isEmpty { projects.configure(nil) } else {
+            projects.configure { ProjectScanner.scan(roots: roots, maxDepth: depth) }
+        }
         updateProblem()
+    }
+
+    private func indexDidChange() {
+        if panel.isVisible { content.refreshAfterExternalChange() }
+    }
+
+    /// Launch the app, or bring it to the front if it's running.
+    private func openApp(path: String) {
+        hide()
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: path), configuration: configuration) { _, error in
+            guard let error else { return }
+            let message = error.localizedDescription
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { self.content.notice = "⚠︎ couldn't open app (\(message))" }
+            }
+        }
+    }
+
+    /// Run `[projects] open` with the repo's path as $1.
+    private func openProject(path: String) {
+        run(Action(name: "Open project", run: config.current.config.projectOpen), query: path)
     }
 
     private func updateProblem() {
@@ -122,6 +182,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         let state = signposter.beginInterval("show")
         position()
         history.refreshIfStale()
+        apps.refreshIfStale()
+        projects.refreshIfStale()
         content.prepareForShow()
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
@@ -135,6 +197,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     func hide() {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
+        files.cancel()
         content.didHide()
     }
 
