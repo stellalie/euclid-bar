@@ -30,6 +30,7 @@ public struct BitbucketClient: Sendable {
 
     public struct Failure: Error, CustomStringConvertible {
         public let description: String
+        public init(description: String) { self.description = description }
     }
 
     let settings: BitbucketSettings

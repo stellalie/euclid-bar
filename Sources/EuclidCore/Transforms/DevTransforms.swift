@@ -120,7 +120,7 @@ public enum DevTransforms {
         return [Result(display: e, value: e, label: "Date → Epoch")]
     }
 
-    static func json(_ s: String) -> [Result] {
+    public static func json(_ s: String) -> [Result] {
         guard let f = s.first, f == "{" || f == "[", s.count >= 2,
               let obj = try? JSONSerialization.jsonObject(with: Data(s.utf8), options: [.fragmentsAllowed]),
               let pretty = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),

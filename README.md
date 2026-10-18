@@ -48,6 +48,7 @@ gets out of your way.
 | `⌘↵` | Run your **#1 action** on what you typed |
 | `⌘1`–`⌘9` | Run action N |
 | `⌘K` | Action palette: `↑↓` `↵`, `1`–`9`, type to filter |
+| `→` / `⌘Y` | Preview the selection (full text, image, Quick Look) |
 | `⌘C` / `⌘⌫` | Copy / delete the selected clip (`⌘C` on a page copies its URL, on an app, project or file its path) |
 
 Nothing matches? Your actions show up instead, so a question is always one `↵` away from your AI agent.
@@ -146,7 +147,35 @@ code = "Visual Studio Code"                   # type `code` ↵
 
 [env]                                         # extra env vars for every action
 AWS_PROFILE = "my-profile"                    # e.g. what you only export in ~/.zshrc
+
+[appearance]
+accent     = "#7c5cff"                        # selection + match highlight (default: system accent)
+density    = "compact"                        # or "comfortable"
+glass      = true                             # Liquid Glass on macOS 26+
+show_speed = true                             # "12,431 items · 0.6 ms" in the footer
+
+[obsidian]
+vault = "~/Notes"                             # search notes by title and text
+
+[pages]
+enabled = true                                # index the text of public pages you visited (off by default)
+
+[bitbucket]                                   # your PRs, review requests and repos
+email = "you@example.com"                     # Cloud; for Data Center set base_url instead
+# token_command = "security find-generic-password -s euclid-bitbucket -w"   # the default
+
+[[snippet]]
+name    = "Standup"
+keyword = "standup"                           # typing it pins the snippet first
+text    = "Yesterday:\nToday:\nBlockers: none ({date})"
 ```
+
+Type straight into the box for quick developer answers: an epoch (`1697040000`) or ISO date,
+`uuid`, `now`, `b64 text` / a base64 string, JSON (pretty + minified), `%`-encoded URLs, `#ff8800`
+or `rgb(…)`, and JWTs. `↵` copies the answer.
+
+`→` (at the end of what you typed) or `⌘Y` opens a preview: the full clip, images, Quick Look for
+files, a project's README, or an indexed page's text.
 
 Any `[[action]]` can take an `alias`: with `alias = "gh"`, typing `gh swift testing` runs it on
 "swift testing".
