@@ -50,6 +50,36 @@ limit   = 8
 # Shown first when the search box is empty, by name (apps, projects or actions).
 favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
 
+# Look and feel.
+[appearance]
+# accent   = "#7c5cff"           # selection and match highlight; default: your system accent colour
+density    = "comfortable"       # or "compact": smaller rows, more results
+glass      = true                # Liquid Glass background on macOS 26+
+show_speed = true                # "12,431 items · 0.6 ms" in the footer
+
+# Full-text search of the pages in your browser history. Off by default: when on,
+# Euclid downloads recent pages (no cookies, so only what's public) and indexes
+# their text locally. Links that look like logins, resets or have query strings are skipped.
+[pages]
+enabled = false
+limit   = 500                    # most recent pages to index
+exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.com"]
+
+# Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
+[obsidian]
+# vault = "~/Notes"
+
+# Bitbucket: your open PRs, PRs waiting on your review, and your repos (↵ opens in the browser).
+# Cloud: email + an API token (id.atlassian.com › Security › API tokens), stored in the Keychain:
+#   security add-generic-password -s euclid-bitbucket -a "$USER" -w <token>
+# Data Center: set base_url to your server and use an HTTP access token (no email).
+# [bitbucket]
+# email         = "you@example.com"
+# base_url      = "https://api.bitbucket.org/2.0"     # or "https://bitbucket.example.com"
+# token_command = "security find-generic-password -s euclid-bitbucket -w"
+# repos         = ["workspace/repo"]   # Cloud: where to look for review requests (default: your 10 latest repos)
+# refresh_minutes = 5
+
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.
 [aliases]
@@ -96,5 +126,16 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # [[action]]
 # name = "pi in herdr"
 # run  = 'herdr-run tab pi "$1"'            # or: split, split-down
+
+# Snippets: text you paste often. Find them by name or keyword; ↵ pastes.
+# Placeholders: {date} {time} {datetime} {clipboard} {uuid}
+# [[snippet]]
+# name    = "Standup template"
+# keyword = "standup"
+# text    = """
+# Yesterday:
+# Today:
+# Blockers: none ({date})
+# """
 """#
 }

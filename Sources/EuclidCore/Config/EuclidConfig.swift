@@ -32,7 +32,57 @@ public struct EuclidConfig: Equatable, Sendable {
     public var favorites: [String] = []
     /// `[aliases]` plus every action's `alias`.
     public var aliases = Aliases()
+    /// Look and feel (`[appearance]`).
+    public var appearance = Appearance()
+    /// `[[snippet]]` blocks, in file order.
+    public var snippets: [Snippet] = []
+    /// Full-text index of visited pages (`[pages]`). Off by default: it downloads pages.
+    public var pagesEnabled = false
+    public var pagesLimit = 500
+    public var pagesExcludedHosts: [String] = []
+    /// Obsidian vault for note search (`[obsidian] vault`). Nil = off.
+    public var obsidianVault: String?
+    /// Bitbucket integration (`[bitbucket]`). Nil = off.
+    public var bitbucket: BitbucketSettings?
 
+    public init() {}
+}
+
+/// `[appearance]`.
+public struct Appearance: Equatable, Sendable {
+    public enum Density: String, Sendable, CaseIterable { case comfortable, compact }
+    /// sRGB hex like "#7c5cff"; nil = the system accent colour.
+    public var accent: String?
+    public var density = Density.comfortable
+    /// Liquid Glass background on macOS 26+ (falls back to the blurred material).
+    public var glass = true
+    /// "12,431 items · 0.6 ms" in the footer.
+    public var showSpeed = true
+
+    public init() {}
+
+    /// "#abc" or "#aabbcc" → 0–1 components, or nil if malformed.
+    public static func parseHex(_ s: String) -> (r: Double, g: Double, b: Double)? {
+        var hex = s.hasPrefix("#") ? String(s.dropFirst()) : s
+        guard hex.count == 3 || hex.count == 6, hex.allSatisfy(\.isHexDigit) else { return nil }
+        if hex.count == 3 { hex = hex.map { "\($0)\($0)" }.joined() }
+        guard let v = Int(hex, radix: 16) else { return nil }
+        return (Double(v >> 16 & 0xFF) / 255, Double(v >> 8 & 0xFF) / 255, Double(v & 0xFF) / 255)
+    }
+}
+
+/// `[bitbucket]`: Cloud (api.bitbucket.org) or Data Center (your server's URL).
+public struct BitbucketSettings: Equatable, Sendable {
+    public var baseURL = "https://api.bitbucket.org/2.0"
+    /// Cloud: your Atlassian account email (API tokens use Basic auth). Data Center: leave empty (Bearer token).
+    public var email = ""
+    /// Prints the token. Keeps secrets out of config.toml (Keychain, 1Password CLI…).
+    public var tokenCommand = "security find-generic-password -s euclid-bitbucket -w"
+    /// Cloud: "workspace/repo" slugs checked for PRs waiting on your review. Empty = your most recently updated repos.
+    public var repos: [String] = []
+    public var refreshMinutes = 5
+
+    public var isCloud: Bool { baseURL.contains("api.bitbucket.org") }
     public init() {}
 }
 
@@ -78,7 +128,7 @@ public enum ConfigLoader {
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket"], in: "top level", &issues)
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -236,6 +286,98 @@ public enum ConfigLoader {
                 }
             } else {
                 issues.append(.warning("actions must be [[action]] blocks"))
+            }
+        }
+
+        if let t = table(root, "appearance", &issues) {
+            warnUnknownKeys(t, known: ["accent", "density", "glass", "show_speed"], in: "[appearance]", &issues)
+            if t.contains(key: "accent") {
+                if let s = try? t.string(forKey: "accent"), Appearance.parseHex(s) != nil { config.appearance.accent = s }
+                else { issues.append(.warning("appearance.accent must be a hex colour like \"#7c5cff\"")) }
+            }
+            if t.contains(key: "density") {
+                if let s = try? t.string(forKey: "density"), let d = Appearance.Density(rawValue: s) { config.appearance.density = d }
+                else { issues.append(.warning("appearance.density must be \"comfortable\" or \"compact\"")) }
+            }
+            if let b = bool(t, "glass", in: "appearance", &issues) { config.appearance.glass = b }
+            if let b = bool(t, "show_speed", in: "appearance", &issues) { config.appearance.showSpeed = b }
+        }
+
+        if root.contains(key: "snippet") {
+            if let list = try? root.array(forKey: "snippet") {
+                for i in 0..<list.count {
+                    let label = "snippet #\(i + 1)"
+                    guard let t = try? list.table(atIndex: i) else { issues.append(.warning("\(label): use [[snippet]] blocks")); continue }
+                    warnUnknownKeys(t, known: ["name", "keyword", "text"], in: label, &issues)
+                    guard let name = try? t.string(forKey: "name"), !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+                        issues.append(.warning("\(label): missing name, skipped")); continue
+                    }
+                    guard let text = try? t.string(forKey: "text"), !text.isEmpty else {
+                        issues.append(.warning("\(label) '\(name)': missing text, skipped")); continue
+                    }
+                    var keyword: String?
+                    if t.contains(key: "keyword") {
+                        if let k = try? t.string(forKey: "keyword"), !k.isEmpty, !k.contains(" ") { keyword = k }
+                        else { issues.append(.warning("\(label) '\(name)': keyword can't be empty or contain spaces")) }
+                    }
+                    config.snippets.append(Snippet(name: name, keyword: keyword, text: text))
+                }
+            } else {
+                issues.append(.warning("snippets must be [[snippet]] blocks"))
+            }
+        }
+
+        if let t = table(root, "pages", &issues) {
+            warnUnknownKeys(t, known: ["enabled", "limit", "exclude_hosts"], in: "[pages]", &issues)
+            if let b = bool(t, "enabled", in: "pages", &issues) { config.pagesEnabled = b }
+            if t.contains(key: "limit") {
+                if let n = try? t.integer(forKey: "limit"), (1...5_000).contains(n) { config.pagesLimit = Int(n) }
+                else { issues.append(.warning("pages.limit must be a number from 1 to 5000")) }
+            }
+            if let a = strings(t, "exclude_hosts", in: "pages", &issues) { config.pagesExcludedHosts = a.map { $0.lowercased() } }
+        }
+
+        if let t = table(root, "obsidian", &issues) {
+            warnUnknownKeys(t, known: ["vault"], in: "[obsidian]", &issues)
+            if t.contains(key: "vault") {
+                if let s = try? t.string(forKey: "vault") { config.obsidianVault = s.isEmpty ? nil : s }
+                else { issues.append(.warning("obsidian.vault must be a folder path, e.g. \"~/Notes\"")) }
+            }
+        }
+
+        if let t = table(root, "bitbucket", &issues) {
+            warnUnknownKeys(t, known: ["enabled", "base_url", "email", "token_command", "repos", "refresh_minutes"], in: "[bitbucket]", &issues)
+            var b = BitbucketSettings()
+            if t.contains(key: "base_url") {
+                if let s = try? t.string(forKey: "base_url"), let u = URL(string: s), u.scheme == "https" {
+                    b.baseURL = s.hasSuffix("/") ? String(s.dropLast()) : s
+                } else { issues.append(.warning("bitbucket.base_url must be an https URL")) }
+            }
+            if t.contains(key: "email") {
+                if let s = try? t.string(forKey: "email") { b.email = s } else { issues.append(.warning("bitbucket.email must be a string")) }
+            }
+            if t.contains(key: "token_command") {
+                if let s = try? t.string(forKey: "token_command"), !s.trimmingCharacters(in: .whitespaces).isEmpty { b.tokenCommand = s }
+                else { issues.append(.warning("bitbucket.token_command must be a command that prints your token")) }
+            }
+            if let a = strings(t, "repos", in: "bitbucket", &issues) {
+                b.repos = a.filter { r in
+                    let ok = r.split(separator: "/").count == 2
+                    if !ok { issues.append(.warning("bitbucket.repos: '\(r)' should be \"workspace/repo\"")) }
+                    return ok
+                }
+            }
+            if t.contains(key: "refresh_minutes") {
+                if let n = try? t.integer(forKey: "refresh_minutes"), (1...120).contains(n) { b.refreshMinutes = Int(n) }
+                else { issues.append(.warning("bitbucket.refresh_minutes must be a number from 1 to 120")) }
+            }
+            let enabled = bool(t, "enabled", in: "bitbucket", &issues) ?? true
+            if enabled {
+                if b.isCloud && b.email.isEmpty {
+                    issues.append(.warning("bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"))
+                } else {
+                    config.bitbucket = b
+                }
             }
         }
 

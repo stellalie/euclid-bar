@@ -143,13 +143,23 @@ public enum BrowserHistory {
     }
 
     public static func load(_ source: Source, limit: Int) throws -> [HistoryEntry] {
+        try readCopy(of: source.database) { db in
+            switch source.kind {
+            case .chromium: try chromiumRows(db, browser: source.browser, limit: limit)
+            case .safari: try safariRows(db, limit: limit)
+            }
+        }
+    }
+
+    /// Browsers keep their databases locked: copy the file (and its WAL) and read the copy.
+    static func readCopy<T>(of database: URL, _ body: (Database) throws -> T) throws -> T {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-history-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
-        let copy = tmp.appendingPathComponent("History.db")
-        try FileManager.default.copyItem(at: source.database, to: copy)
+        let copy = tmp.appendingPathComponent("copy.db")
+        try FileManager.default.copyItem(at: database, to: copy)
         for suffix in ["-wal", "-shm"] { // include uncheckpointed writes, if any
-            let side = URL(fileURLWithPath: source.database.path + suffix)
+            let side = URL(fileURLWithPath: database.path + suffix)
             if FileManager.default.fileExists(atPath: side.path) {
                 try? FileManager.default.copyItem(at: side, to: URL(fileURLWithPath: copy.path + suffix))
             }
@@ -157,12 +167,43 @@ public enum BrowserHistory {
         var config = Configuration()
         config.readonly = true
         let db = try DatabaseQueue(path: copy.path, configuration: config)
-        return try db.read { db in
-            switch source.kind {
-            case .chromium: try chromiumRows(db, browser: source.browser, limit: limit)
-            case .safari: try safariRows(db, limit: limit)
-            }
+        return try db.read(body)
+    }
+
+    /// Site icons (PNG bytes) by host, from each Chromium profile's `Favicons` database.
+    /// Only for `hosts` (the pages in history), so the read stays small. Safari keeps
+    /// its icons elsewhere, in a format we skip.
+    public static func favicons(for sources: [Source], hosts: Set<String>) -> [String: Data] {
+        var out: [String: Data] = [:]
+        for source in sources where source.kind == .chromium {
+            let file = source.database.deletingLastPathComponent().appendingPathComponent("Favicons")
+            guard FileManager.default.fileExists(atPath: file.path) else { continue }
+            let found = (try? readCopy(of: file) { db in try faviconRows(db, hosts: hosts.subtracting(out.keys)) }) ?? [:]
+            out.merge(found) { a, _ in a }
         }
+        return out
+    }
+
+    static func faviconRows(_ db: Database, hosts: Set<String>) throws -> [String: Data] {
+        guard !hosts.isEmpty else { return [:] }
+        var iconByHost: [String: Int64] = [:]
+        let mappings = try Row.fetchCursor(db, sql: "SELECT page_url, icon_id FROM icon_mapping")
+        while let row = try mappings.next() {
+            guard let url: String = row["page_url"], let host = URL(string: url)?.host()?.lowercased(),
+                  hosts.contains(host), iconByHost[host] == nil else { continue }
+            iconByHost[host] = row["icon_id"]
+        }
+        guard !iconByHost.isEmpty else { return [:] }
+        let ids = Set(iconByHost.values).map(String.init).joined(separator: ",")
+        var bitmap: [Int64: Data] = [:]
+        // Largest bitmap up to 32 px per icon (16 px icons look soft on Retina).
+        for row in try Row.fetchAll(db, sql: """
+            SELECT icon_id, image_data FROM favicon_bitmaps
+            WHERE icon_id IN (\(ids)) AND width <= 32 ORDER BY width ASC
+            """) {
+            bitmap[row["icon_id"]] = row["image_data"]
+        }
+        return iconByHost.compactMapValues { bitmap[$0] }
     }
 
     /// Chromium stores times as microseconds since 1601-01-01 UTC.

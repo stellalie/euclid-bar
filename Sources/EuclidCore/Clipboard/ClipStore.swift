@@ -34,6 +34,12 @@ public final class ClipStore: Sendable {
             }
             try db.create(index: "clips_last_used", on: "clips", columns: ["last_used_at"])
         }
+        m.registerMigration("v2_clip_kinds") { db in
+            try db.alter(table: "clips") { t in
+                t.add(column: "kind", .text).notNull().defaults(to: "text")
+                t.add(column: "meta", .text)
+            }
+        }
         return m
     }
 
@@ -44,6 +50,7 @@ public final class ClipStore: Sendable {
                 """, arguments: [limit]).map { row in
                 Clip(
                     id: row["id"], content: row["content"],
+                    kind: Clip.Kind(rawValue: row["kind"] ?? "text") ?? .text, meta: row["meta"],
                     sourceBundleID: row["source_bundle_id"], sourceName: row["source_name"],
                     createdAt: Date(timeIntervalSince1970: row["created_at"]),
                     lastUsedAt: Date(timeIntervalSince1970: row["last_used_at"]),
@@ -68,14 +75,14 @@ public final class ClipStore: Sendable {
     private static func write(_ change: ClipHistory.Change, _ db: Database) throws {
         if let c = change.saved {
             try db.execute(sql: """
-                INSERT INTO clips (id, content, source_bundle_id, source_name, created_at, last_used_at, use_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO clips (id, content, kind, meta, source_bundle_id, source_name, created_at, last_used_at, use_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     source_bundle_id = excluded.source_bundle_id,
                     source_name = excluded.source_name,
                     last_used_at = excluded.last_used_at,
                     use_count = excluded.use_count
-                """, arguments: [c.id, c.content, c.sourceBundleID, c.sourceName,
+                """, arguments: [c.id, c.content, c.kind.rawValue, c.meta, c.sourceBundleID, c.sourceName,
                                  c.createdAt.timeIntervalSince1970, c.lastUsedAt.timeIntervalSince1970, c.useCount])
         }
         for id in change.deletedIDs {

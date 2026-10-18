@@ -25,7 +25,7 @@ public final class ClipHistory {
         let sorted = existing.sorted { $0.lastUsedAt > $1.lastUsedAt }.prefix(limit)
         for clip in sorted {
             clips[clip.id] = clip
-            idByContent[clip.content] = clip.id
+            idByContent[Self.key(clip.content, clip.kind)] = clip.id
             items.append(clip.searchItem)
             nextID = max(nextID, clip.id + 1)
         }
@@ -36,11 +36,12 @@ public final class ClipHistory {
 
     /// A new copy event. Re-copying existing content moves it to the top.
     @discardableResult
-    public func record(_ content: String, sourceBundleID: String?, sourceName: String?, at now: Date = Date()) -> Change? {
+    public func record(_ content: String, kind: Clip.Kind = .text, meta: String? = nil,
+                       sourceBundleID: String?, sourceName: String?, at now: Date = Date()) -> Change? {
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               content.utf8.count <= Self.maxContentBytes else { return nil }
 
-        if let id = idByContent[content], var clip = clips[id] {
+        if let id = idByContent[Self.key(content, kind)], var clip = clips[id] {
             clip.lastUsedAt = now
             clip.useCount += 1
             clip.sourceBundleID = sourceBundleID ?? clip.sourceBundleID
@@ -49,11 +50,11 @@ public final class ClipHistory {
             return Change(saved: clip)
         }
 
-        let clip = Clip(id: nextID, content: content, sourceBundleID: sourceBundleID,
+        let clip = Clip(id: nextID, content: content, kind: kind, meta: meta, sourceBundleID: sourceBundleID,
                         sourceName: sourceName, createdAt: now)
         nextID += 1
         clips[clip.id] = clip
-        idByContent[content] = clip.id
+        idByContent[Self.key(content, kind)] = clip.id
         items.insert(clip.searchItem, at: 0)
 
         var change = Change(saved: clip)
@@ -89,6 +90,11 @@ public final class ClipHistory {
         return Change(deletedIDs: ids)
     }
 
+    /// Dedupe key: the same text and the same file copied as a file are different clips.
+    private static func key(_ content: String, _ kind: Clip.Kind) -> String {
+        kind == .text ? content : "\(kind.rawValue)\u{0}\(content)"
+    }
+
     private func moveToFront(_ clip: Clip) {
         clips[clip.id] = clip
         if let i = items.firstIndex(where: { $0.id == clip.id }) { items.remove(at: i) }
@@ -97,7 +103,7 @@ public final class ClipHistory {
 
     private func removeFromMemory(id: Int) {
         guard let clip = clips.removeValue(forKey: id) else { return }
-        idByContent.removeValue(forKey: clip.content)
+        idByContent.removeValue(forKey: Self.key(clip.content, clip.kind))
         if let i = items.firstIndex(where: { $0.id == id }) { items.remove(at: i) }
     }
 }

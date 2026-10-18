@@ -13,6 +13,10 @@ public struct EuclidPaths: Sendable {
     public var historyDatabase: URL { dataDirectory.appendingPathComponent("history.sqlite") }
     /// What you picked for what you typed (learned ranking).
     public var rankingDatabase: URL { dataDirectory.appendingPathComponent("ranking.sqlite") }
+    /// Full-text index of page and note text.
+    public var contentDatabase: URL { dataDirectory.appendingPathComponent("content.sqlite") }
+    /// Copied images, one PNG per clip, named by content hash.
+    public var clipImagesDirectory: URL { dataDirectory.appendingPathComponent("clip-images") }
 
     public init(environment env: [String: String] = ProcessInfo.processInfo.environment) {
         let home = FileManager.default.homeDirectoryForCurrentUser
