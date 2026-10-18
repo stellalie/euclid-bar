@@ -53,10 +53,9 @@ final class FileSearchService {
 
     private func start(_ trimmed: String, for text: String) {
         let started = ContinuousClock.now
+        guard let predicate = FileQuery.predicate(for: trimmed) else { return }
         let q = NSMetadataQuery()
-        // Every word must appear in the name: "readme euclid" finds euclid-bar/README.md's siblings too.
-        let words = trimmed.split(separator: " ").map { NSPredicate(format: "%K LIKE[cd] %@", NSMetadataItemFSNameKey, "*\($0)*") }
-        q.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: words)
+        q.predicate = predicate
         q.searchScopes = [NSMetadataQueryUserHomeScope]
         q.sortDescriptors = [NSSortDescriptor(key: "kMDItemLastUsedDate", ascending: false)]
         observer = NotificationCenter.default.addObserver(
