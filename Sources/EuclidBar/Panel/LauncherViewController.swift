@@ -459,7 +459,7 @@ final class LauncherViewController: NSViewController {
         }
         let topKeys = Set(top.map(\.key))
         ranked.removeAll { topKeys.contains($0.key) }
-        return (top + pinned + ranked.prefix(40), searched)
+        return (top + pinned + Array(ranked.prefix(40)), searched)
     }
 
     /// The empty box: favourites from config, then what you pick most, then PRs waiting on your review.
