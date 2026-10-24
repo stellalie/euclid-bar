@@ -25,7 +25,7 @@
 	<key>NSAppleEventsUsageDescription</key>
 	<string>euclid-bar opens your actions in terminal apps like Ghostty.</string>
 	<key>SUFeedURL</key>
-	<string>https://github.com/stellalie/euclid-bar/releases/latest/download/appcast.xml</string>
+	<string>https://github.com/stellalie/euclid-bar-releases/releases/latest/download/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>

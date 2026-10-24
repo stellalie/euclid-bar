@@ -7,7 +7,7 @@
 **Your blazing fast, fully customisable search-anything companion for macOS.**<br>
 Built for developers who live in the terminal.
 
-[**Download for macOS**](https://github.com/stellalie/euclid-bar/releases/latest) · [Recipes](#recipes) · [Config](#configuration) · [Build from source](#build-from-source)
+[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Recipes](#recipes) · [Config](#configuration) · [Build from source](#build-from-source)
 
 ![Euclid demo](docs/demo.gif)
 
@@ -95,7 +95,7 @@ run  = 'printf %s "$1" | jq . | pbcopy'
 ## Install
 
 1. **Download** `euclid-bar-<version>-macos-universal.zip` from
-   [Releases](https://github.com/stellalie/euclid-bar/releases/latest) (Apple Silicon + Intel,
+   [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
    macOS 14+).
 2. **Unzip** and drag `euclid-bar.app` into `/Applications`.
 3. **First launch:** Euclid isn't notarized by Apple (yet), so macOS will block it the first time.
@@ -230,4 +230,4 @@ scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cer
 
 ## License
 
-[MIT](LICENSE) © Stella Lie
+Proprietary, all rights reserved © Stella Lie. See [LICENSE](LICENSE).
