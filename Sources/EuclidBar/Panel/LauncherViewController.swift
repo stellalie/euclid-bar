@@ -175,6 +175,10 @@ final class LauncherViewController: NSViewController {
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .tertiaryLabelColor
         previewDivider.boxType = .separator
+        // A separator's intrinsic height is 1pt; stood on end it must not pull the
+        // window down to that (it hugs harder than the window keeps its size).
+        previewDivider.setContentHuggingPriority(.defaultLow, for: .vertical)
+        previewDivider.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         preview.isHidden = true
         previewDivider.isHidden = true
 

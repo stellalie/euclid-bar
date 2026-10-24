@@ -39,10 +39,9 @@ enum ScreensRenderer {
         func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         func panelImage(at s: NSSize) -> CGImage {
             window.setContentSize(s)
-            if view.frame.size != s {
-                print("note: window gave \(view.frame.size) for \(s) (window \(window.frame.size), fitting \(view.fittingSize))")
-                view.setFrameSize(s)
-            }
+            // The real panel sizes itself the same way, so a mismatch is a layout bug: fail the check.
+            precondition(abs(view.frame.height - s.height) < 1 && abs(view.frame.width - s.width) < 1,
+                         "panel took \(view.frame.size) for \(s) (fitting \(view.fittingSize))")
             return DemoRenderer.snapshot(view)
         }
         /// Animate from the last drawn size to the current one, then hold.
