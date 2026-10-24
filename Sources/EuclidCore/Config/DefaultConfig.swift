@@ -94,6 +94,10 @@ exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.co
 # base_url = "https://your-site.atlassian.net"   # or your Data Center server
 # email    = "you@example.com"                   # Cloud only
 
+# What `euclid-bar --mcp` lets your coding agents (Claude Code, Codex) search. Read-only, local.
+[agents]
+share = ["clipboard", "pages", "notes", "history"]
+
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
 check        = true              # look for a new version once a day

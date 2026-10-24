@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, buyLicence, enterLicence, importLauncher, showUsage }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, buyLicence, enterLicence, importLauncher, showUsage, connectAgents }
     let kind: Kind
     let title: String
     var detail = ""
@@ -12,6 +12,9 @@ struct AppCommand: Equatable {
 
     static let importLauncher = AppCommand(kind: .importLauncher, title: "Import from Raycast or Alfred…",
                                            detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
+
+    static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
+                                          detail: "Let your agents search your clipboard, pages and notes", symbol: "point.3.connected.trianglepath.dotted")
 
     /// How much you used Euclid lately, once there's something to show.
     static func usage(receipt: String?) -> [AppCommand] {

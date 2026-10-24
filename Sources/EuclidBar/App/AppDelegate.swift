@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.importLauncher] + AppCommand.usage(receipt: panel.usageReceipt)
+            + [.importLauncher, .connectAgents] + AppCommand.usage(receipt: panel.usageReceipt)
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -89,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Open euclid-bar", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Import from Raycast or Alfred…", action: #selector(importLauncher), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
 
         menu.addItem(.separator())
@@ -173,6 +174,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .importLauncher:
             panel.hide()
             importLauncher()
+        case .connectAgents:
+            panel.hide()
+            connectAgents()
         case .showUsage:
             panel.hide()
             let alert = NSAlert()
@@ -182,6 +186,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate()
             alert.runModal()
         }
+    }
+
+    /// Explain the MCP server and copy the command that connects Claude Code to it.
+    @objc private func connectAgents() {
+        let alert = NSAlert()
+        alert.messageText = "Connect your coding agents"
+        let shared = AgentTools.Source.allCases.filter(config.current.config.agentShare.contains).map(\.rawValue)
+        alert.informativeText = """
+            Euclid can answer your agents over MCP: they search your \(shared.isEmpty ? "(nothing shared)" : shared.joined(separator: ", ")) \
+            on this Mac. Choose what with [agents] share in config.toml.
+
+            Claude Code: paste the copied command in a terminal.
+            Codex: add to ~/.codex/config.toml:
+            [mcp_servers.euclid]
+            command = "\(Bundle.main.executablePath ?? "euclid-bar")"
+            args = ["--mcp"]
+            """
+        alert.addButton(withTitle: "Copy Claude Code Command")
+        alert.addButton(withTitle: "Close")
+        NSApp.activate()
+        if alert.runModal() == .alertFirstButtonReturn { Paster.copy(AgentServer.claudeSetupCommand) }
     }
 
     /// Pick Raycast/Alfred exports, append what they hold to config.toml, say what happened.

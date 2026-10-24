@@ -49,6 +49,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var bitbucket: BitbucketSettings?
     /// Jira integration (`[jira]`). Nil = off.
     public var jira: JiraSettings?
+    /// What `euclid-bar --mcp` shares with coding agents (`[agents] share`).
+    public var agentShare = Set(AgentTools.Source.allCases)
     /// Sparkle auto-update (`[updates]`).
     public var updates = UpdateSettings()
 
@@ -246,7 +248,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "updates"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -526,6 +528,18 @@ public enum ConfigLoader {
             }
             let enabled = bool(t, "enabled", in: "jira", &issues) ?? true
             config.jira = enabled ? j : nil // base_url and email are checked after includes are merged
+        }
+
+        if let t = table(root, "agents", &issues) {
+            warnUnknownKeys(t, known: ["share"], in: "[agents]", &issues)
+            if let a = strings(t, "share", in: "agents", &issues) {
+                var share = Set<AgentTools.Source>()
+                for name in a {
+                    if let s = AgentTools.Source(rawValue: name.lowercased()) { share.insert(s) }
+                    else { issues.append(.warning("agents.share: unknown source '\(name)' (use \(AgentTools.Source.allCases.map(\.rawValue).joined(separator: ", ")))")) }
+                }
+                config.agentShare = share
+            }
         }
 
         if let t = table(root, "updates", &issues) {
