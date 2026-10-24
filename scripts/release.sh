@@ -11,9 +11,15 @@
 #   NOTARY_KEY_PATH + NOTARY_KEY_ID + NOTARY_ISSUER_ID   App Store Connect API key
 #   SPARKLE_PUBLIC_KEY  turns on auto-update in the app
 #   SPARKLE_PRIVATE_KEY signs the update archive and writes appcast.xml
+#   RELEASE_TAG         GitHub release the files go on (default: v<version>; dev builds: dev)
+#   SKIP_TESTS=1        when CI already tested this commit
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION="${1:?usage: scripts/release.sh <version>}"
+RELEASE_TAG="${RELEASE_TAG:-v$VERSION}"
+# Sparkle compares CFBundleVersion. Counting commits on main keeps it rising across
+# stable and dev builds, so either channel can move to the other's next build.
+BUILD="$(git rev-list --count HEAD)"
 OUT="build/release"
 APP="build/euclid-bar.app"
 REPO_URL="https://github.com/stellalie/euclid-bar-releases" # public: downloads + Sparkle feed (source repo is private)
@@ -30,8 +36,8 @@ notarize() { # <file>
 can_notarize() { [[ -n "${SIGN_IDENTITY:-}" && ( -n "${NOTARY_PROFILE:-}" || -n "${NOTARY_KEY_PATH:-}" ) ]]; }
 
 scripts/check-toolchain.sh
-swift test
-UNIVERSAL=1 VERSION="$VERSION" scripts/bundle.sh release
+[[ "${SKIP_TESTS:-}" == 1 ]] || swift test
+UNIVERSAL=1 VERSION="$VERSION" BUILD="$BUILD" scripts/bundle.sh release
 lipo -info "$APP/Contents/MacOS/euclid-bar"
 codesign --verify --strict --deep "$APP" && echo "signature ok"
 
@@ -72,7 +78,7 @@ if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
   FEED="$(mktemp -d)"
   cp "$ZIP" "$FEED/"
   printf '%s' "$SPARKLE_PRIVATE_KEY" | "$TOOLS/generate_appcast" --ed-key-file - \
-    --download-url-prefix "$REPO_URL/releases/download/v$VERSION/" --link "$REPO_URL" "$FEED"
+    --download-url-prefix "$REPO_URL/releases/download/$RELEASE_TAG/" --link "$REPO_URL" "$FEED"
   cp "$FEED/appcast.xml" "$OUT/appcast.xml"
   rm -rf "$FEED"
 fi

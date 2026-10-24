@@ -3,6 +3,7 @@
 # Usage: scripts/bundle.sh [release|debug]
 #   UNIVERSAL=1  build for Apple Silicon + Intel
 #   VERSION=x.y  stamp the bundle version (default: Resources/Info.plist)
+#   BUILD=n      stamp CFBundleVersion, which Sparkle compares (default: VERSION)
 #   SIGN_IDENTITY="Developer ID Application: …"  release signing (hardened runtime + timestamp)
 #   SPARKLE_PUBLIC_KEY=…  turn on auto-update (EdDSA public key from Sparkle's generate_keys)
 set -euo pipefail
@@ -25,7 +26,7 @@ if [[ -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
 fi
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
-  plutil -replace CFBundleVersion -string "$VERSION" "$APP/Contents/Info.plist"
+  plutil -replace CFBundleVersion -string "${BUILD:-$VERSION}" "$APP/Contents/Info.plist"
 fi
 # SwiftPM resource bundles (e.g. KeyboardShortcuts localizations)
 find "$BIN" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;

@@ -168,6 +168,7 @@ email = "you@example.com"                     # Cloud; for Data Center set base_
 [updates]
 check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
+channel      = "stable"                       # "dev": a build of every change, for testing
 
 [[snippet]]
 name    = "Standup"

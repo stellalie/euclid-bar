@@ -22,6 +22,25 @@ installed one, so tags must keep going up.
 To try the pipeline without publishing: **Actions › Release › Run workflow** (dry run, files land
 in the run's artifacts).
 
+## Dev builds
+
+Every push to `main` that passes CI also ships: `.github/workflows/dev-release.yml` builds, signs
+and notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
+(version like `1.1.0-dev.214`). It uses the same secrets as stable releases.
+
+To get them, set this in `config.toml`; the next update check switches feeds:
+
+```toml
+[updates]
+channel = "dev"
+```
+
+`CFBundleVersion` is the commit count on `main` for both channels, so builds always go up. Switching
+back to `"stable"` keeps the dev build until the next release is newer.
+
+Claude merges its own pull requests once CI is green, so each one becomes a dev build to try.
+Stable releases stay tag-only.
+
 ## One-time setup (~30 min)
 
 1. **Developer ID certificate.** Xcode › Settings › Accounts › Manage Certificates › **+** ›

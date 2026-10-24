@@ -27,6 +27,15 @@ import Testing
         #expect(bad.issues.map(\.message) == ["updates.check must be true or false"])
     }
 
+    @Test func channel() throws {
+        #expect(UpdateSettings().channel == .stable)
+        #expect(try ConfigLoader.parse("[updates]\nchannel = \"dev\"\n").config.updates.channel == .dev)
+
+        let bad = try ConfigLoader.parse("[updates]\nchannel = \"nightly\"\n")
+        #expect(bad.config.updates.channel == .stable)
+        #expect(bad.issues.map(\.message) == ["updates.channel must be \"stable\" or \"dev\""])
+    }
+
     @Test func editorFlipsTheValueAndKeepsTheLine() throws {
         let edited = try #require(ConfigEditor.set("auto_install", to: false, in: "updates", text: DefaultConfig.text))
         #expect(edited.contains("auto_install = false             # download it in the background, install on quit"))
