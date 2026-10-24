@@ -104,7 +104,8 @@ run  = 'printf %s "$1" | jq . | pbcopy'
    xattr -dr com.apple.quarantine /Applications/euclid-bar.app
    ```
    or open it once, then go to **System Settings › Privacy & Security** and click **Open Anyway**.
-4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…* and *Quit*.
+4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…*, *Check for Updates…*,
+   *Install Updates Automatically* and *Quit*. Typing `update` in the bar finds the same two.
 
 **Permissions** (asked only when needed):
 - **Accessibility**: for `↵` to paste into the previous app. Without it, Euclid copies instead.
@@ -163,6 +164,10 @@ enabled = true                                # index the text of public pages y
 [bitbucket]                                   # your PRs, review requests and repos
 email = "you@example.com"                     # Cloud; for Data Center set base_url instead
 # token_command = "security find-generic-password -s euclid-bitbucket -w"   # the default
+
+[updates]
+check        = true                           # look for a new version daily
+auto_install = true                           # install it in the background (also a menu toggle)
 
 [[snippet]]
 name    = "Standup"

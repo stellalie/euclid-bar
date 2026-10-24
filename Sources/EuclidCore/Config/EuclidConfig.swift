@@ -44,6 +44,18 @@ public struct EuclidConfig: Equatable, Sendable {
     public var obsidianVault: String?
     /// Bitbucket integration (`[bitbucket]`). Nil = off.
     public var bitbucket: BitbucketSettings?
+    /// Sparkle auto-update (`[updates]`).
+    public var updates = UpdateSettings()
+
+    public init() {}
+}
+
+/// `[updates]`. Only release builds update; dev builds ignore it.
+public struct UpdateSettings: Equatable, Sendable {
+    /// Look for a new version once a day.
+    public var check = true
+    /// Download new versions in the background and install them on quit. Needs `check`.
+    public var autoInstall = true
 
     public init() {}
 }
@@ -128,7 +140,7 @@ public enum ConfigLoader {
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "updates"], in: "top level", &issues)
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -378,6 +390,16 @@ public enum ConfigLoader {
                 } else {
                     config.bitbucket = b
                 }
+            }
+        }
+
+        if let t = table(root, "updates", &issues) {
+            warnUnknownKeys(t, known: ["check", "auto_install"], in: "[updates]", &issues)
+            if let b = bool(t, "check", in: "updates", &issues) { config.updates.check = b }
+            if let b = bool(t, "auto_install", in: "updates", &issues) { config.updates.autoInstall = b }
+            if config.updates.autoInstall && !config.updates.check {
+                if t.contains(key: "auto_install") { issues.append(.warning("updates.auto_install needs updates.check = true")) }
+                config.updates.autoInstall = false
             }
         }
 
