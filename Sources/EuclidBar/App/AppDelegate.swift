@@ -18,7 +18,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
         }
         let settings = config.current.config
-        clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, limit: settings.clipboardLimit)
+        clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, imagesDirectory: config.paths.clipImagesDirectory,
+                                     limit: settings.clipboardLimit)
         panel = PanelController(clipboard: clipboard, config: config, history: history)
         applyConfig()
         config.onChange = { [weak self] in self?.applyConfig() }

@@ -22,6 +22,28 @@ enum Paster {
         pb.setString("", forType: NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker))
     }
 
+    /// Put a clip back on the pasteboard the way it was copied: text, an image, or files.
+    static func copy(_ clip: Clip, imageURL: URL) {
+        switch clip.kind {
+        case .text:
+            copy(clip.content)
+        case .image:
+            guard let png = try? Data(contentsOf: imageURL) else { return }
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.declareTypes([.png, .tiff, NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker)], owner: nil)
+            pb.setData(png, forType: .png)
+            if let tiff = NSImage(data: png)?.tiffRepresentation { pb.setData(tiff, forType: .tiff) }
+            pb.setString("", forType: NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker))
+        case .files:
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.writeObjects(clip.paths.map { URL(fileURLWithPath: $0) as NSURL })
+            pb.addTypes([NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker)], owner: nil)
+            pb.setString("", forType: NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker))
+        }
+    }
+
     /// Posts ⌘V. Our panel is non-activating, so the previous app is still
     /// frontmost; once the panel is hidden the keystroke lands there.
     static func pasteIntoFrontApp() {

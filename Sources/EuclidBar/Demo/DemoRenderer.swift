@@ -38,9 +38,9 @@ enum DemoRenderer {
             Action(name: "Search web", run: "open …"),
             Action(name: "Search GitHub", run: "open …"),
         ]
+        let window = ScreensRenderer.offscreenWindow(for: vc) // the layout engine lives in a window, like the real panel
         let view = vc.view
         view.appearance = NSAppearance(named: .darkAqua)
-        view.frame = NSRect(origin: .zero, size: LauncherViewController.size)
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
@@ -107,6 +107,7 @@ enum DemoRenderer {
         try writeGIF(frames, to: dir.appendingPathComponent("demo.gif"))
         try writeMP4(frames, to: dir.appendingPathComponent("demo.mp4"))
         let total = frames.reduce(0) { $0 + $1.duration }
+        withExtendedLifetime(window) {}
         print("rendered \(frames.count) frames, \(String(format: "%.1f", total))s → \(dir.path)")
     }
 

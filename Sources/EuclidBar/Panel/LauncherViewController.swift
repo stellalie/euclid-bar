@@ -2,53 +2,11 @@ import AppKit
 import Carbon.HIToolbox
 import EuclidCore
 
-/// One row in the results list.
-enum Row {
-    case clip(SearchItem)
-    case history(SearchItem)
-    /// `number` is the 1-based position in the action list (⌘1 = 1).
-    case action(number: Int, Action)
-    /// An action reached by its alias: "gh swift testing" runs it on "swift testing".
-    case aliasAction(Action, argument: String)
-    case builtin(Builtin, clipID: Int)
-    /// `subtitle` is the app's path.
-    case app(SearchItem)
-    case project(ProjectEntry)
-    case file(FileHit)
-    case calc(Calculator.Result, expression: String)
-
-    /// Stable identity for learned ranking. Nil for things that aren't worth learning
-    /// (clips already reorder themselves on use; a calculation is never the same twice).
-    var learnKey: String? {
-        switch self {
-        case .app(let item): "app:\(item.subtitle)"
-        case .project(let p): "proj:\(p.path)"
-        case .file(let f): "file:\(f.path)"
-        case .action(_, let a), .aliasAction(let a, _): "action:\(a.name)"
-        case .clip, .history, .builtin, .calc: nil
-        }
-    }
-
-    /// The path a row stands for, for ⌘C and icons.
-    var path: String? {
-        switch self {
-        case .app(let item): item.subtitle
-        case .project(let p): p.path
-        case .file(let f): f.path
-        default: nil
-        }
-    }
-
-    enum Builtin: String, CaseIterable {
-        case paste = "Paste clip", copy = "Copy clip", delete = "Delete clip"
-        var icon: String { ["Paste clip": "text.insert", "Copy clip": "doc.on.doc", "Delete clip": "trash"][rawValue]! }
-        var hint: String { ["Paste clip": "↵", "Copy clip": "⌘C", "Delete clip": "⌘⌫"][rawValue]! }
-    }
-}
-
 @MainActor
 final class LauncherViewController: NSViewController {
+    /// Largest size without the preview. The panel shrinks to fit fewer results.
     static let size = NSSize(width: 680, height: 440)
+    static let previewWidth: CGFloat = 400
 
     // Wiring (set by PanelController).
     var onClose: (() -> Void)?
@@ -61,20 +19,44 @@ final class LauncherViewController: NSViewController {
     var onOpenApp: ((String) -> Void)?
     var onOpenProject: ((String) -> Void)?
     var onOpenFile: ((String) -> Void)?
+    /// Open a URL (a Bitbucket PR, an indexed page) in the default browser.
+    var onOpenURL: ((String) -> Void)?
+    var onOpenNote: ((String) -> Void)?
     /// Put text on the pasteboard and close (a path, a calculator answer).
     var onCopyText: ((String) -> Void)?
+    /// Paste text into the previous app (a snippet).
+    var onPasteText: ((String) -> Void)?
+    /// The panel should take this size (it grows with the results, and for the preview).
+    var onPreferredSizeChange: ((NSSize) -> Void)?
     /// Browser history (searched only when there's a query).
     var historyProvider: () -> [SearchItem] = { [] }
+    var historyURL: (Int) -> String? = { _ in nil }
+    var favicon: (_ host: String) -> NSImage? = { _ in nil }
     /// Installed apps (`subtitle` = path) and git repos.
     var appsProvider: () -> [SearchItem] = { [] }
     var projectsProvider: () -> [SearchItem] = { [] }
     var project: (Int) -> ProjectEntry? = { _ in nil }
+    var bitbucketProvider: () -> [SearchItem] = { [] }
+    var bitbucketItem: (Int) -> BitbucketItem? = { _ in nil }
+    var clip: (Int) -> Clip? = { _ in nil }
+    var clipImage: (Clip) -> NSImage? = { _ in nil }
     /// Starts an async file search; results come back through `setFileResults`.
     var fileSearch: ((String) -> Void)?
+    /// Starts an async page/note text search; results come back through `setContentResults`.
+    var contentSearch: ((String) -> Void)?
+    /// Stored text of an indexed page or note, for the preview.
+    var contentBody: (String) -> String? = { _ in nil }
     var ranking: RankingService?
 
     var aliases = Aliases() { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
     var favorites: [String] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
+    var snippets: [Snippet] = [] {
+        didSet {
+            snippetItems = snippets.enumerated().map { $0.element.searchItem(id: $0.offset) }
+            if isViewLoaded { refreshAfterExternalChange() }
+        }
+    }
+    var theme = Theme() { didSet { if isViewLoaded { applyTheme() } } }
 
     /// Enabled actions from config, in order.
     var actions: [Action] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
@@ -91,18 +73,35 @@ final class LauncherViewController: NSViewController {
     private var mode = Mode.search
 
     private let itemsProvider: () -> [SearchItem]
+    private var snippetItems: [SearchItem] = []
     private var rows: [Row] = []
-    /// Rows from the instant sources; async file hits are appended below them.
+    /// Rows from the instant sources; async hits (pages, notes, files) are appended below them.
     private var baseRows: [Row] = []
     private var fileHits: (query: String, hits: [FileHit]) = ("", [])
+    private var contentHits: (query: String, hits: [ContentHit]) = ("", [])
     private var keyMonitor: Any?
+    private var previewOpen = false
+    /// "12,431 items · 0.6 ms", refreshed on every search.
+    private var lastStats = ""
 
+    private let background = NSView()
+    private var effectView: NSView?
+    private var installedGlass: Bool?
+    private let content = NSView()
     private let searchField = NSTextField()
     private let modeLabel = NSTextField(labelWithString: "")
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let emptyLabel = NSTextField(labelWithString: "")
     private let footer = NSTextField(labelWithString: "")
+    private let hints = HintBar()
+    private let stats = NSTextField(labelWithString: "")
+    private let preview = PreviewView()
+    private let previewDivider = NSBox()
+    private var listTrailing: NSLayoutConstraint!
+
+    /// Space above and below the list: search field and footer.
+    private static let chrome: CGFloat = 60 + 34
 
     init(items: @escaping () -> [SearchItem]) {
         self.itemsProvider = items
@@ -113,19 +112,22 @@ final class LauncherViewController: NSViewController {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let root = NSVisualEffectView(frame: NSRect(origin: .zero, size: Self.size))
-        root.material = .popover
-        root.blendingMode = .behindWindow
-        root.state = .active
+        let root = NSView(frame: NSRect(origin: .zero, size: Self.size))
         root.wantsLayer = true
-        root.layer?.cornerRadius = 14
+        root.layer?.cornerRadius = 16
         root.layer?.masksToBounds = true
+        root.layer?.borderWidth = 1
+        root.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
         view = root
+        background.frame = root.bounds
+        background.autoresizingMask = [.width, .height]
+        root.addSubview(background)
+        content.frame = root.bounds
+        content.autoresizingMask = [.width, .height]
 
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.font = .systemFont(ofSize: 22, weight: .regular)
         searchField.cell?.usesSingleLineMode = true
         searchField.cell?.wraps = false
         searchField.cell?.isScrollable = true
@@ -142,8 +144,7 @@ final class LauncherViewController: NSViewController {
         let column = NSTableColumn(identifier: .init("main"))
         tableView.addTableColumn(column)
         tableView.headerView = nil
-        tableView.style = .inset
-        tableView.rowHeight = 40
+        tableView.style = .plain
         tableView.intercellSpacing = .zero
         tableView.backgroundColor = .clear
         tableView.usesAutomaticRowHeights = false
@@ -157,83 +158,170 @@ final class LauncherViewController: NSViewController {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.contentInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
+        scrollView.automaticallyAdjustsContentInsets = false
 
         let footerDivider = NSBox()
         footerDivider.boxType = .separator
         footer.font = .systemFont(ofSize: 11)
+        footer.textColor = .systemOrange
         footer.lineBreakMode = .byTruncatingTail
         footer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        stats.font = .monospacedDigitSystemFont(ofSize: 10.5, weight: .medium)
+        stats.textColor = .tertiaryLabelColor
+        stats.alignment = .right
+        stats.setContentCompressionResistancePriority(.required, for: .horizontal)
+        stats.setContentHuggingPriority(.required, for: .horizontal)
         emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .tertiaryLabelColor
+        previewDivider.boxType = .separator
+        // A separator's intrinsic height is 1pt; stood on end it must not pull the
+        // window down to that (it hugs harder than the window keeps its size).
+        previewDivider.setContentHuggingPriority(.defaultLow, for: .vertical)
+        previewDivider.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        preview.isHidden = true
+        previewDivider.isHidden = true
 
-        for v in [searchField, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer] {
+        for v in [searchField, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer, hints, stats, preview, previewDivider] {
             v.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview(v)
+            content.addSubview(v)
         }
+        listTrailing = scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor)
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
-            searchField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
+            searchField.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
+            searchField.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
             searchField.trailingAnchor.constraint(equalTo: modeLabel.leadingAnchor, constant: -8),
 
             modeLabel.firstBaselineAnchor.constraint(equalTo: searchField.firstBaselineAnchor),
-            modeLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            modeLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
             modeLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 260),
 
-            divider.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 12),
-            divider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            divider.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            divider.topAnchor.constraint(equalTo: content.topAnchor, constant: 59),
+            divider.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
-            scrollView.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 4),
-            scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: footerDivider.topAnchor, constant: -4),
+            scrollView.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            // Below the window's own size (500), so the panel can animate its width.
+            scrollView.widthAnchor.constraint(equalToConstant: Self.size.width).withPriority(.init(490)),
+            listTrailing,
+            scrollView.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
 
-            footerDivider.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-            footerDivider.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-            footerDivider.bottomAnchor.constraint(equalTo: footer.topAnchor, constant: -8),
+            previewDivider.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            previewDivider.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
+            previewDivider.leadingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            previewDivider.widthAnchor.constraint(equalToConstant: 1),
+            preview.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            preview.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
+            preview.leadingAnchor.constraint(equalTo: previewDivider.trailingAnchor),
+            preview.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
-            footer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
-            footer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
-            footer.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -9),
+            footerDivider.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footerDivider.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footerDivider.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -33),
+
+            hints.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            hints.centerYAnchor.constraint(equalTo: content.bottomAnchor, constant: -16.5),
+            hints.trailingAnchor.constraint(lessThanOrEqualTo: stats.leadingAnchor, constant: -12),
+            footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 18),
+            footer.centerYAnchor.constraint(equalTo: hints.centerYAnchor),
+            footer.trailingAnchor.constraint(lessThanOrEqualTo: stats.leadingAnchor, constant: -12),
+            stats.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            stats.centerYAnchor.constraint(equalTo: hints.centerYAnchor),
 
             emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
+        applyTheme()
         installKeyMonitor()
         enterSearchMode(query: "")
+    }
+
+    /// Background (Liquid Glass or blur), sizes and fonts from `[appearance]`.
+    private func applyTheme() {
+        searchField.font = .systemFont(ofSize: theme.querySize, weight: .regular)
+        if installedGlass != theme.glass { installBackground(glass: theme.glass) }
+        tableView.reloadData()
+        if !rows.isEmpty { select(row: max(tableView.selectedRow, 0)) }
+        updateFooter()
+        notifySize()
+    }
+
+    private func installBackground(glass: Bool) {
+        installedGlass = glass
+        effectView?.removeFromSuperview()
+        content.removeFromSuperview()
+        let effect: NSView
+        #if compiler(>=6.2)
+        if glass, #available(macOS 26, *) {
+            let g = NSGlassEffectView(frame: background.bounds)
+            g.cornerRadius = 16
+            g.contentView = content
+            effect = g
+        } else {
+            effect = Self.blur()
+            effect.addSubview(content)
+        }
+        #else
+        effect = Self.blur()
+        effect.addSubview(content)
+        #endif
+        effect.frame = background.bounds
+        effect.autoresizingMask = [.width, .height]
+        content.frame = effect.bounds
+        content.autoresizingMask = [.width, .height]
+        background.addSubview(effect)
+        effectView = effect
+    }
+
+    private static func blur() -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .popover
+        v.blendingMode = .behindWindow
+        v.state = .active
+        return v
     }
 
     // MARK: - Lifecycle
 
     /// Called right before the panel is shown: fresh search, focused field.
     func prepareForShow() {
+        setPreview(open: false)
         enterSearchMode(query: "")
         view.window?.makeFirstResponder(searchField)
     }
 
-    func didHide() { notice = nil }
+    func didHide() {
+        notice = nil
+        setPreview(open: false)
+    }
 
     /// History or config changed while the panel may be visible: refresh, keep the selection if possible.
     func refreshAfterExternalChange() {
         guard isViewLoaded else { return }
-        let previous = selectedRow.map(rowKey)
+        let previous = selectedRow.map(\.key)
         runSearch()
-        if let previous, let i = rows.firstIndex(where: { rowKey($0) == previous }) { select(row: i) }
+        if let previous, let i = rows.firstIndex(where: { $0.key == previous }) { select(row: i) }
     }
 
     // MARK: - Demo (driven by `euclid-bar --render-demo`)
 
     func demoSetQuery(_ text: String) { searchField.stringValue = text; runSearch() }
     func demoToggleActions() { if case .actions = mode { enterSearchMode(query: query) } else { enterActionsMode() } }
-    func demoSelect(row: Int) { select(row: row) }
-    var demoRowCount: Int { rows.count }
+    /// Select the nth result, not counting section headers.
+    func demoSelect(row: Int) {
+        let selectable = rows.indices.filter { !rows[$0].isHeader }
+        if selectable.indices.contains(row) { select(row: selectable[row]) }
+    }
+    var demoRowCount: Int { rows.filter { !$0.isHeader }.count }
+    func demoTogglePreview() { setPreview(open: !previewOpen) }
 
     // MARK: - Modes
 
     private func enterSearchMode(query: String) {
         mode = .search
         searchField.stringValue = query
-        searchField.placeholderString = "Search apps, projects, files, clipboard and history…"
+        searchField.placeholderString = "Search apps, projects, files, clipboard, history…"
         modeLabel.stringValue = ""
         runSearch()
         searchField.currentEditor()?.moveToEndOfDocument(nil)
@@ -261,30 +349,49 @@ final class LauncherViewController: NSViewController {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("search")
         let text = searchField.stringValue
+        var searched = 0
 
         switch mode {
         case .search:
             let all = itemsProvider()
             if text.isEmpty {
-                baseRows = suggestions() + FuzzyMatcher.search(text, in: all).map(Row.clip)
+                let clips = FuzzyMatcher.search(text, in: all).map(Row.clip)
+                baseRows = suggestions() + (clips.isEmpty ? [] : [.header("Clipboard")] + clips)
+                searched = all.count
             } else {
-                baseRows = rankedRows(for: text, clips: all)
+                let ranked = rankedRows(for: text, clips: all)
+                searched = ranked.searched
                 // Nothing matched: offer the actions instead, Raycast-style.
-                if baseRows.isEmpty { baseRows = actionRows(filter: "") }
+                if !ranked.rows.isEmpty { baseRows = ranked.rows.sectioned() }
+                else if actions.isEmpty { baseRows = [] }
+                else { baseRows = [.header("Use “\(text)” with…")] + actionRows(filter: "") }
             }
-            if fileHits.query != text { fileHits = (text, []) }
+            // Keep the last async hits that still match while the new ones load, so
+            // the bottom of the list doesn't blink on every keystroke.
+            if fileHits.query != text {
+                fileHits = (text, text.isEmpty ? [] : fileHits.hits.filter { FuzzyMatcher.score(query: text, in: $0.name) != nil })
+            }
+            if contentHits.query != text {
+                let keep = !text.isEmpty && text.hasPrefix(contentHits.query) && !contentHits.query.isEmpty
+                contentHits = (text, keep ? contentHits.hits.filter {
+                    FuzzyMatcher.score(query: text, in: "\($0.title) \($0.snippet)") != nil
+                } : [])
+            }
             fileSearch?(text)
-            rows = baseRows + fileHits.hits.map(Row.file)
+            contentSearch?(text)
+            rows = withAsyncRows(baseRows)
             emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
 
         case .actions(_, let clipID):
             fileSearch?("")
+            contentSearch?("")
             rows = actionRows(filter: text)
             if let clipID {
                 rows += Row.Builtin.allCases
                     .filter { text.isEmpty || FuzzyMatcher.score(query: text, in: $0.rawValue) != nil }
                     .map { .builtin($0, clipID: clipID) }
             }
+            searched = actions.count
             emptyLabel.stringValue = actions.isEmpty && clipID == nil
                 ? "No actions yet — add [[action]] blocks to config.toml" : "No matching actions"
         }
@@ -292,31 +399,57 @@ final class LauncherViewController: NSViewController {
         tableView.reloadData()
         select(row: 0)
         emptyLabel.isHidden = !rows.isEmpty
+        let elapsed = ContinuousClock.now - start
+        lastStats = Self.stats(items: searched, elapsed: elapsed)
         updateFooter()
+        notifySize()
         tableView.displayIfNeeded()
         signposter.endInterval("search", state)
-        perfLog.notice("search -> \(self.rows.count) rows in \(String(describing: ContinuousClock.now - start), privacy: .public)")
+        perfLog.notice("search -> \(self.rows.count) rows in \(String(describing: elapsed), privacy: .public)")
+    }
+
+    /// "12,431 items · 0.42 ms"
+    static func stats(items: Int, elapsed: Duration) -> String {
+        let (s, atto) = elapsed.components
+        let ms = Double(s) * 1000 + Double(atto) / 1e15
+        let time = ms < 10 ? String(format: "%.2f ms", ms) : String(format: "%.0f ms", ms)
+        return "\(items.formatted()) items · \(time)"
+    }
+
+    /// Async hits go last, so they never push the instant rows around.
+    private func withAsyncRows(_ base: [Row]) -> [Row] {
+        var out = base
+        let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
+        if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
+        if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
+        if !fileHits.hits.isEmpty { out += [.header("Files")] + fileHits.hits.map(Row.file) }
+        return out
     }
 
     /// Everything that matches, best first. A row's score is its text match, plus a
     /// bonus for sources you usually want (apps over clips), plus what it learned from
-    /// your past picks for this query. A calculator answer and an exact alias go first.
-    private func rankedRows(for text: String, clips: [SearchItem]) -> [Row] {
+    /// your past picks for this query. Answers (calculator, conversions) and an exact
+    /// alias or snippet keyword go first.
+    private func rankedRows(for text: String, clips: [SearchItem]) -> (rows: [Row], searched: Int) {
         let learned = ranking?.bonuses(for: text) ?? [:]
         var scored: [(score: Int, source: Int, order: Int, row: Row)] = []
-        func add(_ hits: [(score: Int, item: SearchItem)], source: Int, boost: Int, _ make: (SearchItem) -> Row?) {
-            for (i, hit) in hits.enumerated() {
+        var searched = 0
+        func add(_ items: [SearchItem], limit: Int, source: Int, boost: Int, _ make: (SearchItem) -> Row?) {
+            searched += items.count
+            for (i, hit) in FuzzyMatcher.scoredSearch(text, in: items, limit: limit).enumerated() {
                 guard let row = make(hit.item) else { continue }
                 let bonus = row.learnKey.flatMap { learned[$0] } ?? 0
                 scored.append((hit.score + boost + bonus, source, i, row))
             }
         }
-        add(FuzzyMatcher.scoredSearch(text, in: appsProvider(), limit: 20), source: 0, boost: 80) { .app($0) }
-        add(FuzzyMatcher.scoredSearch(text, in: projectsProvider(), limit: 20), source: 1, boost: 40) { project($0.id).map(Row.project) }
+        add(appsProvider(), limit: 20, source: 0, boost: 80) { .app($0) }
+        add(projectsProvider(), limit: 20, source: 1, boost: 40) { project($0.id).map(Row.project) }
+        add(bitbucketProvider(), limit: 15, source: 2, boost: 30) { bitbucketItem($0.id).map(Row.bitbucket) }
+        add(snippetItems, limit: 9, source: 3, boost: 20) { item in snippets.indices.contains(item.id) ? .snippet(item, snippets[item.id]) : nil }
         let actionItems = actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }
-        add(FuzzyMatcher.scoredSearch(text, in: actionItems, limit: 9), source: 2, boost: -50) { .action(number: $0.id + 1, actions[$0.id]) }
-        add(FuzzyMatcher.scoredSearch(text, in: clips, limit: 50), source: 3, boost: 0) { .clip($0) }
-        add(FuzzyMatcher.scoredSearch(text, in: historyProvider(), limit: 30), source: 4, boost: 0) { .history($0) }
+        add(actionItems, limit: 9, source: 4, boost: -50) { .action(number: $0.id + 1, actions[$0.id]) }
+        add(clips, limit: 50, source: 5, boost: 0) { .clip($0) }
+        add(historyProvider(), limit: 30, source: 6, boost: 0) { .history($0) }
 
         var ranked = scored.sorted {
             $0.score != $1.score ? $0.score > $1.score : $0.source != $1.source ? $0.source < $1.source : $0.order < $1.order
@@ -324,25 +457,32 @@ final class LauncherViewController: NSViewController {
 
         var pinned: [Row] = []
         if let result = Calculator.evaluate(text) { pinned.append(.calc(result, expression: text)) }
-        if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) {
-            pinned.insert(row, at: 0)
-            ranked.removeAll { rowKey($0) == rowKey(row) }
+        pinned += DevTransforms.evaluate(text).map(Row.transform)
+        var top: [Row] = []
+        if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) { top.append(row) }
+        if let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
+            top.append(.snippet(snippetItems[i], snippets[i]))
         }
-        return pinned + ranked.prefix(40)
+        let topKeys = Set(top.map(\.key))
+        ranked.removeAll { topKeys.contains($0.key) }
+        return (top + pinned + Array(ranked.prefix(40)), searched)
     }
 
-    /// The empty box: favourites from config, then what you pick most, then clips.
+    /// The empty box: favourites from config, then what you pick most, then PRs waiting on your review.
     private func suggestions() -> [Row] {
-        var out = favorites.compactMap { resolve(title: $0, argument: nil) }
-        var keys = Set(out.map(rowKey))
-        for key in ranking?.top(8) ?? [] where out.count < favorites.count + 3 {
-            guard let row = resolve(key: key), keys.insert(rowKey(row)).inserted else { continue }
-            out.append(row)
+        var picks = favorites.compactMap { resolve(title: $0, argument: nil) }
+        var keys = Set(picks.map(\.key))
+        for key in ranking?.top(8) ?? [] where picks.count < favorites.count + 3 {
+            guard let row = resolve(key: key), keys.insert(row.key).inserted else { continue }
+            picks.append(row)
         }
+        var out: [Row] = picks.isEmpty ? [] : [.header("Suggestions")] + picks
+        let reviews = bitbucketProvider().compactMap { bitbucketItem($0.id) }.filter { $0.kind == .reviewPR }.prefix(3)
+        if !reviews.isEmpty { out += [.header("Waiting on your review")] + reviews.map(Row.bitbucket) }
         return out
     }
 
-    /// An alias or favourite target, by name: an action, app or project.
+    /// An alias or favourite target, by name: an action, app, project or snippet.
     private func resolve(title: String, argument: String?) -> Row? {
         let t = title.lowercased()
         if let i = actions.firstIndex(where: { $0.name.lowercased() == t }) {
@@ -353,6 +493,7 @@ final class LauncherViewController: NSViewController {
         if let item = projectsProvider().first(where: { $0.title.lowercased() == t }), let p = project(item.id) {
             return .project(p)
         }
+        if let i = snippets.firstIndex(where: { $0.name.lowercased() == t }) { return .snippet(snippetItems[i], snippets[i]) }
         return nil
     }
 
@@ -370,6 +511,10 @@ final class LauncherViewController: NSViewController {
             return .file(FileHit(path: value, isFolder: isDir.boolValue))
         case "action":
             return actions.firstIndex { $0.name == value }.map { .action(number: $0 + 1, actions[$0]) }
+        case "snippet":
+            return snippets.firstIndex { $0.name == value }.map { .snippet(snippetItems[$0], snippets[$0]) }
+        case "bb":
+            return bitbucketProvider().compactMap { bitbucketItem($0.id) }.first { $0.url == value }.map(Row.bitbucket)
         default: return nil
         }
     }
@@ -378,16 +523,30 @@ final class LauncherViewController: NSViewController {
     func setFileResults(_ hits: [FileHit], for text: String) {
         guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
         fileHits = (text, hits)
-        let previous = selectedRow.map(rowKey)
-        rows = baseRows + hits.map(Row.file)
+        asyncResultsChanged()
+    }
+
+    /// The page/note index answered.
+    func setContentResults(_ hits: [ContentHit], for text: String) {
+        guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
+        contentHits = (text, hits)
+        asyncResultsChanged()
+    }
+
+    private func asyncResultsChanged() {
+        let previous = selectedRow.map(\.key)
+        let newRows = withAsyncRows(baseRows)
+        guard newRows.map(\.key) != rows.map(\.key) else { return }
+        rows = newRows
         tableView.reloadData()
         emptyLabel.isHidden = !rows.isEmpty
-        select(row: previous.flatMap { key in rows.firstIndex { rowKey($0) == key } } ?? 0)
+        select(row: previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
+        notifySize()
     }
 
     private func iconLoaded(_ path: String) {
         guard isViewLoaded else { return }
-        let changed = IndexSet(rows.indices.filter { rows[$0].path == path })
+        let changed = IndexSet(rows.indices.filter { rows[$0].path == path || iconPath(rows[$0]) == path })
         guard !changed.isEmpty else { return }
         tableView.reloadData(forRowIndexes: changed, columnIndexes: [0])
     }
@@ -399,32 +558,118 @@ final class LauncherViewController: NSViewController {
         }
     }
 
+    // MARK: - Size
+
+    /// Just tall enough for the rows (up to the full size); full size and wider with the preview.
+    private var preferredSize: NSSize {
+        let width = Self.size.width + (previewOpen ? Self.previewWidth : 0)
+        if previewOpen { return NSSize(width: width, height: Self.size.height) }
+        let list = rows.isEmpty ? 64 : rows.reduce(0) { $0 + height(of: $1) } + 8
+        return NSSize(width: width, height: min(Self.chrome + list, Self.size.height))
+    }
+
+    private func notifySize() { onPreferredSizeChange?(preferredSize) }
+
+    private func height(of row: Row) -> CGFloat { row.isHeader ? theme.headerHeight : theme.rowHeight }
+
+    // MARK: - Preview
+
+    private func setPreview(open: Bool) {
+        guard open != previewOpen else { return }
+        previewOpen = open
+        preview.isHidden = !open
+        previewDivider.isHidden = !open
+        listTrailing.isActive = !open
+        if open { updatePreview() } else { preview.clear() }
+        updateFooter()
+        notifySize()
+    }
+
+    private func updatePreview() {
+        guard previewOpen else { return }
+        preview.show(selectedRow.map(previewContent) ?? .none)
+    }
+
+    private func previewContent(for row: Row) -> PreviewView.Content {
+        switch row {
+        case .header: return .none
+        case .clip(let item):
+            guard let c = clip(item.id) else { return .none }
+            let facts = [("From", c.sourceName ?? "—"), ("Copied", RelativeAge.short(c.lastUsedAt)), ("Used", "\(c.useCount)×")]
+            switch c.kind {
+            case .image:
+                return clipImage(c).map { .image($0, title: item.title) } ?? .none
+            case .files:
+                if c.paths.count == 1 { return .quickLook(URL(fileURLWithPath: c.paths[0])) }
+                return .text(title: item.title, facts: facts, body: c.paths.joined(separator: "\n"), code: true)
+            case .text:
+                let pretty = DevTransforms.json(c.content).first?.value
+                return .text(title: "", facts: facts, body: pretty ?? c.content, code: true)
+            }
+        case .history(let item):
+            let url = historyURL(item.id) ?? ""
+            let body = contentBody(url) ?? ""
+            return .text(title: item.title, facts: [("URL", url), ("Where", ResultCell.historySubtitle(item))], body: body, code: false)
+        case .action(_, let a), .aliasAction(let a, _):
+            return .text(title: a.name, facts: [("Runs", a.run)], body: "", code: false)
+        case .builtin(let b, _): return .text(title: b.rawValue, facts: [("Key", b.hint)], body: "", code: false)
+        case .app(let item):
+            return .quickLook(URL(fileURLWithPath: item.subtitle))
+        case .project(let p):
+            let readme = ["README.md", "readme.md", "README", "README.txt"].lazy
+                .compactMap { try? String(contentsOfFile: (p.path as NSString).appendingPathComponent($0), encoding: .utf8) }.first
+            return .text(title: p.name, facts: [("Path", ProjectScanner.abbreviate(p.path))], body: readme ?? "", code: false)
+        case .file(let f): return .quickLook(URL(fileURLWithPath: f.path))
+        case .calc(let r, let expression): return .text(title: r.display, facts: [("Expression", expression)], body: "", code: false)
+        case .transform(let t): return .text(title: t.label, facts: [], body: t.value, code: true)
+        case .snippet(_, let s):
+            return .text(title: s.name, facts: s.keyword.map { [("Keyword", $0)] } ?? [], body: s.expanded(clipboard: Self.clipboardText), code: false)
+        case .content(let c):
+            let body = contentBody(c.ref) ?? c.snippet
+            return .text(title: c.title, facts: [(c.kind == .note ? "Note" : "URL", c.ref)], body: body, code: false)
+        case .bitbucket(let b):
+            let updated = b.updated.map { RelativeAge.short($0) } ?? "—"
+            return .text(title: b.title, facts: [("Where", b.subtitle), ("Updated", updated), ("URL", b.url)], body: "", code: false)
+        }
+    }
+
+    nonisolated static func clipboardText() -> String? { NSPasteboard.general.string(forType: .string) }
+
+    // MARK: - Footer
+
     private func updateFooter() {
+        stats.isHidden = !theme.showSpeed || lastStats.isEmpty
+        stats.stringValue = lastStats
         if let message = notice ?? problem {
             footer.stringValue = message
-            footer.textColor = .systemOrange
+            footer.isHidden = false
+            hints.isHidden = true
             return
         }
-        footer.textColor = .secondaryLabelColor
+        footer.isHidden = true
+        hints.isHidden = false
+        typealias H = HintBar.Hint
         switch mode {
         case .search:
-            var hints: [String] = []
+            var list: [H] = []
             switch selectedRow {
-            case .clip?: hints.append("↵ Paste")
-            case .history(let item)?: hints.append("↵ Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")")
-            case .app?, .project?, .file?: hints.append("↵ Open")
-            case .calc?: hints.append("↵ Copy answer")
-            case nil: break
-            default: hints.append("↵ Run")
+            case .clip?, .snippet?: list.append(H(key: "↵", label: "Paste"))
+            case .history(let item)?: list.append(H(key: "↵", label: "Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")"))
+            case .app?, .project?, .file?, .bitbucket?, .content?: list.append(H(key: "↵", label: "Open"))
+            case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
+            case nil, .header?: break
+            default: list.append(H(key: "↵", label: "Run"))
             }
-            if let first = actions.first { hints.append("⌘↵ \(first.name)") }
-            hints.append("⌘K Actions")
-            if case .clip? = selectedRow { hints += ["⌘C Copy", "⌘⌫ Delete"] }
-            if case .history? = selectedRow { hints.append("⌘C Copy URL") }
-            if selectedRow?.path != nil { hints.append("⌘C Copy path") }
-            footer.stringValue = hints.joined(separator: "    ")
+            if selectedRow != nil { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
+            if let first = actions.first { list.append(H(key: "⌘↵", label: first.name)) }
+            list.append(H(key: "⌘K", label: "Actions"))
+            if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
+            if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
+            if case .bitbucket? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
+            if selectedRow?.path != nil { list.append(H(key: "⌘C", label: "Copy path")) }
+            hints.set(list)
         case .actions:
-            footer.stringValue = "↵ Run    1–9 Run    type to filter    esc Back"
+            hints.set([H(key: "↵", label: "Run"), H(key: "1–9", label: "Run"), H(key: "esc", label: "Back")])
         }
     }
 
@@ -434,32 +679,29 @@ final class LauncherViewController: NSViewController {
         rows.indices.contains(tableView.selectedRow) ? rows[tableView.selectedRow] : nil
     }
 
-    private func rowKey(_ row: Row) -> String {
-        switch row {
-        case .clip(let item): "c\(item.id)"
-        case .history(let item): "h\(item.title)\(item.subtitle)"
-        case .action(let n, _): "a\(n)"
-        case .aliasAction(let a, let arg): "a\(a.name)\u{0}\(arg)"
-        case .builtin(let b, _): "b\(b.rawValue)"
-        case .app(let item): "p\(item.subtitle)"
-        case .project(let p): "p\(p.path)"
-        case .file(let f): "p\(f.path)"
-        case .calc(let r, _): "=\(r.text)"
-        }
-    }
-
-    private func select(row: Int) {
+    /// Select `row`, or the nearest result in `direction` when it's a header.
+    private func select(row: Int, direction: Int = 1) {
         guard !rows.isEmpty else { return }
-        let r = max(0, min(row, rows.count - 1))
+        var r = max(0, min(row, rows.count - 1))
+        while rows.indices.contains(r), rows[r].isHeader { r += direction }
+        if !rows.indices.contains(r) { // ran off the end: go the other way
+            r = max(0, min(row, rows.count - 1))
+            while rows.indices.contains(r), rows[r].isHeader { r -= direction }
+        }
+        guard rows.indices.contains(r) else { return }
         tableView.selectRowIndexes([r], byExtendingSelection: false)
+        // Keep the header above the first result in view.
+        tableView.scrollRowToVisible(r > 0 && rows[r - 1].isHeader ? r - 1 : r)
         tableView.scrollRowToVisible(r)
         updateFooter()
+        updatePreview()
     }
 
     @objc private func activateSelection() {
         guard let row = selectedRow else { return }
         if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
         switch row {
+        case .header: return
         case .clip(let item): onPaste?(item.id)
         case .history(let item): onOpenHistory?(item.id)
         case .action(_, let action): onRunAction?(action, query)
@@ -468,6 +710,10 @@ final class LauncherViewController: NSViewController {
         case .project(let p): onOpenProject?(p.path)
         case .file(let f): onOpenFile?(f.path)
         case .calc(let result, _): onCopyText?(result.text)
+        case .transform(let t): onCopyText?(t.value)
+        case .snippet(_, let s): onPasteText?(s.expanded(clipboard: Self.clipboardText))
+        case .content(let c): c.kind == .note ? onOpenNote?(c.ref) : onOpenURL?(c.ref)
+        case .bitbucket(let b): onOpenURL?(b.url)
         case .builtin(.paste, let id): onPaste?(id)
         case .builtin(.copy, let id): onCopy?(id)
         case .builtin(.delete, let id):
@@ -507,6 +753,10 @@ final class LauncherViewController: NSViewController {
         case (.command, kVK_ANSI_K):
             inActions ? enterSearchMode(query: query) : enterActionsMode()
             return true
+        case (.command, kVK_ANSI_Y):
+            guard !inActions else { return false }
+            setPreview(open: !previewOpen)
+            return true
         case (.command, kVK_Return), (.command, kVK_ANSI_KeypadEnter):
             runAction(number: 1)
             return true
@@ -523,6 +773,10 @@ final class LauncherViewController: NSViewController {
             case .clip(let item)?: onCopy?(item.id)
             case .history(let item)?: onCopyHistory?(item.id)
             case .calc(let result, _)?: onCopyText?(result.text)
+            case .transform(let t)?: onCopyText?(t.value)
+            case .bitbucket(let b)?: onCopyText?(b.url)
+            case .content(let c)? where c.kind == .page: onCopyText?(c.ref)
+            case .snippet(_, let s)?: onCopyText?(s.expanded(clipboard: Self.clipboardText))
             case let row? where row.path != nil: onCopyText?(row.path!)
             default: return false
             }
@@ -537,6 +791,12 @@ final class LauncherViewController: NSViewController {
             return false
         }
     }
+
+    /// The file whose icon a row shows (beyond `Row.path`): a copied file's first path.
+    private func iconPath(_ row: Row) -> String? {
+        guard case .clip(let item) = row, let c = clip(item.id), c.kind == .files else { return nil }
+        return c.paths.first
+    }
 }
 
 extension LauncherViewController: NSTextFieldDelegate {
@@ -544,11 +804,19 @@ extension LauncherViewController: NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
         switch selector {
-        case #selector(NSResponder.moveUp(_:)): select(row: tableView.selectedRow - 1)
-        case #selector(NSResponder.moveDown(_:)): select(row: tableView.selectedRow + 1)
+        case #selector(NSResponder.moveUp(_:)): select(row: tableView.selectedRow - 1, direction: -1)
+        case #selector(NSResponder.moveDown(_:)): select(row: tableView.selectedRow + 1, direction: 1)
+        case #selector(NSResponder.moveRight(_:)):
+            // → at the end of the text opens the preview; anywhere else it moves the caret.
+            let r = textView.selectedRange()
+            guard !previewOpen, case .search = mode, selectedRow != nil, r.length == 0, r.location == (textView.string as NSString).length
+            else { return false }
+            setPreview(open: true)
         case #selector(NSResponder.insertNewline(_:)): activateSelection()
         case #selector(NSResponder.cancelOperation(_:)):
-            if case .actions = mode { enterSearchMode(query: query) } else { onClose?() }
+            if previewOpen { setPreview(open: false) }
+            else if case .actions = mode { enterSearchMode(query: query) }
+            else { onClose?() }
         default: return false
         }
         return true
@@ -558,132 +826,107 @@ extension LauncherViewController: NSTextFieldDelegate {
 extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        rows.indices.contains(row) ? height(of: rows[row]) : theme.rowHeight
+    }
+
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { !rows[row].isHeader }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let view = ResultRowView()
+        view.accent = theme.accent
+        view.isHeader = rows[row].isHeader
+        return view
+    }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        let r = rows[row]
+        if case .header(let title) = r {
+            let cell = tableView.makeView(withIdentifier: SectionHeaderCell.id, owner: nil) as? SectionHeaderCell ?? SectionHeaderCell()
+            cell.configure(title)
+            return cell
+        }
         let cell = tableView.makeView(withIdentifier: ResultCell.id, owner: nil) as? ResultCell ?? ResultCell()
         let inActions = if case .actions = mode { true } else { false }
-        switch rows[row] {
+        let highlight: String? = inActions ? searchField.stringValue : searchField.stringValue.isEmpty ? nil : searchField.stringValue
+        let tint = Theme.tint(for: r)
+        func show(_ symbol: String, image: NSImage? = nil, _ title: String, detail: String = "", _ accessory: String, plain: Bool = false) {
+            cell.configure(icon: symbol, image: image, tint: tint, title: title, detail: detail, accessory: accessory,
+                           highlight: plain ? nil : highlight, theme: theme)
+        }
+        switch r {
+        case .header: break
         case .clip(let item):
-            cell.configure(icon: "doc.on.clipboard", title: item.title, subtitle: ResultCell.clipSubtitle(item))
+            let c = clip(item.id)
+            switch c?.kind {
+            case .image?: show("photo", image: c.flatMap(clipImage), item.title, ResultCell.clipSubtitle(item))
+            case .files?: show("doc.on.doc", image: c?.paths.first.flatMap { IconCache.shared.icon(forPath: $0) }, item.title, ResultCell.clipSubtitle(item))
+            default: show("doc.on.clipboard", item.title, ResultCell.clipSubtitle(item))
+            }
         case .history(let item):
-            cell.configure(icon: "globe", title: item.title, subtitle: ResultCell.historySubtitle(item))
+            let host = URL(string: historyURL(item.id) ?? "")?.host()?.lowercased() ?? ""
+            show("globe", image: favicon(host), item.title, ResultCell.historySubtitle(item))
         case .action(let n, let action):
             let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
-            cell.configure(icon: "bolt", title: action.name, accessory: tagged(key, title: action.name))
+            show("bolt.fill", action.name, tagged(key, title: action.name))
         case .aliasAction(let action, let argument):
-            cell.configure(icon: "bolt", title: action.name, detail: "“\(argument)”", accessory: "↵")
+            show("bolt.fill", action.name, detail: "“\(argument)”", "↵", plain: true)
         case .builtin(let b, _):
-            cell.configure(icon: b.icon, title: b.rawValue, subtitle: b.hint)
+            show(b.icon, b.rawValue, b.hint)
         case .app(let item):
-            cell.configure(icon: "app", image: IconCache.shared.icon(forPath: item.subtitle), title: item.title,
-                           accessory: tagged("Application", title: item.title))
+            show("app", image: IconCache.shared.icon(forPath: item.subtitle), item.title, tagged("Application", title: item.title))
         case .project(let p):
-            cell.configure(icon: "folder", image: IconCache.shared.icon(forPath: p.path), title: p.name,
-                           detail: ProjectScanner.abbreviate((p.path as NSString).deletingLastPathComponent),
-                           accessory: tagged("Project", title: p.name))
+            show("folder", image: IconCache.shared.icon(forPath: p.path), p.name,
+                 detail: ProjectScanner.abbreviate((p.path as NSString).deletingLastPathComponent), tagged("Project", title: p.name))
         case .file(let f):
-            cell.configure(icon: f.isFolder ? "folder" : "doc", image: IconCache.shared.icon(forPath: f.path),
-                           title: f.name, detail: f.folder, accessory: f.isFolder ? "Folder" : "File")
+            show(f.isFolder ? "folder" : "doc", image: IconCache.shared.icon(forPath: f.path), f.name, detail: f.folder,
+                 f.isFolder ? "Folder" : "File")
         case .calc(let result, let expression):
-            cell.configure(icon: "equal.square", title: result.display, detail: expression, accessory: "Calculator")
+            show("equal", result.display, detail: expression, "Calculator", plain: true)
+        case .transform(let t):
+            show("wand.and.stars", image: t.color.map { Self.swatch($0) }, t.display, t.label, plain: true)
+        case .snippet(let item, let s):
+            show("text.quote", s.name, detail: s.keyword ?? "", tagged("Snippet", title: item.title))
+        case .content(let c):
+            show(c.kind == .note ? "note.text" : "doc.richtext", c.title, detail: c.snippet, c.kind == .note ? "Note" : "Page", plain: true)
+        case .bitbucket(let b):
+            let (symbol, label) = switch b.kind {
+            case .reviewPR: ("arrow.triangle.pull", "Review")
+            case .myPR: ("arrow.triangle.pull", "Your PR")
+            case .repo: ("shippingbox", "Repo")
+            }
+            show(symbol, b.title, detail: b.subtitle, label)
         }
         return cell
     }
 
-    func tableViewSelectionDidChange(_ notification: Notification) { updateFooter() }
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateFooter()
+        updatePreview()
+    }
 
     /// "Application" → "code · Application" when it has an alias.
     private func tagged(_ label: String, title: String) -> String {
         guard let alias = aliases.alias(for: title) else { return label }
         return label.isEmpty ? alias : "\(alias) · \(label)"
     }
+
+    /// A rounded colour swatch for hex/rgb conversions.
+    private static func swatch(_ c: DevTransforms.RGB) -> NSImage {
+        NSImage(size: NSSize(width: 22, height: 22), flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6)
+            NSColor(srgbRed: c.r, green: c.g, blue: c.b, alpha: 1).setFill()
+            path.fill()
+            NSColor.labelColor.withAlphaComponent(0.2).setStroke()
+            path.stroke()
+            return true
+        }
+    }
 }
 
-/// Reused row view: icon, title, a dimmer detail right after it, and a trailing accessory.
-final class ResultCell: NSTableCellView {
-    static let id = NSUserInterfaceItemIdentifier("ResultCell")
-
-    private let icon = NSImageView()
-    private let title = NSTextField(labelWithString: "")
-    private let detail = NSTextField(labelWithString: "")
-    private let subtitle = NSTextField(labelWithString: "")
-
-    init() {
-        super.init(frame: .zero)
-        identifier = Self.id
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        title.font = .systemFont(ofSize: 14)
-        title.lineBreakMode = .byTruncatingTail
-        title.maximumNumberOfLines = 1
-        title.setContentCompressionResistancePriority(.init(rawValue: 251), for: .horizontal) // truncate the detail first
-        title.setContentHuggingPriority(.required, for: .horizontal)
-        detail.font = .systemFont(ofSize: 12)
-        detail.textColor = .tertiaryLabelColor
-        detail.lineBreakMode = .byTruncatingMiddle
-        detail.maximumNumberOfLines = 1
-        detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        detail.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        subtitle.font = .systemFont(ofSize: 12)
-        subtitle.textColor = .secondaryLabelColor
-        subtitle.setContentHuggingPriority(.required, for: .horizontal)
-        subtitle.setContentCompressionResistancePriority(.required, for: .horizontal)
-
-        for v in [icon, title, detail, subtitle] {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(v)
-        }
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 6),
-            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 22),
-            icon.heightAnchor.constraint(equalToConstant: 22),
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            detail.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 8),
-            detail.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            subtitle.leadingAnchor.constraint(greaterThanOrEqualTo: detail.trailingAnchor, constant: 12),
-            subtitle.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            subtitle.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
+private extension NSLayoutConstraint {
+    func withPriority(_ p: NSLayoutConstraint.Priority) -> NSLayoutConstraint {
+        priority = p
+        return self
     }
-
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    func configure(icon symbol: String, title text: String, subtitle accessory: String) {
-        configure(icon: symbol, title: text, accessory: accessory)
-    }
-
-    /// `image` (an app or file icon) wins over the `symbol` placeholder when it's loaded.
-    func configure(icon symbol: String, image: NSImage? = nil, title text: String, detail extra: String = "", accessory: String) {
-        if let image {
-            icon.image = image
-            icon.contentTintColor = nil
-            icon.symbolConfiguration = nil
-        } else {
-            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-            icon.contentTintColor = .secondaryLabelColor
-            icon.symbolConfiguration = .init(pointSize: 15, weight: .regular)
-        }
-        // Never lay out megabytes: show the first non-empty line, capped.
-        let firstLine = text.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-        title.stringValue = firstLine.trimmingCharacters(in: .whitespaces)
-        detail.stringValue = extra
-        subtitle.stringValue = accessory
-    }
-
-    static func clipSubtitle(_ item: SearchItem) -> String {
-        let age = item.date.map { ageFormatter.localizedString(for: $0, relativeTo: Date()) }
-        return [item.subtitle, age].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
-    }
-
-    /// "Dia · github.com · visited 2h ago"
-    static func historySubtitle(_ item: SearchItem) -> String {
-        let visited = item.date.map { "visited \(RelativeAge.short($0))" }
-        return [item.subtitle, visited].compactMap { $0?.isEmpty == false ? $0 : nil }.joined(separator: " · ")
-    }
-
-    private static let ageFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
 }

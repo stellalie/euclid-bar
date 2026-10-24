@@ -81,3 +81,48 @@ public enum FuzzyMatcher {
         return nil
     }
 }
+
+extension FuzzyMatcher {
+    /// Where `query` matches inside `text`, for highlighting. Mirrors `score`:
+    /// the best contiguous substring (word start first), else the leftmost subsequence.
+    /// Works on characters (case- and accent-folded one by one), so ranges are valid in `text`.
+    /// Only call it for rows on screen: it's slower than `score`.
+    public static func matchRanges(query: String, in text: String) -> [Range<String.Index>] {
+        let q = Array(query.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil))
+        guard !q.isEmpty else { return [] }
+        let indices = Array(text.indices.prefix(SearchKey.maxBytes))
+        let t = indices.map { text[$0].description.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil) }
+        let qs = q.map(String.init)
+        guard qs.count <= t.count else { return [] }
+
+        func isBoundary(_ i: Int) -> Bool { i == 0 || !text[indices[i - 1]].isLetter && !text[indices[i - 1]].isNumber }
+        func range(_ from: Int, _ count: Int) -> Range<String.Index> {
+            indices[from]..<(from + count < indices.count ? indices[from + count] : text.endIndex)
+        }
+
+        // Contiguous: prefer a word start, else the first occurrence.
+        var first: Int?
+        for i in 0...(t.count - qs.count) where t[i] == qs[0] {
+            guard (1..<qs.count).allSatisfy({ t[i + $0] == qs[$0] }) else { continue }
+            if isBoundary(i) { return [range(i, qs.count)] }
+            if first == nil { first = i }
+        }
+        if let first { return [range(first, qs.count)] }
+
+        // Subsequence: leftmost, merged into runs.
+        var hits: [Int] = []
+        var qi = 0
+        for ti in t.indices where qi < qs.count && t[ti] == qs[qi] {
+            hits.append(ti)
+            qi += 1
+        }
+        guard qi == qs.count else { return [] }
+        var ranges: [Range<String.Index>] = []
+        var start = hits[0], len = 1
+        for h in hits.dropFirst() {
+            if h == start + len { len += 1 } else { ranges.append(range(start, len)); start = h; len = 1 }
+        }
+        ranges.append(range(start, len))
+        return ranges
+    }
+}
