@@ -312,18 +312,15 @@ enum DemoRenderer {
             let s = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
             s.draw(at: NSPoint(x: (canvas.width - s.size().width) / 2, y: y))
         }
-        if let icon = NSImage(systemSymbolName: "brain", accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 64, weight: .semibold).applying(.init(paletteColors: [.white]))) {
-            icon.draw(in: NSRect(x: canvas.width / 2 - 40, y: 390, width: 80, height: 80))
-        }
+        BrainMark.draw(in: NSRect(x: canvas.width / 2 - 40, y: 390, width: 80, height: 80), color: .white, style: .icon)
         centered("Meet Euclid", .systemFont(ofSize: 56, weight: .bold), .white, y: 300)
         centered("Your blazing fast, fully customisable search-anything companion", .systemFont(ofSize: 23, weight: .medium),
                  NSColor.white.withAlphaComponent(0.92), y: 255)
         centered("⚡ sub-millisecond search   ·   🧩 any CLI is an action   ·   🔒 stays on your Mac",
                  .systemFont(ofSize: 18, weight: .regular), NSColor.white.withAlphaComponent(0.85), y: 190)
-        centered("Built for developers · native Swift · free & open source", .systemFont(ofSize: 16, weight: .regular),
+        centered("Built for developers · native Swift · pay once", .systemFont(ofSize: 16, weight: .regular),
                  NSColor.white.withAlphaComponent(0.7), y: 150)
-        centered("github.com/stellalie/euclid-bar", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
+        centered("euclid.dev", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
     }
 
     // MARK: - Encoding

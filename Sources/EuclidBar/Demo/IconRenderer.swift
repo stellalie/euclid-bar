@@ -1,7 +1,7 @@
 import AppKit
 
-/// `euclid-bar --render-icon <file.icns>`: renders the app icon (brain on the
-/// promo gradient) at every macOS icon size and packs it with `iconutil`.
+/// `euclid-bar --render-icon <file.icns>`: renders the app icon (the brainwave mark
+/// on the promo gradient) at every macOS icon size and packs it with `iconutil`.
 @MainActor
 enum IconRenderer {
     static func render(to icns: URL) throws {
@@ -54,19 +54,9 @@ enum IconRenderer {
             .draw(in: NSRect(x: body.minX, y: body.midY, width: body.width, height: body.height / 2), angle: -90)
         NSGraphicsContext.restoreGraphicsState()
 
-        let config = NSImage.SymbolConfiguration(pointSize: s * 0.42, weight: .medium)
-            .applying(.init(paletteColors: [.white]))
-        if let brain = NSImage(systemSymbolName: "brain", accessibilityDescription: nil)?.withSymbolConfiguration(config) {
-            let size = brain.size
-            let glow = NSShadow()
-            glow.shadowColor = NSColor.black.withAlphaComponent(0.25)
-            glow.shadowBlurRadius = s * 0.02
-            glow.shadowOffset = NSSize(width: 0, height: -s * 0.008)
-            NSGraphicsContext.saveGraphicsState()
-            glow.set()
-            brain.draw(in: NSRect(x: (s - size.width) / 2, y: (s - size.height) / 2, width: size.width, height: size.height))
-            NSGraphicsContext.restoreGraphicsState()
-        }
+        // The mark's box sits at (104.8, 108.2) and is 293.4 wide in the 512 design grid (y down).
+        BrainMark.draw(in: NSRect(x: s * 104.8 / 512, y: s * (512 - 401.6) / 512, width: s * 293.4 / 512, height: s * 293.4 / 512),
+                       color: .white, style: .icon)
         NSGraphicsContext.restoreGraphicsState()
         return rep
     }
