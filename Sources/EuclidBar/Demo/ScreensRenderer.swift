@@ -120,9 +120,10 @@ enum ScreensRenderer {
         vc.demoSelect(row: 1)
         try step("Updates: check now, or let them install automatically", hold: 1.8, name: "updates")
 
-        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false)
+        let receipt = "412 opens on 21 days · 120 apps, 80 clips, 38 actions, 12 snippets"
+        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false) + AppCommand.usage(receipt: receipt)
         vc.licenceNote = "Unregistered"
-        vc.notice = "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register."
+        vc.notice = "Trial over. Your 30 days: \(receipt). Search “licence” to buy."
         vc.demoSetQuery("")
         try type("licence", caption: "After the trial: still works, says Unregistered, reminds every 3 days")
         try step("After the trial: still works, says Unregistered, reminds every 3 days", hold: 2.0, name: "licence")
