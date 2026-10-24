@@ -320,7 +320,7 @@ enum DemoRenderer {
                  .systemFont(ofSize: 18, weight: .regular), NSColor.white.withAlphaComponent(0.85), y: 190)
         centered("Built for developers · native Swift · pay once", .systemFont(ofSize: 16, weight: .regular),
                  NSColor.white.withAlphaComponent(0.7), y: 150)
-        centered("euclid.dev", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
+        centered("euclid.lgtmworks.com", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
     }
 
     // MARK: - Encoding
