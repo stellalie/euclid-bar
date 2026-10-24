@@ -73,7 +73,8 @@ and the list never reshuffles under your cursor.
 - 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
   anything a short **alias** and pin **favorites** to the empty box.
 - 🤖 **Agent-ready.** Nothing matches? Your actions show up instead, so a question is one `↵` away
-  from `pi`, `claude` or any agent in a new Ghostty or herdr tab.
+  from `pi`, `claude` or any agent in a new Ghostty or herdr tab. And your agents can [search what
+  Euclid knows](#your-agents-can-search-it-too) over MCP.
 - 🎨 **Sharp and light.** Liquid Glass on macOS 26, a panel that grows with its results, your own
   accent colour, `comfortable` or `compact` density.
 
@@ -344,6 +345,39 @@ refresh_minutes = 5                                                  # 1–120
 ```
 
 Prefer 1Password? `token_command = "op read op://Private/Bitbucket/token"`.
+
+## Your agents can search it too
+
+`euclid-bar --mcp` is an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Codex or
+any MCP client can search what Euclid indexed: "the kubectl command I copied this morning", "that
+page about rebase I read yesterday", "my deploy notes". Read-only, and nothing leaves your Mac
+except what your agent asks for.
+
+```sh
+claude mcp add euclid -- /Applications/euclid-bar.app/Contents/MacOS/euclid-bar --mcp
+```
+
+```toml
+# Codex: ~/.codex/config.toml
+[mcp_servers.euclid]
+command = "/Applications/euclid-bar.app/Contents/MacOS/euclid-bar"
+args    = ["--mcp"]
+```
+
+Menu bar 🧠 › **Connect Claude Code or Codex (MCP)…** copies the Claude command for you.
+
+| Tool | What it does |
+|---|---|
+| `search_clipboard`, `recent_clipboard` | Text you copied, newest first |
+| `search_pages_and_notes`, `read_page_or_note` | Full text of indexed pages (`[pages]`) and Obsidian notes |
+| `search_browser_history` | Titles and URLs from every browser |
+
+Choose what's shared:
+
+```toml
+[agents]
+share = ["clipboard", "pages", "notes", "history"]   # the default; [] shares nothing
+```
 
 ## Jira
 
