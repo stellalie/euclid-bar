@@ -104,6 +104,8 @@ enum ScreensRenderer {
 
         vc.demoSetQuery("cache")
         try step("Bitbucket: PRs and repos", hold: 1.8, name: "bitbucket")
+        vc.demoSetQuery("login")
+        try step("Jira: your issues; ⌘C copies the key, ⇧⌘C a branch name", hold: 1.8, name: "jira")
         vc.demoSetQuery("standup")
         try step("Snippets: the keyword pins it first", hold: 1.6, name: "snippet")
 
@@ -172,6 +174,17 @@ enum ScreensRenderer {
         let bitbucketItems = bitbucket.enumerated().map { $0.element.searchItem(id: $0.offset) }
         vc.bitbucketProvider = { bitbucketItems }
         vc.bitbucketItem = { bitbucket[safe: $0] }
+        let jira = [
+            JiraIssue(kind: .assigned, key: "SRCH-412", summary: "Login fails on Safari after SSO redirect",
+                      subtitle: "In Progress · Bug · Search", url: "https://acme.atlassian.net/browse/SRCH-412",
+                      updated: now.addingTimeInterval(-1800)),
+            JiraIssue(kind: .recent, key: "PLAT-88", summary: "Rotate login service certificates",
+                      subtitle: "To Do · Task · Platform", url: "https://acme.atlassian.net/browse/PLAT-88", updated: nil),
+        ]
+        let jiraItems = jira.enumerated().map { $0.element.searchItem(id: $0.offset) }
+        vc.jiraProvider = { jiraItems }
+        vc.jiraIssue = { jira[safe: $0] }
+        vc.jiraBaseURL = { "https://acme.atlassian.net" }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
             Action(name: "Claude in herdr", run: #"herdr-run split claude "$1""#),

@@ -2,28 +2,43 @@ import Foundation
 import EuclidCore
 import os
 
-/// Your Bitbucket PRs and repos for search. Fetched in the background on launch,
-/// then again when the panel opens if older than `refresh_minutes`.
+/// Items from a web service (Bitbucket PRs, Jira issues) for search. Fetched in the background
+/// on launch, then again when the panel opens if older than `refresh_minutes`.
 /// The token comes from `token_command` (Keychain by default), never from config.toml.
 @MainActor
-final class BitbucketService {
+final class RemoteSourceService<Settings: RemoteSourceSettings, Item: Sendable> {
+    typealias Fetch = @Sendable (Settings, _ token: String) async throws -> [Item]
+
     private(set) var items: [SearchItem] = []
-    private var entries: [BitbucketItem] = []
+    private(set) var entries: [Item] = []
     /// One-line problem for the footer (bad token, no network…), or nil.
     private(set) var problem: String?
     var onChange: (() -> Void)?
+    private(set) var settings: Settings?
 
-    private var settings: BitbucketSettings?
+    /// "Bitbucket", and its config table, "bitbucket".
+    private let name: String
+    private let table: String
+    private let fetch: Fetch
+    private let searchItem: (Item, Int) -> SearchItem
     private var shell = "/bin/zsh"
     private var environment: [String: String] = [:]
     private var lastLoad: ContinuousClock.Instant?
     private var loading = false
     private var generation = 0
-    private let log = Logger(subsystem: "dev.euclid", category: "bitbucket")
+    private let log: Logger
 
-    func entry(id: Int) -> BitbucketItem? { entries.indices.contains(id) ? entries[id] : nil }
+    init(name: String, table: String, fetch: @escaping Fetch, searchItem: @escaping (Item, Int) -> SearchItem) {
+        self.name = name
+        self.table = table
+        self.fetch = fetch
+        self.searchItem = searchItem
+        log = Logger(subsystem: "dev.euclid", category: table)
+    }
 
-    func configure(_ settings: BitbucketSettings?, shell: String, environment: [String: String]) {
+    func entry(id: Int) -> Item? { entries.indices.contains(id) ? entries[id] : nil }
+
+    func configure(_ settings: Settings?, shell: String, environment: [String: String]) {
         guard settings != self.settings || shell != self.shell else { return }
         self.settings = settings
         self.shell = shell
@@ -47,12 +62,13 @@ final class BitbucketService {
         guard let settings, !loading else { return }
         loading = true
         let generation = generation, shell = shell, environment = environment, log = log
+        let name = name, table = table, fetch = fetch
         Task.detached(priority: .utility) {
             let start = ContinuousClock.now
-            let result: Result<[BitbucketItem], Error>
+            let result: Result<[Item], Error>
             do {
-                let token = try Self.token(command: settings.tokenCommand, shell: shell, environment: environment)
-                result = .success(try await BitbucketClient(settings: settings, token: token).fetchAll())
+                let token = try Self.token(command: settings.tokenCommand, shell: shell, environment: environment, name: name, table: table)
+                result = .success(try await fetch(settings, token))
             } catch {
                 result = .failure(error)
             }
@@ -64,21 +80,26 @@ final class BitbucketService {
                 switch result {
                 case .success(let found):
                     self.entries = found
-                    self.items = found.enumerated().map { $0.element.searchItem(id: $0.offset) }
+                    self.items = found.enumerated().map { self.searchItem($0.element, $0.offset) }
                     self.problem = nil
-                    log.notice("bitbucket: \(found.count) items in \(String(describing: elapsed), privacy: .public)")
+                    log.notice("\(table, privacy: .public): \(found.count) items in \(String(describing: elapsed), privacy: .public)")
                 case .failure(let error):
                     // Keep the last good list; just say what went wrong.
                     self.problem = "⚠︎ \(error)"
-                    log.error("bitbucket: \(String(describing: error), privacy: .public)")
+                    log.error("\(table, privacy: .public): \(String(describing: error), privacy: .public)")
                 }
                 self.onChange?()
             }
         }
     }
 
+    struct TokenFailure: Error, CustomStringConvertible {
+        let description: String
+    }
+
     /// Run `token_command` in a login shell and take its first line.
-    nonisolated private static func token(command: String, shell: String, environment: [String: String]) throws -> String {
+    nonisolated private static func token(command: String, shell: String, environment: [String: String],
+                                          name: String, table: String) throws -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: shell)
         p.arguments = ["-l", "-c", command]
@@ -91,7 +112,7 @@ final class BitbucketService {
         p.waitUntilExit()
         let token = String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         guard p.terminationStatus == 0, !token.isEmpty else {
-            throw BitbucketClient.Failure(description: "Bitbucket: token_command printed no token (see [bitbucket] in config.toml)")
+            throw TokenFailure(description: "\(name): token_command printed no token (see [\(table)] in config.toml)")
         }
         return token.trimmingCharacters(in: .whitespaces)
     }

@@ -18,7 +18,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let projects: BackgroundIndex<ProjectEntry>
     private let files: FileSearchService
     private let contentSearch: ContentService
-    private let bitbucket = BitbucketService()
+    private let bitbucket = RemoteSourceService<BitbucketSettings, BitbucketItem>(
+        name: "Bitbucket", table: "bitbucket",
+        fetch: { try await BitbucketClient(settings: $0, token: $1).fetchAll() },
+        searchItem: { $0.searchItem(id: $1) })
+    private let jira = RemoteSourceService<JiraSettings, JiraIssue>(
+        name: "Jira", table: "jira",
+        fetch: { try await JiraClient(settings: $0, token: $1).fetchAll() },
+        searchItem: { $0.searchItem(id: $1) })
     private let ranking: RankingService
     private let usage: UsageService
     /// euclid-bar's own commands, for search. The app delegate runs them.
@@ -76,14 +83,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.favicon = { [unowned history] host in history.favicon(host: host) }
         content.bitbucketProvider = { [unowned bitbucket] in bitbucket.items }
         content.bitbucketItem = { [unowned bitbucket] id in bitbucket.entry(id: id) }
+        content.jiraProvider = { [unowned jira] in jira.items }
+        content.jiraIssue = { [unowned jira] id in jira.entry(id: id) }
+        content.jiraBaseURL = { [unowned jira] in jira.settings?.baseURL }
         content.contentSearch = { [unowned contentSearch] text in contentSearch.search(text) }
         content.contentBody = { [unowned contentSearch] ref in contentSearch.body(ref: ref) }
         contentSearch.onResults = { [weak self] text, hits in self?.content.setContentResults(hits, for: text) }
-        bitbucket.onChange = { [weak self] in
+        let remoteChanged = { [weak self] in
             guard let self else { return }
             self.updateProblem()
             if self.panel.isVisible { self.content.refreshAfterExternalChange() }
         }
+        bitbucket.onChange = remoteChanged
+        jira.onChange = remoteChanged
         content.onOpenHistory = { [weak self] id in self?.openHistory(id: id) }
         content.onCopyHistory = { [weak self] id in
             guard let self, let entry = self.history.entry(id: id) else { return }
@@ -133,6 +145,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                                 pagesLimit: settings.pagesLimit, excludedHosts: settings.pagesExcludedHosts)
         if settings.pagesEnabled { contentSearch.indexPages(from: history.entries) }
         bitbucket.configure(settings.bitbucket, shell: settings.shellPath, environment: settings.environment)
+        jira.configure(settings.jira, shell: settings.shellPath, environment: settings.environment)
         files.enabled = settings.filesEnabled
         files.limit = settings.filesLimit
         let folders = settings.appFolders
@@ -182,7 +195,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func updateProblem() {
-        content.problem = config.problemSummary ?? history.problem ?? bitbucket.problem
+        content.problem = config.problemSummary ?? history.problem ?? bitbucket.problem ?? jira.problem
     }
 
     /// Open a history entry in the browser it came from.
@@ -262,6 +275,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         apps.refreshIfStale()
         projects.refreshIfStale()
         bitbucket.refreshIfStale()
+        jira.refreshIfStale()
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results
         if let message = reminder?() { content.notice = message }

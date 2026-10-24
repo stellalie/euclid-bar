@@ -38,6 +38,7 @@ struct Theme {
         case .snippet: .systemPink
         case .content(let c): c.kind == .note ? .systemPurple : .systemIndigo
         case .bitbucket: .systemBlue
+        case .jira: .systemCyan
         case .app, .project, .file, .header: .secondaryLabelColor
         }
     }

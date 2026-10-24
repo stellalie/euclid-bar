@@ -44,6 +44,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var obsidianVault: String?
     /// Bitbucket integration (`[bitbucket]`). Nil = off.
     public var bitbucket: BitbucketSettings?
+    /// Jira integration (`[jira]`). Nil = off.
+    public var jira: JiraSettings?
     /// Sparkle auto-update (`[updates]`).
     public var updates = UpdateSettings()
 
@@ -87,8 +89,14 @@ public struct Appearance: Equatable, Sendable {
     }
 }
 
+/// What a background-fetched integration needs: where its token comes from and how often to refresh.
+public protocol RemoteSourceSettings: Equatable, Sendable {
+    var tokenCommand: String { get }
+    var refreshMinutes: Int { get }
+}
+
 /// `[bitbucket]`: Cloud (api.bitbucket.org) or Data Center (your server's URL).
-public struct BitbucketSettings: Equatable, Sendable {
+public struct BitbucketSettings: RemoteSourceSettings {
     public var baseURL = "https://api.bitbucket.org/2.0"
     /// Cloud: your Atlassian account email (API tokens use Basic auth). Data Center: leave empty (Bearer token).
     public var email = ""
@@ -99,6 +107,23 @@ public struct BitbucketSettings: Equatable, Sendable {
     public var refreshMinutes = 5
 
     public var isCloud: Bool { baseURL.contains("api.bitbucket.org") }
+    public init() {}
+}
+
+/// `[jira]`: Cloud (`https://<site>.atlassian.net`) or Data Center (your server's URL).
+public struct JiraSettings: RemoteSourceSettings {
+    /// Required: there's no default Jira.
+    public var baseURL = ""
+    /// Cloud: your Atlassian account email (API tokens use Basic auth). Data Center: leave empty (Bearer token).
+    public var email = ""
+    public var tokenCommand = "security find-generic-password -s euclid-jira -w"
+    /// Which issues to keep in search.
+    public var jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+    /// Also the issues you viewed lately.
+    public var recent = true
+    public var refreshMinutes = 5
+
+    public var isCloud: Bool { URL(string: baseURL)?.host?.hasSuffix(".atlassian.net") ?? false }
     public init() {}
 }
 
@@ -188,6 +213,13 @@ public enum ConfigLoader {
             issues.append(.warning("bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"))
             config.bitbucket = nil
         }
+        if let j = config.jira, j.baseURL.isEmpty {
+            issues.append(.warning("jira.base_url is required, e.g. \"https://your-site.atlassian.net\""))
+            config.jira = nil
+        } else if let j = config.jira, j.isCloud, j.email.isEmpty {
+            issues.append(.warning("jira.email is required for Jira Cloud (your Atlassian account email)"))
+            config.jira = nil
+        }
 
         return LoadedConfig(config: config, issues: issues, includedFiles: included)
     }
@@ -211,7 +243,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "updates"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "updates"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -459,6 +491,34 @@ public enum ConfigLoader {
             }
             let enabled = bool(t, "enabled", in: "bitbucket", &issues) ?? true
             config.bitbucket = enabled ? b : nil // email is checked after includes are merged
+        }
+
+        if let t = table(root, "jira", &issues) {
+            warnUnknownKeys(t, known: ["enabled", "base_url", "email", "token_command", "jql", "recent", "refresh_minutes"], in: "[jira]", &issues)
+            var j = config.jira ?? JiraSettings()
+            if t.contains(key: "base_url") {
+                if let s = try? t.string(forKey: "base_url"), let u = URL(string: s), u.scheme == "https", u.host != nil {
+                    j.baseURL = s.hasSuffix("/") ? String(s.dropLast()) : s
+                } else { issues.append(.warning("jira.base_url must be an https URL, e.g. \"https://your-site.atlassian.net\"")) }
+            }
+            if t.contains(key: "email") {
+                if let s = try? t.string(forKey: "email") { j.email = s } else { issues.append(.warning("jira.email must be a string")) }
+            }
+            if t.contains(key: "token_command") {
+                if let s = try? t.string(forKey: "token_command"), !s.trimmingCharacters(in: .whitespaces).isEmpty { j.tokenCommand = s }
+                else { issues.append(.warning("jira.token_command must be a command that prints your token")) }
+            }
+            if t.contains(key: "jql") {
+                if let s = try? t.string(forKey: "jql"), !s.trimmingCharacters(in: .whitespaces).isEmpty { j.jql = s }
+                else { issues.append(.warning("jira.jql must be a JQL query")) }
+            }
+            if let b = bool(t, "recent", in: "jira", &issues) { j.recent = b }
+            if t.contains(key: "refresh_minutes") {
+                if let n = try? t.integer(forKey: "refresh_minutes"), (1...120).contains(n) { j.refreshMinutes = Int(n) }
+                else { issues.append(.warning("jira.refresh_minutes must be a number from 1 to 120")) }
+            }
+            let enabled = bool(t, "enabled", in: "jira", &issues) ?? true
+            config.jira = enabled ? j : nil // base_url and email are checked after includes are merged
         }
 
         if let t = table(root, "updates", &issues) {
