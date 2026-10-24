@@ -116,10 +116,13 @@ public struct LoadedConfig: Equatable, Sendable {
     public let config: EuclidConfig
     /// Non-fatal problems. The config is still usable; offending parts are skipped.
     public let issues: [ConfigIssue]
+    /// Absolute paths of the files `include` pulled in, in order (watched for changes too).
+    public let includedFiles: [String]
 
-    public init(config: EuclidConfig, issues: [ConfigIssue]) {
+    public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = []) {
         self.config = config
         self.issues = issues
+        self.includedFiles = includedFiles
     }
 }
 
@@ -137,14 +140,81 @@ public enum ConfigError: Error, Equatable, CustomStringConvertible {
 public enum ConfigLoader {
     /// Parse and validate. Throws only when the file isn't valid TOML;
     /// everything else becomes an issue so one typo never disables the whole config.
-    public static func parse(_ text: String, fileExists: (String) -> Bool = FileManager.default.isExecutableFile(atPath:)) throws(ConfigError) -> LoadedConfig {
+    ///
+    /// `include = ["~/work/team/euclid.toml"]` pulls in shared files (a team's actions,
+    /// snippets and integrations) underneath this one: settings here win, and this file's
+    /// actions and snippets come first, so ⌘1 stays yours. Relative paths are from `directory`.
+    public static func parse(
+        _ text: String,
+        directory: URL? = nil,
+        fileExists: (String) -> Bool = FileManager.default.isExecutableFile(atPath:),
+        readFile: (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) }
+    ) throws(ConfigError) -> LoadedConfig {
         let root: TOMLTable
         do { root = try TOMLTable(source: text) } catch { throw .syntax(String(describing: error)) }
 
         var config = EuclidConfig()
         var issues: [ConfigIssue] = []
+        var included: [String] = []
 
-        warnUnknownKeys(root, known: ["hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "updates"], in: "top level", &issues)
+        if let paths = includes(root, &issues) {
+            for path in paths {
+                let resolved = resolve(path, from: directory)
+                let name = (path as NSString).lastPathComponent
+                guard let includedText = readFile(resolved) else {
+                    issues.append(.warning("include: can't read '\(path)', skipped")); continue
+                }
+                guard let table = try? TOMLTable(source: includedText) else {
+                    issues.append(.warning("include: '\(path)' isn't valid TOML, skipped")); continue
+                }
+                included.append(resolved)
+                var own: [ConfigIssue] = []
+                apply(table, to: &config, isInclude: true, fileExists: fileExists, &own)
+                issues += own.map { .init(severity: $0.severity, message: "\(name): \($0.message)") }
+            }
+        }
+
+        // Shared actions and snippets go after this file's own; a same-named one here replaces it.
+        let sharedActions = config.actions, sharedSnippets = config.snippets
+        config.actions = []
+        config.snippets = []
+        apply(root, to: &config, isInclude: false, fileExists: fileExists, &issues)
+        let ownActions = Set(config.actions.map(\.name)), ownSnippets = Set(config.snippets.map(\.name))
+        config.actions += sharedActions.filter { !ownActions.contains($0.name) }
+        config.snippets += sharedSnippets.filter { !ownSnippets.contains($0.name) }
+
+        // Checked once everything is merged: a team file can set base_url and repos, you the email.
+        if let b = config.bitbucket, b.isCloud, b.email.isEmpty {
+            issues.append(.warning("bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"))
+            config.bitbucket = nil
+        }
+
+        return LoadedConfig(config: config, issues: issues, includedFiles: included)
+    }
+
+    /// `include`: a path or a list of paths.
+    private static func includes(_ root: TOMLTable, _ issues: inout [ConfigIssue]) -> [String]? {
+        guard root.contains(key: "include") else { return nil }
+        if let s = try? root.string(forKey: "include") { return [s] }
+        if let a = try? root.array(forKey: "include") { return (0..<a.count).compactMap { try? a.string(atIndex: $0) } }
+        issues.append(.warning("include must be a path or a list of paths, e.g. [\"~/work/team/euclid.toml\"]"))
+        return nil
+    }
+
+    /// `~/x` → home, `x` → next to config.toml.
+    static func resolve(_ path: String, from directory: URL?) -> String {
+        let expanded = (path as NSString).expandingTildeInPath
+        guard !expanded.hasPrefix("/"), let directory else { return expanded }
+        return directory.appendingPathComponent(expanded).standardizedFileURL.path
+    }
+
+    /// Read one file's settings into `config`, on top of what's already there.
+    private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
+                              fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
+        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "updates"], in: "top level", &issues)
+        if isInclude, root.contains(key: "include") {
+            issues.append(.warning("include only works in config.toml, not in an included file"))
+        }
 
         if root.contains(key: "hotkey") {
             if let s = try? root.string(forKey: "hotkey") {
@@ -363,7 +433,7 @@ public enum ConfigLoader {
 
         if let t = table(root, "bitbucket", &issues) {
             warnUnknownKeys(t, known: ["enabled", "base_url", "email", "token_command", "repos", "refresh_minutes"], in: "[bitbucket]", &issues)
-            var b = BitbucketSettings()
+            var b = config.bitbucket ?? BitbucketSettings()
             if t.contains(key: "base_url") {
                 if let s = try? t.string(forKey: "base_url"), let u = URL(string: s), u.scheme == "https" {
                     b.baseURL = s.hasSuffix("/") ? String(s.dropLast()) : s
@@ -388,13 +458,7 @@ public enum ConfigLoader {
                 else { issues.append(.warning("bitbucket.refresh_minutes must be a number from 1 to 120")) }
             }
             let enabled = bool(t, "enabled", in: "bitbucket", &issues) ?? true
-            if enabled {
-                if b.isCloud && b.email.isEmpty {
-                    issues.append(.warning("bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"))
-                } else {
-                    config.bitbucket = b
-                }
-            }
+            config.bitbucket = enabled ? b : nil // email is checked after includes are merged
         }
 
         if let t = table(root, "updates", &issues) {
@@ -410,8 +474,6 @@ public enum ConfigLoader {
                 config.updates.autoInstall = false
             }
         }
-
-        return LoadedConfig(config: config, issues: issues)
     }
 
     private static func parseAction(_ t: TOMLTable, label: String, _ issues: inout [ConfigIssue]) -> Action? {
@@ -504,6 +566,6 @@ public enum ConfigLoader {
         do { text = try String(contentsOf: url, encoding: .utf8) } catch {
             throw .unreadable("can't read \(url.path): \(error.localizedDescription)")
         }
-        return try parse(text)
+        return try parse(text, directory: url.deletingLastPathComponent())
     }
 }

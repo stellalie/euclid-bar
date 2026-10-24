@@ -169,12 +169,14 @@ run  = 'printf %s "$1" | jq . | pbcopy'
 
 `~/.config/euclid/config.toml` is created with comments on first launch and **applies on save**. A
 typo never breaks the app: the last good config stays active and the error shows in the panel footer.
-Unknown keys are flagged too.
+Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-your-team).
 
 <details open>
 <summary><b>Full reference</b></summary>
 
 ```toml
+include = ["~/work/team/euclid.toml"]         # shared team config, see below
+
 hotkey = "opt+space"                          # cmd, opt, ctrl, shift + a–z, 0–9, space, return, tab, f1–f12
 
 [clipboard]
@@ -259,6 +261,22 @@ Validate it from a terminal (great in dotfiles CI):
 ```sh
 /Applications/euclid-bar.app/Contents/MacOS/euclid-bar --check-config
 ```
+
+### Share a config with your team
+
+Put the team's actions, snippets and integration settings in a TOML file in a repo everyone clones,
+then include it:
+
+```toml
+# ~/.config/euclid/config.toml
+include = ["~/work/team-dotfiles/euclid.toml"]   # a path or a list; relative = next to config.toml
+```
+
+- Your own settings win. Your actions come first (so `⌘1` stays yours), then the team's.
+- An action or snippet with the same name as a team one replaces it.
+- Tables merge key by key: the team file sets `[bitbucket] base_url`, you set `email`.
+- `git pull` in the team repo and Euclid reloads, like it does when you save `config.toml`.
+- `--check-config` lists the included files, and problems in them are prefixed with the file name.
 
 Clipboard history, the page index and learned ranking live in `~/Library/Application Support/Euclid`,
 separate from the config, so they never end up in your dotfiles repo.
