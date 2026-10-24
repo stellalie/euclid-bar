@@ -61,6 +61,22 @@ final class ConfigService {
         onChange?()
     }
 
+    /// Change one setting in config.toml itself (layout and comments kept), then reload.
+    /// Returns a reason when it can't, e.g. the file doesn't parse right now.
+    func set(_ key: String, to value: Bool, in table: String) -> String? {
+        let file = paths.configFile
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return "can't read \(file.path)" }
+        guard let edited = ConfigEditor.set(key, to: value, in: table, text: text) else {
+            return "couldn't set \(table).\(key) in config.toml; edit it by hand"
+        }
+        // In place, not atomically: a symlinked config.toml (dotfiles) stays a symlink.
+        do { try edited.write(to: file, atomically: false, encoding: .utf8) } catch {
+            return "can't write \(file.path): \(error.localizedDescription)"
+        }
+        reload()
+        return nil
+    }
+
     private func scheduleReload() {
         pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in

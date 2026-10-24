@@ -113,6 +113,12 @@ enum ScreensRenderer {
         try step("⌘K lists every action", hold: 1.6, name: "actions")
         vc.demoToggleActions()
 
+        vc.commands = AppCommand.updates(UpdateSettings(), version: "1.0.0", enabled: true)
+        vc.demoSetQuery("")
+        try type("update", caption: "Updates: check now, or let them install automatically")
+        vc.demoSelect(row: 1)
+        try step("Updates: check now, or let them install automatically", hold: 1.8, name: "updates")
+
         var compact = Appearance()
         compact.density = .compact
         compact.accent = "#ff8a3d"
