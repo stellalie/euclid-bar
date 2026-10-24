@@ -44,7 +44,7 @@ enum ScreensRenderer {
                 print("error: panel took \(view.frame.size) for \(s) (fitting \(view.fittingSize))")
                 for c in view.subviews.flatMap({ $0.constraintsAffectingLayout(for: .vertical) }) { print("  \(c)") }
                 for v in view.subviews.flatMap(\.subviews) {
-                    print("  \(type(of: v)) \(v.frame) intrinsic \(v.intrinsicContentSize) hug \(v.contentHuggingPriority(for: .vertical).rawValue)")
+                    print("  \(v.className) \(v.frame) intrinsic \(v.intrinsicContentSize) hug \(v.contentHuggingPriority(for: .vertical).rawValue)")
                 }
                 exit(1)
             }
