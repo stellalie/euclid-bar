@@ -10,6 +10,13 @@ public struct ContentHit: Sendable, Equatable {
     public let title: String
     /// A few words around the match, with "…" where text was cut.
     public let snippet: String
+
+    public init(kind: Kind, ref: String, title: String, snippet: String) {
+        self.kind = kind
+        self.ref = ref
+        self.title = title
+        self.snippet = snippet
+    }
 }
 
 /// Local SQLite FTS5 index of page and note text. Searched off the main thread;

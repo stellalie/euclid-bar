@@ -17,6 +17,14 @@ public struct BitbucketItem: Sendable, Equatable {
     public let url: String
     public let updated: Date?
 
+    public init(kind: Kind, title: String, subtitle: String, url: String, updated: Date?) {
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.url = url
+        self.updated = updated
+    }
+
     public func searchItem(id: Int) -> SearchItem {
         SearchItem(id: id, title: title, subtitle: subtitle, date: updated, searchText: "\(title) \(subtitle)")
     }

@@ -1,0 +1,37 @@
+name: UI screens
+
+# Renders the panel offscreen (`euclid-bar --render-screens`) for UI review:
+# one PNG per state plus flow.gif. Published as a run artifact and, for PRs from
+# this repo, to the `screens/pr-<number>` branch so the images can be linked.
+on:
+  pull_request:
+    paths: ["Sources/EuclidBar/**", ".github/workflows/screens.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render
+        run: |
+          swift build -c release
+          "$(swift build -c release --show-bin-path)/euclid-bar" --render-screens screens
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-screens
+          path: screens
+      - name: Publish to screens branch
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          BRANCH: screens/pr-${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          TOKEN: ${{ github.token }}
+        run: |
+          cd screens
+          git init -q -b "$BRANCH"
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add .
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "UI screens for $SHA"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"

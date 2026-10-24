@@ -309,6 +309,7 @@ final class LauncherViewController: NSViewController {
         if selectable.indices.contains(row) { select(row: selectable[row]) }
     }
     var demoRowCount: Int { rows.filter { !$0.isHeader }.count }
+    func demoTogglePreview() { setPreview(open: !previewOpen) }
 
     // MARK: - Modes
 
