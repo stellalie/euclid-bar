@@ -56,7 +56,7 @@ final class Licensing {
         state.lastReminder = Date()
         _ = save()
         guard let receipt else { return "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register." }
-        return "Trial over. Your 30 days: \(receipt). Search “licence” to buy."
+        return "Trial over: search “licence” to buy. Your 30 days: \(receipt)"
     }
 
     private func save() -> String? {

@@ -23,6 +23,8 @@ enum Row {
     case content(ContentHit)
     case bitbucket(BitbucketItem)
     case jira(JiraIssue)
+    /// A project's Makefile target, package.json script…, listed by ⌘K on the project.
+    case task(ProjectTask, project: String)
     case command(AppCommand)
 
     var isHeader: Bool { if case .header = self { true } else { false } }
@@ -40,7 +42,7 @@ enum Row {
         case .jira(let j) where j.kind != .typed: "jira:\(j.key)"
         case .content(let c): "content:\(c.ref)"
         case .command(let c): "cmd:\(c.kind.rawValue)"
-        case .header, .clip, .history, .builtin, .calc, .transform, .jira: nil
+        case .header, .clip, .history, .builtin, .calc, .transform, .jira, .task: nil
         }
     }
 
@@ -57,6 +59,7 @@ enum Row {
         case .content(let c): c.kind == .note ? "notes" : "pages"
         case .bitbucket: "PRs"
         case .jira: "issues"
+        case .task: "tasks"
         case .calc, .transform: "answers"
         case .header, .command: nil
         }
@@ -91,6 +94,7 @@ enum Row {
         case .content(let c): "p\(c.ref)"
         case .bitbucket(let b): "u\(b.url)"
         case .jira(let j): "u\(j.url)"
+        case .task(let t, _): "k\(t.commandLine)"
         case .command(let c): "x\(c.kind.rawValue)"
         }
     }
@@ -110,6 +114,7 @@ enum Row {
         case .content(let c): c.kind == .note ? "Notes" : "Pages"
         case .bitbucket: "Bitbucket"
         case .jira: "Jira"
+        case .task(_, let project): "Tasks · \(project)"
         case .command: "euclid-bar"
         }
     }

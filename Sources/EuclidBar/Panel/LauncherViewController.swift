@@ -14,6 +14,7 @@ final class LauncherViewController: NSViewController {
     var onCopy: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
     var onRunAction: ((Action, _ query: String) -> Void)?
+    var onRunTask: ((ProjectTask) -> Void)?
     var onCommand: ((AppCommand) -> Void)?
     /// Something was picked, by `Row.usageKind`, for the usage receipt.
     var onUse: ((String) -> Void)?
@@ -82,6 +83,8 @@ final class LauncherViewController: NSViewController {
         case actions(query: String, clipID: Int?)
     }
     private var mode = Mode.search
+    /// The project ⌘K was pressed on, and what it can run.
+    private var projectTasks: (name: String, tasks: [ProjectTask])?
 
     private let itemsProvider: () -> [SearchItem]
     private var snippetItems: [SearchItem] = []
@@ -340,6 +343,12 @@ final class LauncherViewController: NSViewController {
 
     private func enterActionsMode() {
         let clipID: Int? = if case .clip(let item)? = selectedRow { item.id } else { nil }
+        if case .project(let p)? = selectedRow {
+            let tasks = ProjectTasks.scan(p.path)
+            projectTasks = tasks.isEmpty ? nil : (p.name, tasks)
+        } else {
+            projectTasks = nil
+        }
         let query = searchField.stringValue
         mode = .actions(query: query, clipID: clipID)
         searchField.stringValue = ""
@@ -397,13 +406,19 @@ final class LauncherViewController: NSViewController {
             fileSearch?("")
             contentSearch?("")
             rows = actionRows(filter: text)
+            if let project = projectTasks {
+                let matching = project.tasks.filter { text.isEmpty || FuzzyMatcher.score(query: text, in: $0.command) != nil }
+                    .map { Row.task($0, project: project.name) }
+                if !matching.isEmpty { rows = [.header("Tasks · \(project.name)")] + matching + (rows.isEmpty ? [] : [.header("Actions")] + rows) }
+                searched += project.tasks.count
+            }
             if let clipID {
                 rows += Row.Builtin.allCases
                     .filter { text.isEmpty || FuzzyMatcher.score(query: text, in: $0.rawValue) != nil }
                     .map { .builtin($0, clipID: clipID) }
             }
-            searched = actions.count
-            emptyLabel.stringValue = actions.isEmpty && clipID == nil
+            searched += actions.count
+            emptyLabel.stringValue = actions.isEmpty && clipID == nil && projectTasks == nil
                 ? "No actions yet — add [[action]] blocks to config.toml" : "No matching actions"
         }
 
@@ -653,6 +668,8 @@ final class LauncherViewController: NSViewController {
         case .bitbucket(let b):
             let updated = b.updated.map { RelativeAge.short($0) } ?? "—"
             return .text(title: b.title, facts: [("Where", b.subtitle), ("Updated", updated), ("URL", b.url)], body: "", code: false)
+        case .task(let t, let project):
+            return .text(title: t.name, facts: [("Runs", t.command), ("From", t.source), ("Project", project)], body: "", code: false)
         case .jira(let j):
             let updated = j.updated.map { RelativeAge.short($0) } ?? "—"
             return .text(title: j.title, facts: [("Status", j.subtitle), ("Updated", updated), ("Branch", j.branchName), ("URL", j.url)],
@@ -691,7 +708,8 @@ final class LauncherViewController: NSViewController {
             }
             if selectedRow != nil { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
             if let first = actions.first { list.append(H(key: "⌘↵", label: first.name)) }
-            list.append(H(key: "⌘K", label: "Actions"))
+            if case .project? = selectedRow { list.append(H(key: "⌘K", label: "Tasks & actions")) }
+            else { list.append(H(key: "⌘K", label: "Actions")) }
             if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
             if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
             if case .bitbucket? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
@@ -746,6 +764,7 @@ final class LauncherViewController: NSViewController {
         case .content(let c): c.kind == .note ? onOpenNote?(c.ref) : onOpenURL?(c.ref)
         case .bitbucket(let b): onOpenURL?(b.url)
         case .jira(let j): onOpenURL?(j.url)
+        case .task(let t, _): onRunTask?(t)
         case .command(let c): onCommand?(c)
         case .builtin(.paste, let id): onPaste?(id)
         case .builtin(.copy, let id): onCopy?(id)
@@ -935,6 +954,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             case .repo: ("shippingbox", "Repo")
             }
             show(symbol, b.title, detail: b.subtitle, label)
+        case .task(let t, _):
+            show("hammer", t.name, detail: t.command, t.source)
         case .jira(let j):
             let label = switch j.kind {
             case .assigned: "Assigned"

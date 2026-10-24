@@ -25,6 +25,9 @@ public struct EuclidConfig: Equatable, Sendable {
     public var projectDepth = 3
     /// Shell command that opens a project; its path is `$1`.
     public var projectOpen = #"open "$1""#
+    /// Shell command that runs a project task (⌘K on a project); `$1` is `cd '<repo>' && make test`.
+    /// `eval` in the new tab leaves you in the repo afterwards.
+    public var projectTask = #"ghostty-run tab eval "$1""#
     /// Spotlight file search (`[files]`).
     public var filesEnabled = true
     public var filesLimit = 8
@@ -351,7 +354,7 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "projects", &issues) {
-            warnUnknownKeys(t, known: ["roots", "depth", "open"], in: "[projects]", &issues)
+            warnUnknownKeys(t, known: ["roots", "depth", "open", "task"], in: "[projects]", &issues)
             if let a = strings(t, "roots", in: "projects", &issues) { config.projectRoots = a }
             if t.contains(key: "depth") {
                 if let n = try? t.integer(forKey: "depth"), (1...6).contains(n) { config.projectDepth = Int(n) }
@@ -360,6 +363,10 @@ public enum ConfigLoader {
             if t.contains(key: "open") {
                 if let s = try? t.string(forKey: "open"), !s.trimmingCharacters(in: .whitespaces).isEmpty { config.projectOpen = s }
                 else { issues.append(.warning("projects.open must be a command, e.g. 'code \"$1\"'")) }
+            }
+            if t.contains(key: "task") {
+                if let s = try? t.string(forKey: "task"), !s.trimmingCharacters(in: .whitespaces).isEmpty { config.projectTask = s }
+                else { issues.append(.warning("projects.task must be a command, e.g. 'herdr-run tab eval \"$1\"'")) }
             }
         }
 
