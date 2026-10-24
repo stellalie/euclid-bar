@@ -15,6 +15,8 @@ public struct EuclidPaths: Sendable {
     public var rankingDatabase: URL { dataDirectory.appendingPathComponent("ranking.sqlite") }
     /// Full-text index of page and note text.
     public var contentDatabase: URL { dataDirectory.appendingPathComponent("content.sqlite") }
+    /// Trial start and licence key.
+    public var licenceFile: URL { dataDirectory.appendingPathComponent("licence.json") }
     /// Copied images, one PNG per clip, named by content hash.
     public var clipImagesDirectory: URL { dataDirectory.appendingPathComponent("clip-images") }
 

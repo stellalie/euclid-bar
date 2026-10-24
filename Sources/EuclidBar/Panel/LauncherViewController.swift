@@ -65,6 +65,8 @@ final class LauncherViewController: NSViewController {
     var commands: [AppCommand] = [] { didSet { if isViewLoaded, commands != oldValue { refreshAfterExternalChange() } } }
     /// Persistent message (e.g. config problem) shown in the footer instead of hints.
     var problem: String? { didSet { if isViewLoaded { updateFooter() } } }
+    /// "Unregistered", after the search speed.
+    var licenceNote = "" { didSet { if isViewLoaded, licenceNote != oldValue { updateFooter() } } }
     /// One-off message (e.g. last action failed). Cleared when the panel hides.
     var notice: String? { didSet { if isViewLoaded { updateFooter() } } }
 
@@ -644,8 +646,9 @@ final class LauncherViewController: NSViewController {
     // MARK: - Footer
 
     private func updateFooter() {
-        stats.isHidden = !theme.showSpeed || lastStats.isEmpty
-        stats.stringValue = lastStats
+        let speed = theme.showSpeed ? lastStats : ""
+        stats.stringValue = [speed, licenceNote].filter { !$0.isEmpty }.joined(separator: " · ")
+        stats.isHidden = stats.stringValue.isEmpty
         if let message = notice ?? problem {
             footer.stringValue = message
             footer.isHidden = false

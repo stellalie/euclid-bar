@@ -9,13 +9,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboard: ClipboardService!
     private let history = HistoryService()
     private let updater = Updater()
+    private var licensing: Licensing!
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
+    private var licenceHeader: NSMenuItem!
+    private var licenceItems: [NSMenuItem] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make() // needed for ⌘C/⌘V/⌘A in the search field
 
         config = ConfigService()
+        licensing = Licensing(file: config.paths.licenceFile)
         do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
         }
@@ -24,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      limit: settings.clipboardLimit)
         panel = PanelController(clipboard: clipboard, config: config, history: history)
         panel.onCommand = { [weak self] command in self?.run(command) }
+        panel.reminder = { [weak self] in
+            guard let self else { return nil }
+            updateLicence() // the trial's day count moves on while the app runs
+            return licensing.takeReminder()
+        }
         setUpStatusItem()
         applyConfig()
         config.onChange = { [weak self] in self?.applyConfig() }
@@ -49,8 +58,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         updater.apply(settings.updates)
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
-        panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
         panel.configDidChange()
+        updateLicence()
+    }
+
+    /// Menu, panel commands and footer for the current licence status.
+    private func updateLicence() {
+        let settings = config.current.config
+        panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
+            + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
+        panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
+        licenceHeader.isHidden = !licensing.isEnabled
+        licenceHeader.title = "Licence · \(licensing.summary)"
+        for item in licenceItems { item.isHidden = !licensing.isEnabled || licensing.isLicensed }
     }
 
     @objc private func handleURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
@@ -77,6 +97,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoInstallItem.target = self
         autoInstallItem.toolTip = "[updates] auto_install in config.toml"
 
+        let licenceSeparator = NSMenuItem.separator()
+        licenceSeparator.isHidden = !licensing.isEnabled
+        menu.addItem(licenceSeparator)
+        licenceHeader = .sectionHeader(title: "Licence")
+        menu.addItem(licenceHeader)
+        licenceItems = [
+            menu.addItem(withTitle: "Buy Licence…", action: #selector(buyLicence), keyEquivalent: ""),
+            menu.addItem(withTitle: "Enter Licence Key…", action: #selector(enterLicence), keyEquivalent: ""),
+        ]
+        for item in licenceItems { item.target = self }
+
         menu.addItem(.separator())
         menu.addItem(withTitle: "Send Feedback…", action: #selector(sendFeedback), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit euclid-bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -84,6 +115,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openPanel() { panel.show() }
+
+    @objc private func buyLicence() { licensing.openBuyPage() }
+
+    @objc private func enterLicence() {
+        if licensing.promptForKey() { updateLicence() }
+    }
 
     @objc private func checkForUpdates() {
         NSApp.activate() // menu-bar app: bring Sparkle's window to the front
@@ -124,6 +161,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             checkForUpdates()
         case .toggleAutoInstall:
             toggleAutoInstall()
+        case .buyLicence:
+            panel.hide()
+            buyLicence()
+        case .enterLicence:
+            panel.hide()
+            enterLicence()
         }
     }
 

@@ -10,6 +10,7 @@
 #   NOTARY_PROFILE      notarytool keychain profile (xcrun notarytool store-credentials), or
 #   NOTARY_KEY_PATH + NOTARY_KEY_ID + NOTARY_ISSUER_ID   App Store Connect API key
 #   SPARKLE_PUBLIC_KEY  turns on auto-update in the app
+#   LICENCE_PUBLIC_KEY  turns on the 30-day trial and licence keys
 #   SPARKLE_PRIVATE_KEY signs the update archive and writes appcast.xml
 #   RELEASE_TAG         GitHub release the files go on (default: v<version>; dev builds: dev)
 #   SKIP_TESTS=1        when CI already tested this commit
