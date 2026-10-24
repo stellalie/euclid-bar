@@ -6,7 +6,9 @@ Push a tag, get a signed + notarized DMG and a Sparkle update:
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-`.github/workflows/release.yml` runs `scripts/release.sh`, then attaches to a GitHub release:
+`.github/workflows/release.yml` runs `scripts/release.sh`, then publishes a GitHub release in the
+public [euclid-bar-releases](https://github.com/stellalie/euclid-bar-releases) repo (this source repo
+is private, and private repos' release files can't be downloaded anonymously):
 
 | File | For |
 | --- | --- |
@@ -19,6 +21,25 @@ installed one, so tags must keep going up.
 
 To try the pipeline without publishing: **Actions › Release › Run workflow** (dry run, files land
 in the run's artifacts).
+
+## Dev builds
+
+Every push to `main` that passes CI also ships: `.github/workflows/dev-release.yml` builds, signs
+and notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
+(version like `1.1.0-dev.214`). It uses the same secrets as stable releases.
+
+To get them, set this in `config.toml`; the next update check switches feeds:
+
+```toml
+[updates]
+channel = "dev"
+```
+
+`CFBundleVersion` is the commit count on `main` for both channels, so builds always go up. Switching
+back to `"stable"` keeps the dev build until the next release is newer.
+
+Claude merges its own pull requests once CI is green, so each one becomes a dev build to try.
+Stable releases stay tag-only.
 
 ## One-time setup (~30 min)
 
@@ -43,7 +64,12 @@ in the run's artifacts).
    Losing the private key means installed copies can't verify future updates. Keep it in your
    password manager too.
 
-Add all of these under **GitHub › Settings › Secrets and variables › Actions**.
+4. **Releases repo + token.** Create the public repo `stellalie/euclid-bar-releases` with a README.
+   Then [create a fine-grained token](https://github.com/settings/personal-access-tokens/new):
+   repository access *Only euclid-bar-releases*, permission *Contents: Read and write*, expiry 1 year.
+   Secret `RELEASES_TOKEN` = the token.
+
+Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
 
 ## Local release
 

@@ -50,12 +50,16 @@ public struct EuclidConfig: Equatable, Sendable {
     public init() {}
 }
 
-/// `[updates]`. Only release builds update; dev builds ignore it.
+/// `[updates]`. Only signed builds update; local builds ignore it.
 public struct UpdateSettings: Equatable, Sendable {
     /// Look for a new version once a day.
     public var check = true
     /// Download new versions in the background and install them on quit. Needs `check`.
     public var autoInstall = true
+    /// Which builds to get: tagged releases, or a build of every change merged to main.
+    public var channel = Channel.stable
+
+    public enum Channel: String, Sendable, CaseIterable { case stable, dev }
 
     public init() {}
 }
@@ -394,9 +398,13 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "updates", &issues) {
-            warnUnknownKeys(t, known: ["check", "auto_install"], in: "[updates]", &issues)
+            warnUnknownKeys(t, known: ["check", "auto_install", "channel"], in: "[updates]", &issues)
             if let b = bool(t, "check", in: "updates", &issues) { config.updates.check = b }
             if let b = bool(t, "auto_install", in: "updates", &issues) { config.updates.autoInstall = b }
+            if t.contains(key: "channel") {
+                if let s = try? t.string(forKey: "channel"), let c = UpdateSettings.Channel(rawValue: s) { config.updates.channel = c }
+                else { issues.append(.warning("updates.channel must be \"stable\" or \"dev\"")) }
+            }
             if config.updates.autoInstall && !config.updates.check {
                 if t.contains(key: "auto_install") { issues.append(.warning("updates.auto_install needs updates.check = true")) }
                 config.updates.autoInstall = false

@@ -84,6 +84,7 @@ exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.co
 [updates]
 check        = true              # look for a new version once a day
 auto_install = true              # download it in the background, install on quit
+channel      = "stable"          # "dev": a build of every change merged to main, for testing
 
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.

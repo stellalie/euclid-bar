@@ -8,7 +8,7 @@
 Apps, projects, files, clipboard, browser history, notes, snippets and your Bitbucket PRs.
 One keystroke, under a millisecond.
 
-[**Download for macOS**](https://github.com/stellalie/euclid-bar/releases/latest) · [Features](#features) · [Config](#configuration) · [Bitbucket](#bitbucket) · [Build from source](#build-from-source)
+[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Bitbucket](#bitbucket) · [Build from source](#build-from-source)
 
 <img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, Bitbucket, snippets and actions">
 
@@ -113,7 +113,7 @@ and the list never reshuffles under your cursor.
 ## Install
 
 1. **Download** `euclid-bar-<version>-macos-universal.zip` from
-   [Releases](https://github.com/stellalie/euclid-bar/releases/latest) (Apple Silicon + Intel,
+   [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
    macOS 14+).
 2. **Unzip** and drag `euclid-bar.app` into `/Applications`.
 3. **First launch:** Euclid isn't notarized by Apple (yet), so macOS blocks it the first time. Run
@@ -231,10 +231,7 @@ email = "you@example.com"
 [updates]
 check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
-
-[updates]
-check        = true                           # look for a new version daily
-auto_install = true                           # install it in the background (also a menu toggle)
+channel      = "stable"                       # "dev": a build of every change, for testing
 
 [[snippet]]
 name    = "Standup"
@@ -355,4 +352,4 @@ rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI
 
 ## License
 
-[MIT](LICENSE) © Stella Lie
+Proprietary, all rights reserved © Stella Lie. See [LICENSE](LICENSE).
