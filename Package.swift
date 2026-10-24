@@ -8,6 +8,7 @@ let package = Package(
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "1.10.0"),
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.0"),
         .package(url: "https://github.com/dduan/TOMLDecoder", from: "0.4.5"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.10.0"),
     ],
     targets: [
         // Pure, UI-free logic (search, clipboard history/store; later calculator/AI). Fast to test.
@@ -21,7 +22,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "euclid-bar",
-            dependencies: ["EuclidCore", "KeyboardShortcuts"],
+            dependencies: ["EuclidCore", "KeyboardShortcuts", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/EuclidBar"
         ),
         .testTarget(name: "EuclidCoreTests", dependencies: ["EuclidCore"], path: "Tests/EuclidCoreTests"),

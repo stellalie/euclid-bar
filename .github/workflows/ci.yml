@@ -16,3 +16,9 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+      - name: Bundle app
+        run: |
+          scripts/bundle.sh debug
+          codesign --verify --strict --deep build/euclid-bar.app
+          # Proves dyld finds Sparkle.framework inside the bundle (exits after rendering).
+          build/euclid-bar.app/Contents/MacOS/euclid-bar --render-icon "$RUNNER_TEMP/icon.icns"
