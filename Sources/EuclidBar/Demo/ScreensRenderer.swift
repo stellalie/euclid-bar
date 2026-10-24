@@ -20,6 +20,7 @@ enum ScreensRenderer {
 
     static func render(to dir: URL) throws {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try renderBrand(to: dir)
         let clips = DemoRenderer.sampleHistory()
         let vc = LauncherViewController(items: { clips.items })
         var size = LauncherViewController.size
@@ -208,6 +209,36 @@ enum ScreensRenderer {
         }
         NSGraphicsContext.restoreGraphicsState()
         return ctx.makeImage()!
+    }
+
+    /// The app icon and the menu bar glyph (light and dark bar, 1× and 4×), for reviewing the mark.
+    static func renderBrand(to dir: URL) throws {
+        try IconRenderer.png(IconRenderer.image(pixels: 1024)).write(to: dir.appendingPathComponent("00-icon.png"))
+        let size = NSSize(width: 220, height: 60)
+        let image = NSImage(size: size, flipped: false) { _ in
+            for (i, (bar, ink)) in [(NSColor(white: 0.17, alpha: 1), NSColor.white), (NSColor(white: 0.92, alpha: 1), NSColor.black)].enumerated() {
+                let x = CGFloat(i) * 110
+                bar.setFill()
+                NSRect(x: x, y: 0, width: 110, height: 60).fill()
+                // The glyph cuts its waves out, so draw it on its own layer like the real status item.
+                let glyph = NSImage(size: NSSize(width: 48, height: 48), flipped: false) { r in
+                    BrainMark.draw(in: r, color: ink, style: .glyph)
+                    return true
+                }
+                glyph.draw(in: NSRect(x: x + 12, y: 21, width: 18, height: 18))
+                glyph.draw(in: NSRect(x: x + 46, y: 6, width: 48, height: 48))
+            }
+            return true
+        }
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width) * 2, pixelsHigh: Int(size.height) * 2,
+                                   bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                   colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: size))
+        NSGraphicsContext.restoreGraphicsState()
+        try IconRenderer.png(rep).write(to: dir.appendingPathComponent("00-menubar.png"))
     }
 
     static func writePNG(_ image: CGImage, to url: URL) throws {
