@@ -217,7 +217,7 @@ make demo     # re-render docs/demo.gif from the real UI
 Sources/EuclidCore   UI-free logic: search, clipboard store, browser history, config, actions
 Sources/EuclidBar    AppKit app: hotkey, panel, menu bar, demo/icon renderers
 Tests/               Swift Testing
-scripts/             bundle.sh, release.sh, make-dev-cert.sh, check-toolchain.sh
+scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cert.sh, check-toolchain.sh
 ```
 
 `make cert` creates a local signing identity so macOS keeps Accessibility permission across rebuilds.
