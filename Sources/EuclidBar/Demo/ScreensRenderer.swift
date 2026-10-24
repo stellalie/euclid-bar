@@ -39,6 +39,10 @@ enum ScreensRenderer {
         func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         func panelImage(at s: NSSize) -> CGImage {
             window.setContentSize(s)
+            if view.frame.size != s {
+                print("note: window gave \(view.frame.size) for \(s) (window \(window.frame.size), fitting \(view.fittingSize))")
+                view.setFrameSize(s)
+            }
             return DemoRenderer.snapshot(view)
         }
         /// Animate from the last drawn size to the current one, then hold.
