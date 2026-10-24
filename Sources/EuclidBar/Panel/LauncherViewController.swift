@@ -202,7 +202,8 @@ final class LauncherViewController: NSViewController {
 
             scrollView.topAnchor.constraint(equalTo: divider.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            scrollView.widthAnchor.constraint(equalToConstant: Self.size.width).withPriority(.defaultHigh),
+            // Below the window's own size (500), so the panel can animate its width.
+            scrollView.widthAnchor.constraint(equalToConstant: Self.size.width).withPriority(.init(490)),
             listTrailing,
             scrollView.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
 
