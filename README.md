@@ -5,10 +5,10 @@
 # Meet Euclid
 
 **The blazing fast, developer-first search bar for macOS.**<br>
-Apps, projects, files, clipboard, browser history, notes, snippets and your Bitbucket PRs.
+Apps, projects, files, clipboard, browser history, notes, snippets, your Bitbucket PRs and Jira issues.
 One keystroke, under a millisecond.
 
-[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Bitbucket](#bitbucket) · [Build from source](#build-from-source)
+[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Bitbucket](#bitbucket) · [Jira](#jira) · [Build from source](#build-from-source)
 
 <img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, Bitbucket, snippets and actions">
 
@@ -28,7 +28,7 @@ one keystroke away. Then Euclid gets out of your way.
   under a millisecond**, opens in ~20 ms, idles at ~0% CPU and ~30 MB of RAM. The footer shows you
   the receipts: `26 items · 0.82 ms`.
 - 🛠️ **Built for developers.** Every action is **one shell command** in a TOML file. Epochs, JSON,
-  JWTs, base64 and colours are answered inline. First-class Ghostty, herdr and Bitbucket.
+  JWTs, base64 and colours are answered inline. First-class Ghostty, herdr, Bitbucket and Jira.
 - 🧩 **Config is a file, not a settings window.** `~/.config/euclid/config.toml`, dotfiles-friendly,
   applies on save, validated with `--check-config` in CI.
 - 🔒 **Private by design.** Everything is indexed and stored on your Mac. Password-manager copies are
@@ -49,6 +49,7 @@ and the list never reshuffles under your cursor.
 | **Page text** *(opt-in)* | Full-text search of the public pages you visited, indexed locally |
 | **Obsidian** | Your notes by title and text; `↵` opens them in Obsidian |
 | **Bitbucket** | Your open PRs, PRs waiting on your review, your repos (Cloud and Data Center) |
+| **Jira** | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
 | **Snippets** | Text you paste often, with `{date}` `{time}` `{clipboard}` `{uuid}` placeholders |
 | **Actions** | Your shell commands, run on what you typed |
 
@@ -230,6 +231,10 @@ vault = "~/Notes"
 [bitbucket]                                   # see below
 email = "you@example.com"
 
+[jira]                                        # see below
+base_url = "https://your-site.atlassian.net"
+email    = "you@example.com"
+
 [updates]
 check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
@@ -339,6 +344,41 @@ refresh_minutes = 5                                                  # 1–120
 
 Prefer 1Password? `token_command = "op read op://Private/Bitbucket/token"`.
 
+## Jira
+
+Issues assigned to you (not done) and the ones you viewed lately show up in search, and your top
+three are on the empty box. Type an issue key like `abc-123` and `↵` opens it, even if it isn't in
+the list. `⌘C` copies the key, `⇧⌘C` a branch name (`ABC-123-fix-login-on-safari`).
+
+1. Create an API token at [id.atlassian.com › Security › API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+   (Data Center: a personal access token from your profile).
+2. Store it in the Keychain:
+   ```sh
+   security add-generic-password -s euclid-jira -a "$USER" -w '<token>'
+   ```
+3. Point Euclid at your site:
+   ```toml
+   [jira]
+   base_url = "https://your-site.atlassian.net"   # or "https://jira.example.com" (Data Center, no email)
+   email    = "you@example.com"                   # Cloud only
+   ```
+
+**All options**
+
+```toml
+[jira]
+enabled         = true
+base_url        = "https://your-site.atlassian.net"                  # required
+email           = "you@example.com"                                  # Cloud only
+token_command   = "security find-generic-password -s euclid-jira -w" # the default
+jql             = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+recent          = true                                               # also issues you viewed lately
+refresh_minutes = 5                                                  # 1–120
+```
+
+A team can set `base_url` (and `[bitbucket]`) once in a [shared config](#share-a-config-with-your-team);
+each person adds only their `email`.
+
 ## Build from source
 
 Requires Xcode 16+ (Swift 6) on macOS 14+. Check what your Mac will build with:
@@ -365,7 +405,7 @@ make screens   # render every panel state + docs/flow.gif from the real UI
 
 ```
 Sources/EuclidCore   UI-free logic: search, clipboard, history, content index, transforms,
-                     snippets, Bitbucket client, config, actions
+                     snippets, Bitbucket and Jira clients, config, actions
 Sources/EuclidBar    AppKit app: hotkey, panel, preview, menu bar, screenshot/icon renderers
 Tests/               Swift Testing
 scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cert.sh,

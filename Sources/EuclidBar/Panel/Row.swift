@@ -22,6 +22,7 @@ enum Row {
     case snippet(SearchItem, Snippet)
     case content(ContentHit)
     case bitbucket(BitbucketItem)
+    case jira(JiraIssue)
     case command(AppCommand)
 
     var isHeader: Bool { if case .header = self { true } else { false } }
@@ -36,9 +37,10 @@ enum Row {
         case .action(_, let a), .aliasAction(let a, _): "action:\(a.name)"
         case .snippet(_, let s): "snippet:\(s.name)"
         case .bitbucket(let b): "bb:\(b.url)"
+        case .jira(let j) where j.kind != .typed: "jira:\(j.key)"
         case .content(let c): "content:\(c.ref)"
         case .command(let c): "cmd:\(c.kind.rawValue)"
-        case .header, .clip, .history, .builtin, .calc, .transform: nil
+        case .header, .clip, .history, .builtin, .calc, .transform, .jira: nil
         }
     }
 
@@ -54,6 +56,7 @@ enum Row {
         case .history: "pages"
         case .content(let c): c.kind == .note ? "notes" : "pages"
         case .bitbucket: "PRs"
+        case .jira: "issues"
         case .calc, .transform: "answers"
         case .header, .command: nil
         }
@@ -87,6 +90,7 @@ enum Row {
         case .snippet(_, let s): "s\(s.name)"
         case .content(let c): "p\(c.ref)"
         case .bitbucket(let b): "u\(b.url)"
+        case .jira(let j): "u\(j.url)"
         case .command(let c): "x\(c.kind.rawValue)"
         }
     }
@@ -105,6 +109,7 @@ enum Row {
         case .snippet: "Snippets"
         case .content(let c): c.kind == .note ? "Notes" : "Pages"
         case .bitbucket: "Bitbucket"
+        case .jira: "Jira"
         case .command: "euclid-bar"
         }
     }

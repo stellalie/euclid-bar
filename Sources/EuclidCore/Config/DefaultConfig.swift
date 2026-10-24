@@ -84,6 +84,13 @@ exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.co
 # repos         = ["workspace/repo"]   # Cloud: where to look for review requests (default: your 10 latest repos)
 # refresh_minutes = 5
 
+# Jira: issues assigned to you and ones you viewed lately; type a key (ABC-123) to open it.
+# ⌘C copies the key, ⇧⌘C a branch name. Token in the Keychain, like Bitbucket's:
+#   security add-generic-password -s euclid-jira -a "$USER" -w <token>
+# [jira]
+# base_url = "https://your-site.atlassian.net"   # or your Data Center server
+# email    = "you@example.com"                   # Cloud only
+
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
 check        = true              # look for a new version once a day
