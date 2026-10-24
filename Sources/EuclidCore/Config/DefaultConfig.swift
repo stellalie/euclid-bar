@@ -80,6 +80,11 @@ exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.co
 # repos         = ["workspace/repo"]   # Cloud: where to look for review requests (default: your 10 latest repos)
 # refresh_minutes = 5
 
+# Updates (release builds). Also in the menu bar icon and in search: type "update".
+[updates]
+check        = true              # look for a new version once a day
+auto_install = true              # download it in the background, install on quit
+
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.
 [aliases]

@@ -20,6 +20,12 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let contentSearch: ContentService
     private let bitbucket = BitbucketService()
     private let ranking: RankingService
+    /// euclid-bar's own commands, for search. The app delegate runs them.
+    var commands: [AppCommand] {
+        get { content.commands }
+        set { content.commands = newValue }
+    }
+    var onCommand: ((AppCommand) -> Void)?
     /// Where the panel's top edge sits while it's open: it grows and shrinks downwards from here.
     private var anchor: NSPoint?
 
@@ -52,6 +58,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.onOpenNote = { [weak self] path in self?.openNote(path: path) }
         content.onPreferredSizeChange = { [weak self] size in self?.resize(to: size) }
         content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
+        content.onCommand = { [weak self] command in self?.onCommand?(command) }
         content.historyProvider = { [unowned history] in history.items }
         content.historyURL = { [unowned history] id in history.entry(id: id)?.url }
         content.favicon = { [unowned history] host in history.favicon(host: host) }
