@@ -13,9 +13,11 @@ on:
 permissions:
   contents: read
 
+# One build at a time; a newer merge waits and replaces any older waiting one. Cancelling the
+# running build instead would starve the channel whenever merges come faster than notarization.
 concurrency:
   group: dev-release
-  cancel-in-progress: true # only the newest main matters
+  cancel-in-progress: false
 
 jobs:
   dev:
