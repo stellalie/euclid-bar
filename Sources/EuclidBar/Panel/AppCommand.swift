@@ -2,13 +2,16 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, buyLicence, enterLicence }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, buyLicence, enterLicence, importLauncher }
     let kind: Kind
     let title: String
     var detail = ""
     let symbol: String
     /// Right-hand label: "On"/"Off" for a toggle.
     var accessory = ""
+
+    static let importLauncher = AppCommand(kind: .importLauncher, title: "Import from Raycast or Alfred…",
+                                           detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
 
     /// The update commands for the current `[updates]` settings.
     static func updates(_ settings: UpdateSettings, version: String, enabled: Bool) -> [AppCommand] {

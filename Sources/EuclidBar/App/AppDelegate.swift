@@ -1,6 +1,7 @@
 import AppKit
 import EuclidCore
 import KeyboardShortcuts
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -67,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
+            + [.importLauncher]
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -86,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Open euclid-bar", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Import from Raycast or Alfred…", action: #selector(importLauncher), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
 
         menu.addItem(.separator())
@@ -167,7 +170,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .enterLicence:
             panel.hide()
             enterLicence()
+        case .importLauncher:
+            panel.hide()
+            importLauncher()
         }
+    }
+
+    /// Pick Raycast/Alfred exports, append what they hold to config.toml, say what happened.
+    @objc private func importLauncher() {
+        let open = NSOpenPanel()
+        open.message = "Choose Raycast snippet or quicklink exports (.json) or Alfred snippets (.alfredsnippets)"
+        open.allowsMultipleSelection = true
+        open.allowedContentTypes = [.json] + [UTType(filenameExtension: "alfredsnippets")].compactMap { $0 }
+        NSApp.activate()
+        guard open.runModal() == .OK, !open.urls.isEmpty else { return }
+
+        let settings = config.current.config
+        let existing = Set(settings.actions.map(\.name) + settings.snippets.map(\.name))
+        let (result, source) = LauncherImporter.read(open.urls, existing: existing)
+        let alert = NSAlert()
+        if result.isEmpty {
+            alert.messageText = "Nothing to import"
+        } else if let problem = config.append(LauncherImport.toml(result, source: source)) {
+            alert.messageText = "Couldn't import"
+            alert.informativeText = problem
+            alert.runModal()
+            return
+        } else {
+            alert.messageText = "Imported \(result.snippets.count) snippets and \(result.quicklinks.count) quicklinks"
+        }
+        let skipped = result.skipped.prefix(8).joined(separator: "\n")
+        let more = result.skipped.count > 8 ? "\n…and \(result.skipped.count - 8) more" : ""
+        alert.informativeText = result.isEmpty || !skipped.isEmpty
+            ? (skipped.isEmpty ? "No snippets or quicklinks found." : "Skipped:\n\(skipped)\(more)")
+            : "They're at the end of config.toml. Quicklinks are actions: type a name, or ⌘K."
+        alert.runModal()
     }
 
     /// Opens config.toml in the default text editor (`open -t`).

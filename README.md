@@ -262,6 +262,17 @@ Validate it from a terminal (great in dotfiles CI):
 /Applications/euclid-bar.app/Contents/MacOS/euclid-bar --check-config
 ```
 
+### Coming from Raycast or Alfred
+
+Menu bar 🧠 › **Import from Raycast or Alfred…** (or type `import`), then pick your exports:
+
+- Raycast: *Snippets › Export Snippets* and *Quicklinks › Export Quicklinks* (`.json`)
+- Alfred: *Features › Snippets ›* right-click a collection › *Export* (`.alfredsnippets`)
+
+Snippets become `[[snippet]]` blocks and web quicklinks become `[[action]]`s, appended to
+`config.toml`. Placeholders carry over (`{date}`, `{time}`, `{clipboard}`, `{argument}` → your query).
+From a terminal: `euclid-bar --import snippets.json >> ~/.config/euclid/config.toml`.
+
 ### Share a config with your team
 
 Put the team's actions, snippets and integration settings in a TOML file in a repo everyone clones,
