@@ -122,7 +122,7 @@ and the list never reshuffles under your cursor.
    ```
    or open it once, then click **Open Anyway** in **System Settings › Privacy & Security**.
 4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…*, *Check for Updates…*,
-   *Install Updates Automatically* and *Quit*. Typing `update` in the bar finds the same two.
+   *Install Updates Automatically*, *Send Feedback…* and *Quit*. Typing `update` in the bar finds the two update items.
 
 **Permissions** (asked only when needed):
 - **Accessibility**: for `↵` to paste into the previous app. Without it, Euclid copies instead.

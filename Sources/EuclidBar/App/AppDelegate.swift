@@ -78,6 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoInstallItem.toolTip = "[updates] auto_install in config.toml"
 
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Send Feedback…", action: #selector(sendFeedback), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Quit euclid-bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
     }
@@ -87,6 +88,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func checkForUpdates() {
         NSApp.activate() // menu-bar app: bring Sparkle's window to the front
         updater.checkForUpdates()
+    }
+
+    /// Opens the website's feedback form with the app and macOS versions filled in.
+    @objc private func sendFeedback() {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        var url = URLComponents(string: "https://euclid.lgtmworks.com/feedback/")!
+        url.queryItems = [
+            URLQueryItem(name: "v", value: Updater.version),
+            URLQueryItem(name: "os", value: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"),
+        ]
+        if let u = url.url { NSWorkspace.shared.open(u) }
     }
 
     /// Flips `[updates] auto_install` in config.toml; the reload applies it everywhere.
