@@ -20,6 +20,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let contentSearch: ContentService
     private let bitbucket = BitbucketService()
     private let ranking: RankingService
+    private let usage: UsageService
     /// euclid-bar's own commands, for search. The app delegate runs them.
     var commands: [AppCommand] {
         get { content.commands }
@@ -28,6 +29,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     var onCommand: ((AppCommand) -> Void)?
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
+    /// "412 opens on 21 days · 120 apps, 38 actions" for the last 30 days, or nil before any use.
+    var usageReceipt: String? { usage.summary.receipt }
     /// Shown after the search speed while unregistered.
     var licenceNote: String {
         get { content.licenceNote }
@@ -45,6 +48,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         files = FileSearchService()
         contentSearch = ContentService(databaseURL: config.paths.contentDatabase)
         ranking = RankingService(databaseURL: config.paths.rankingDatabase)
+        usage = UsageService(file: config.paths.usageFile)
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
@@ -66,6 +70,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.onPreferredSizeChange = { [weak self] size in self?.resize(to: size) }
         content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
         content.onCommand = { [weak self] command in self?.onCommand?(command) }
+        content.onUse = { [unowned usage] kind in usage.recordPick(kind) }
         content.historyProvider = { [unowned history] in history.items }
         content.historyURL = { [unowned history] id in history.entry(id: id)?.url }
         content.favicon = { [unowned history] host in history.favicon(host: host) }
@@ -251,6 +256,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     func show() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("show")
+        usage.recordOpen()
         anchor = topCenter()
         history.refreshIfStale()
         apps.refreshIfStale()
