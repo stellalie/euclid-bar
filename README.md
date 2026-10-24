@@ -289,6 +289,9 @@ include = ["~/work/team-dotfiles/euclid.toml"]   # a path or a list; relative = 
 - `git pull` in the team repo and Euclid reloads, like it does when you save `config.toml`.
 - `--check-config` lists the included files, and problems in them are prefixed with the file name.
 
+Type `usage` to see your last 30 days: how often you opened Euclid and what you picked (apps, clips,
+actions…). Only counts are kept, on your Mac, never what you typed.
+
 Clipboard history, the page index and learned ranking live in `~/Library/Application Support/Euclid`,
 separate from the config, so they never end up in your dotfiles repo.
 

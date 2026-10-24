@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.reminder = { [weak self] in
             guard let self else { return nil }
             updateLicence() // the trial's day count moves on while the app runs
-            return licensing.takeReminder()
+            return licensing.takeReminder(receipt: panel.usageReceipt)
         }
         setUpStatusItem()
         applyConfig()
@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.importLauncher]
+            + [.importLauncher] + AppCommand.usage(receipt: panel.usageReceipt)
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -173,6 +173,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .importLauncher:
             panel.hide()
             importLauncher()
+        case .showUsage:
+            panel.hide()
+            let alert = NSAlert()
+            alert.messageText = "Your last 30 days in Euclid"
+            alert.informativeText = (panel.usageReceipt ?? "Nothing yet.")
+                .replacingOccurrences(of: " · ", with: "\n") + "\n\nCounted on your Mac only; never what you typed."
+            NSApp.activate()
+            alert.runModal()
         }
     }
 

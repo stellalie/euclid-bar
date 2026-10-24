@@ -15,6 +15,8 @@ final class LauncherViewController: NSViewController {
     var onDelete: ((Int) -> Void)?
     var onRunAction: ((Action, _ query: String) -> Void)?
     var onCommand: ((AppCommand) -> Void)?
+    /// Something was picked, by `Row.usageKind`, for the usage receipt.
+    var onUse: ((String) -> Void)?
     var onOpenHistory: ((Int) -> Void)?
     var onCopyHistory: ((Int) -> Void)?
     var onOpenApp: ((String) -> Void)?
@@ -710,6 +712,7 @@ final class LauncherViewController: NSViewController {
     @objc private func activateSelection() {
         guard let row = selectedRow else { return }
         if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
+        if let kind = row.usageKind { onUse?(kind) }
         switch row {
         case .header: return
         case .clip(let item): onPaste?(item.id)
@@ -736,6 +739,7 @@ final class LauncherViewController: NSViewController {
     /// ⌘1–⌘9 (any mode) or plain 1–9 (in ⌘K): run the Nth action.
     private func runAction(number n: Int) {
         guard actions.indices.contains(n - 1) else { NSSound.beep(); return }
+        onUse?("actions")
         onRunAction?(actions[n - 1], query)
     }
 

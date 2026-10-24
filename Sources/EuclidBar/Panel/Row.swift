@@ -42,6 +42,23 @@ enum Row {
         }
     }
 
+    /// What a pick counts as in the usage receipt ("apps", "clips"…). Nil for headers and Euclid's own commands.
+    var usageKind: String? {
+        switch self {
+        case .app: "apps"
+        case .project: "projects"
+        case .file: "files"
+        case .clip, .builtin: "clips"
+        case .snippet: "snippets"
+        case .action, .aliasAction: "actions"
+        case .history: "pages"
+        case .content(let c): c.kind == .note ? "notes" : "pages"
+        case .bitbucket: "PRs"
+        case .calc, .transform: "answers"
+        case .header, .command: nil
+        }
+    }
+
     /// The path a row stands for, for ⌘C and icons.
     var path: String? {
         switch self {
