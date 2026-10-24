@@ -42,7 +42,7 @@ and the list never reshuffles under your cursor.
 | Source | What you get |
 |---|---|
 | **Apps** | `/Applications`, `/System/Applications`, `~/Applications` and any folders you add |
-| **Projects** | Git repos under your code folders; `↵` opens them in your editor of choice |
+| **Projects** | Git repos under your code folders; `↵` opens them in your editor of choice, `⌘K` runs their `make`/`npm`/`just`/`swift`/`cargo`/`go` tasks in a new terminal tab |
 | **Files** | Spotlight, by name, after 3+ letters |
 | **Clipboard** | Text, **images** and copied **files**, with the app and time they came from |
 | **Browser history** | Dia, Arc, Chrome, Brave, Edge, Vivaldi, Chromium, Safari |
@@ -106,7 +106,7 @@ and the list never reshuffles under your cursor.
 | `↵` | Open the app, project, file, page, note or PR · paste the clip or snippet · run the action · copy the answer |
 | `⌘↵` | Run your **#1 action** on what you typed |
 | `⌘1`–`⌘9` | Run action N |
-| `⌘K` | Action palette: `↑↓` `↵`, `1`–`9`, type to filter |
+| `⌘K` | Action palette: `↑↓` `↵`, `1`–`9`, type to filter. On a project, its tasks come first |
 | `→` / `⌘Y` | Preview the selection |
 | `⌘C` | Copy the clip, or a page's URL, or an app, project or file's path |
 | `⌘⌫` | Delete the selected clip |
@@ -203,6 +203,7 @@ folders = ["~/Tools"]                         # on top of /Applications and frie
 roots = ["~/code"]                            # git repos under these show up in search
 depth = 3
 open  = 'code "$1"'                           # how ↵ opens one ($1 = the repo's path)
+task  = 'ghostty-run tab eval "$1"'           # how ⌘K › task runs ($1 = "cd '<repo>' && make test")
 
 [files]
 enabled = true                                # Spotlight, by name, after 3+ letters

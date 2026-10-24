@@ -76,6 +76,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.onOpenNote = { [weak self] path in self?.openNote(path: path) }
         content.onPreferredSizeChange = { [weak self] size in self?.resize(to: size) }
         content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
+        content.onRunTask = { [weak self] task in
+            guard let self else { return }
+            self.run(Action(name: task.command, run: self.config.current.config.projectTask), query: task.commandLine)
+        }
         content.onCommand = { [weak self] command in self?.onCommand?(command) }
         content.onUse = { [unowned usage] kind in usage.recordPick(kind) }
         content.historyProvider = { [unowned history] in history.items }

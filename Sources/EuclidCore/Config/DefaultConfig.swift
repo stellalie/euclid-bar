@@ -44,6 +44,9 @@ enabled = true
 roots = ["~/code", "~/src", "~/dev", "~/Developer", "~/projects", "~/work"]
 depth = 3                        # how deep to look for repos under each root
 open  = 'open "$1"'              # e.g. 'code "$1"', 'zed "$1"', 'ghostty-run tab nvim "$1"'
+# ⌘K on a project lists its Makefile targets, package.json scripts, just recipes and
+# swift/cargo/go build + test. This runs the one you pick ($1 = "cd '<repo>' && make test"):
+task  = 'ghostty-run tab eval "$1"'   # or 'herdr-run tab eval "$1"'
 
 # Files by name, via Spotlight. Shown below everything else, after 3+ letters.
 [files]

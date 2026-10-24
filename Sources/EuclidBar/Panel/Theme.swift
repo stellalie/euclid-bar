@@ -31,7 +31,7 @@ struct Theme {
         switch row {
         case .clip: .systemPurple
         case .history: .systemBlue
-        case .action, .aliasAction: .systemOrange
+        case .action, .aliasAction, .task: .systemOrange
         case .builtin, .command: .systemGray
         case .calc: .systemGreen
         case .transform: .systemTeal

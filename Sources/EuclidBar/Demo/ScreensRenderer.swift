@@ -125,7 +125,7 @@ enum ScreensRenderer {
         let receipt = "412 opens on 21 days · 120 apps, 80 clips, 38 actions, 12 snippets"
         vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false) + AppCommand.usage(receipt: receipt)
         vc.licenceNote = "Unregistered"
-        vc.notice = "Trial over. Your 30 days: \(receipt). Search “licence” to buy."
+        vc.notice = "Trial over: search “licence” to buy. Your 30 days: \(receipt)"
         vc.demoSetQuery("")
         try type("licence", caption: "After the trial: still works, says Unregistered, reminds every 3 days")
         try step("After the trial: still works, says Unregistered, reminds every 3 days", hold: 2.0, name: "licence")
