@@ -5,6 +5,10 @@ public enum DefaultConfig {
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: euclid-bar.app/Contents/MacOS/euclid-bar --check-config
 
+# Shared files (your team's actions, snippets, Bitbucket server) read underneath this one.
+# Settings here win; your own actions stay first. Relative paths are next to this file.
+# include = ["~/work/team-dotfiles/euclid.toml"]
+
 # Global hotkey that opens the panel. When set here, it wins over the app.
 # Modifiers: cmd, opt, ctrl, shift. Keys: a–z, 0–9, space, return, tab, f1–f12.
 hotkey = "opt+space"

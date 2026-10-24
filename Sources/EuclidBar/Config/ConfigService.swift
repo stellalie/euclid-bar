@@ -17,6 +17,8 @@ final class ConfigService {
 
     private var dirSource: DispatchSourceFileSystemObject?
     private var fileSource: DispatchSourceFileSystemObject?
+    /// Files pulled in by `include`, watched like config.toml itself.
+    private var includeSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
     private var lastText: String?
     private let log = Logger(subsystem: "dev.euclid", category: "config")
@@ -45,12 +47,14 @@ final class ConfigService {
 
     func reload() {
         let file = paths.configFile
-        let text = try? String(contentsOf: file, encoding: .utf8)
+        let text = snapshot()
         if text != nil, text == lastText { return } // unchanged (e.g. touch, or our own event echo)
         do {
+            let previousIncludes = current.includedFiles
             current = try ConfigLoader.loadOrCreate(at: file)
             loadError = nil
-            lastText = try? String(contentsOf: file, encoding: .utf8)
+            lastText = snapshot()
+            if fileSource != nil, current.includedFiles != previousIncludes { rewatchIncludes() }
             for issue in current.issues { log.warning("\(issue.description, privacy: .public)") }
             log.notice("config loaded: \(self.current.config.actions.count) actions, \(self.current.issues.count) issues")
         } catch {
@@ -59,6 +63,13 @@ final class ConfigService {
             log.error("\(error.description, privacy: .public)")
         }
         onChange?()
+    }
+
+    /// config.toml plus every included file, to tell a real change from an event echo.
+    private func snapshot() -> String? {
+        guard let main = try? String(contentsOf: paths.configFile, encoding: .utf8) else { return nil }
+        let included = current.includedFiles.map { (try? String(contentsOfFile: $0, encoding: .utf8)) ?? "" }
+        return ([main] + included).joined(separator: "\u{0}")
     }
 
     /// Change one setting in config.toml itself (layout and comments kept), then reload.
@@ -92,6 +103,12 @@ final class ConfigService {
     private func rewatchFile() {
         fileSource?.cancel()
         fileSource = watch(paths.configFile.path, mask: [.write, .delete, .rename, .extend])
+        rewatchIncludes()
+    }
+
+    private func rewatchIncludes() {
+        includeSources.forEach { $0.cancel() }
+        includeSources = current.includedFiles.compactMap { watch($0, mask: [.write, .delete, .rename, .extend]) }
     }
 
     private func watch(_ path: String, mask: DispatchSource.FileSystemEvent) -> DispatchSourceFileSystemObject? {
