@@ -220,8 +220,13 @@ enum ScreensRenderer {
                 let x = CGFloat(i) * 110
                 bar.setFill()
                 NSRect(x: x, y: 0, width: 110, height: 60).fill()
-                BrainMark.draw(in: NSRect(x: x + 12, y: 21, width: 18, height: 18), color: ink, style: .glyph)
-                BrainMark.draw(in: NSRect(x: x + 46, y: 6, width: 48, height: 48), color: ink, style: .glyph)
+                // The glyph cuts its waves out, so draw it on its own layer like the real status item.
+                let glyph = NSImage(size: NSSize(width: 48, height: 48), flipped: false) { r in
+                    BrainMark.draw(in: r, color: ink, style: .glyph)
+                    return true
+                }
+                glyph.draw(in: NSRect(x: x + 12, y: 21, width: 18, height: 18))
+                glyph.draw(in: NSRect(x: x + 46, y: 6, width: 48, height: 48))
             }
             return true
         }
