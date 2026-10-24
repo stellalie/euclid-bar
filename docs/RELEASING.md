@@ -6,7 +6,9 @@ Push a tag, get a signed + notarized DMG and a Sparkle update:
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-`.github/workflows/release.yml` runs `scripts/release.sh`, then attaches to a GitHub release:
+`.github/workflows/release.yml` runs `scripts/release.sh`, then publishes a GitHub release in the
+public [euclid-bar-releases](https://github.com/stellalie/euclid-bar-releases) repo (this source repo
+is private, and private repos' release files can't be downloaded anonymously):
 
 | File | For |
 | --- | --- |
@@ -43,7 +45,12 @@ in the run's artifacts).
    Losing the private key means installed copies can't verify future updates. Keep it in your
    password manager too.
 
-Add all of these under **GitHub › Settings › Secrets and variables › Actions**.
+4. **Releases repo + token.** Create the public repo `stellalie/euclid-bar-releases` with a README.
+   Then [create a fine-grained token](https://github.com/settings/personal-access-tokens/new):
+   repository access *Only euclid-bar-releases*, permission *Contents: Read and write*, expiry 1 year.
+   Secret `RELEASES_TOKEN` = the token.
+
+Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
 
 ## Local release
 

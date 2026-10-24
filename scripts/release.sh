@@ -16,7 +16,7 @@ cd "$(dirname "$0")/.."
 VERSION="${1:?usage: scripts/release.sh <version>}"
 OUT="build/release"
 APP="build/euclid-bar.app"
-REPO_URL="https://github.com/stellalie/euclid-bar"
+REPO_URL="https://github.com/stellalie/euclid-bar-releases" # public: downloads + Sparkle feed (source repo is private)
 
 notarize() { # <file>
   if [[ -n "${NOTARY_PROFILE:-}" ]]; then

@@ -1,6 +1,7 @@
 name: Release
 
-# Push a tag like v1.2.0 → signed, notarized DMG + Sparkle update on a GitHub release.
+# Push a tag like v1.2.0 → signed, notarized DMG + Sparkle update on a GitHub release
+# in the public stellalie/euclid-bar-releases repo (this source repo is private).
 # One-time setup (secrets, keys): docs/RELEASING.md.
 # Manual run = dry run: builds and signs with whatever secrets exist, uploads the files
 # as a run artifact, publishes nothing.
@@ -14,7 +15,7 @@ on:
         default: "0.0.0-dryrun"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
@@ -70,9 +71,9 @@ jobs:
       - name: Publish GitHub release
         if: github.event_name == 'push'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }} # fine-grained PAT: Contents read/write on euclid-bar-releases
         run: |
           xcrun stapler validate build/release/*.dmg # never publish an un-notarized build
           [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY before publishing" >&2; exit 1; }
-          gh release create "$VERSION" --title "euclid-bar ${VERSION#v}" --generate-notes \
+          gh release create "$VERSION" --repo stellalie/euclid-bar-releases --title "euclid-bar ${VERSION#v}" --notes "euclid-bar ${VERSION#v} for macOS 14+ (Apple Silicon + Intel)." \
             build/release/*.dmg build/release/*.zip build/release/appcast.xml
