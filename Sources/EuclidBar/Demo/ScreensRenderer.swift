@@ -25,6 +25,8 @@ enum ScreensRenderer {
         var size = LauncherViewController.size
         vc.onPreferredSizeChange = { size = $0 }
         wire(vc, clips: clips)
+        // Host it in a window (never shown), like the real panel: the layout engine lives there.
+        let window = offscreenWindow(for: vc)
         let view = vc.view
         view.appearance = NSAppearance(named: .darkAqua)
         vc.demoSetQuery("")
@@ -36,7 +38,7 @@ enum ScreensRenderer {
         /// Let async work (app icons) land, then draw the panel at `size`.
         func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         func panelImage(at s: NSSize) -> CGImage {
-            view.frame = NSRect(origin: .zero, size: s)
+            window.setContentSize(s)
             return DemoRenderer.snapshot(view)
         }
         /// Animate from the last drawn size to the current one, then hold.
@@ -152,6 +154,15 @@ enum ScreensRenderer {
         ]
         vc.snippets = [Snippet(name: "Standup template", keyword: "standup", text: "Yesterday:\nToday:\nBlockers: none ({date})")]
         vc.favorites = ["Terminal", "euclid-bar", "pi in Ghostty"]
+    }
+
+    static func offscreenWindow(for vc: NSViewController) -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: LauncherViewController.size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = vc
+        window.setContentSize(LauncherViewController.size)
+        return window
     }
 
     // MARK: - Drawing
