@@ -1,4 +1,4 @@
-.PHONY: app run test perf log cert demo icon clean toolchain
+.PHONY: app run test perf log cert screens icon clean toolchain
 
 # Stop with a clear fix if the active Swift is older than 6
 toolchain:
@@ -22,10 +22,11 @@ perf: toolchain
 log:
 	log stream --level info --predicate 'subsystem == "dev.euclid"'
 
-# Re-render the README promo (docs/demo.gif + docs/demo.mp4) from the real panel UI
-demo: toolchain
+# Render every panel state to build/screens and refresh the README hero (docs/flow.gif)
+screens: toolchain
 	swift build -c release
-	$$(swift build -c release --show-bin-path)/euclid-bar --render-demo docs
+	$$(swift build -c release --show-bin-path)/euclid-bar --render-screens build/screens
+	cp build/screens/flow.gif docs/flow.gif
 
 # Re-render Resources/AppIcon.icns
 icon: toolchain
