@@ -26,6 +26,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         set { content.commands = newValue }
     }
     var onCommand: ((AppCommand) -> Void)?
+    /// Asked each time the panel opens: a one-off footer message (the licence reminder).
+    var reminder: (() -> String?)?
+    /// Shown after the search speed while unregistered.
+    var licenceNote: String {
+        get { content.licenceNote }
+        set { content.licenceNote = newValue }
+    }
     /// Where the panel's top edge sits while it's open: it grows and shrinks downwards from here.
     private var anchor: NSPoint?
 
@@ -251,6 +258,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         bitbucket.refreshIfStale()
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results
+        if let message = reminder?() { content.notice = message }
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
         // End on the next run-loop turn, after the frame has been committed.

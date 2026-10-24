@@ -69,6 +69,15 @@ Stable releases stay tag-only.
    repository access *Only euclid-bar-releases*, permission *Contents: Read and write*, expiry 1 year.
    Secret `RELEASES_TOKEN` = the token.
 
+5. **Licence keys.** After any `swift build`:
+   ```sh
+   .build/debug/euclid-bar --licence-keygen
+   ```
+   - Repository **variable** `LICENCE_PUBLIC_KEY` = the printed public key. Builds without it
+     have no trial and no licence menu.
+   - Keep `LICENCE_PRIVATE_KEY` in your password manager only. It is not a CI secret: the app
+     never signs anything. Losing it means you can't issue keys that existing builds accept.
+
 Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
 
 ## Local release
@@ -82,3 +91,20 @@ SPARKLE_PUBLIC_KEY=… SPARKLE_PRIVATE_KEY="$(cat sparkle.key)" scripts/release.
 ```
 
 Without the env vars you get a locally signed, un-notarized build for testing.
+
+## Licence keys
+
+Euclid is fully unlocked during and after its 30-day trial. Once the trial is over it shows
+"Unregistered" in the panel footer and a reminder every 3 days. A key turns both off.
+
+Issue a key for a Paddle sale (the order is the `txn_…` id from the Paddle notification):
+
+```sh
+LICENCE_PRIVATE_KEY=… .build/debug/euclid-bar --issue-licence "Ada Lovelace" personal 1 txn_01abc
+LICENCE_PRIVATE_KEY=… .build/debug/euclid-bar --issue-licence "Acme Pty Ltd" business 12 txn_01def
+```
+
+Key format, for anything else that issues them: `EUCLID-<payload>.<signature>`. The payload is
+base64url JSON `{"edition","issued","name","order","seats"}`, and the signature is Ed25519, base64url,
+over the payload's base64url text. The app checks it offline and stores it in
+`~/Library/Application Support/Euclid/licence.json` with the trial's start date.

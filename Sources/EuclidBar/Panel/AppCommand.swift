@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, buyLicence, enterLicence }
     let kind: Kind
     let title: String
     var detail = ""
@@ -18,6 +18,16 @@ struct AppCommand: Equatable {
             AppCommand(kind: .toggleAutoInstall, title: "Install Updates Automatically",
                        detail: "[updates] auto_install", symbol: "arrow.triangle.2.circlepath",
                        accessory: settings.autoInstall ? "On" : "Off"),
+        ]
+    }
+
+    /// Buying and registering, until a licence is in.
+    static func licence(summary: String, licensed: Bool) -> [AppCommand] {
+        guard !licensed else { return [] }
+        return [
+            AppCommand(kind: .buyLicence, title: "Buy Euclid Licence", detail: "\(summary) · opens euclid.lgtmworks.com",
+                       symbol: "cart"),
+            AppCommand(kind: .enterLicence, title: "Enter Licence Key", detail: summary, symbol: "key"),
         ]
     }
 }

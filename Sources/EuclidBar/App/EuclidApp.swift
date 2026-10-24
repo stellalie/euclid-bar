@@ -9,6 +9,10 @@ enum EuclidApp {
 
     static func main() {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
+        if CommandLine.arguments.contains("--licence-keygen") { exit(LicenceTool.keygen()) }
+        if let i = CommandLine.arguments.firstIndex(of: "--issue-licence") {
+            exit(LicenceTool.issue(Array(CommandLine.arguments.dropFirst(i + 1))))
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--render-icon") {
             _ = NSApplication.shared
             let out = CommandLine.arguments.dropFirst(i + 1).first ?? "Resources/AppIcon.icns"
