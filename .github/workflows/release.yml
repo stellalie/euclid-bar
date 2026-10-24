@@ -1,0 +1,78 @@
+name: Release
+
+# Push a tag like v1.2.0 → signed, notarized DMG + Sparkle update on a GitHub release.
+# One-time setup (secrets, keys): docs/RELEASING.md.
+# Manual run = dry run: builds and signs with whatever secrets exist, uploads the files
+# as a run artifact, publishes nothing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp (dry run)"
+        default: "0.0.0-dryrun"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # a test reads old helper scripts from git history
+
+      - name: Import Developer ID certificate
+        env:
+          P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ -z "$P12" ]]; then echo "No certificate secret: building unsigned."; exit 0; fi
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          PASS="$(openssl rand -hex 16)"
+          echo "$P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$PASS" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          ID="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
+          [[ -n "$ID" ]] || { echo "No Developer ID Application identity in the certificate" >&2; exit 1; }
+          echo "SIGN_IDENTITY=$ID" >> "$GITHUB_ENV"
+
+      - name: Write notary key
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          if [[ -z "$NOTARY_KEY_P8" ]]; then echo "No notary key: skipping notarization."; exit 0; fi
+          printf '%s\n' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+          echo "NOTARY_KEY_PATH=$RUNNER_TEMP/notary.p8" >> "$GITHUB_ENV"
+
+      - name: Build, sign, notarize
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: scripts/release.sh "${VERSION#v}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: build/release
+
+      - name: Publish GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          xcrun stapler validate build/release/*.dmg # never publish an un-notarized build
+          [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY before publishing" >&2; exit 1; }
+          gh release create "$VERSION" --title "euclid-bar ${VERSION#v}" --generate-notes \
+            build/release/*.dmg build/release/*.zip build/release/appcast.xml

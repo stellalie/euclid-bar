@@ -32,7 +32,7 @@ struct Theme {
         case .clip: .systemPurple
         case .history: .systemBlue
         case .action, .aliasAction: .systemOrange
-        case .builtin: .systemGray
+        case .builtin, .command: .systemGray
         case .calc: .systemGreen
         case .transform: .systemTeal
         case .snippet: .systemPink

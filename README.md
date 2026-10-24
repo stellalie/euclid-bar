@@ -121,7 +121,8 @@ and the list never reshuffles under your cursor.
    xattr -dr com.apple.quarantine /Applications/euclid-bar.app
    ```
    or open it once, then click **Open Anyway** in **System Settings › Privacy & Security**.
-4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…* and *Quit*.
+4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…*, *Check for Updates…*,
+   *Install Updates Automatically* and *Quit*. Typing `update` in the bar finds the same two.
 
 **Permissions** (asked only when needed):
 - **Accessibility**: for `↵` to paste into the previous app. Without it, Euclid copies instead.
@@ -227,6 +228,14 @@ vault = "~/Notes"
 [bitbucket]                                   # see below
 email = "you@example.com"
 
+[updates]
+check        = true                           # look for a new version daily
+auto_install = true                           # install it in the background (also a menu toggle)
+
+[updates]
+check        = true                           # look for a new version daily
+auto_install = true                           # install it in the background (also a menu toggle)
+
 [[snippet]]
 name    = "Standup"
 keyword = "standup"                           # typing it pins the snippet first
@@ -330,8 +339,8 @@ Sources/EuclidCore   UI-free logic: search, clipboard, history, content index, t
                      snippets, Bitbucket client, config, actions
 Sources/EuclidBar    AppKit app: hotkey, panel, preview, menu bar, screenshot/icon renderers
 Tests/               Swift Testing
-scripts/             bundle.sh, release.sh, make-dev-cert.sh, check-toolchain.sh,
-                     test-core-linux.sh (core tests on Linux)
+scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cert.sh,
+                     check-toolchain.sh, test-core-linux.sh (core tests on Linux)
 ```
 
 `make cert` creates a local signing identity so macOS keeps Accessibility permission across

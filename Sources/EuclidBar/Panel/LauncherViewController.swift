@@ -14,6 +14,7 @@ final class LauncherViewController: NSViewController {
     var onCopy: ((Int) -> Void)?
     var onDelete: ((Int) -> Void)?
     var onRunAction: ((Action, _ query: String) -> Void)?
+    var onCommand: ((AppCommand) -> Void)?
     var onOpenHistory: ((Int) -> Void)?
     var onCopyHistory: ((Int) -> Void)?
     var onOpenApp: ((String) -> Void)?
@@ -60,6 +61,8 @@ final class LauncherViewController: NSViewController {
 
     /// Enabled actions from config, in order.
     var actions: [Action] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
+    /// euclid-bar's own commands ("Check for Updates"), searchable but never suggested.
+    var commands: [AppCommand] = [] { didSet { if isViewLoaded, commands != oldValue { refreshAfterExternalChange() } } }
     /// Persistent message (e.g. config problem) shown in the footer instead of hints.
     var problem: String? { didSet { if isViewLoaded { updateFooter() } } }
     /// One-off message (e.g. last action failed). Cleared when the panel hides.
@@ -449,6 +452,8 @@ final class LauncherViewController: NSViewController {
         let actionItems = actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }
         add(actionItems, limit: 9, source: 4, boost: -50) { .action(number: $0.id + 1, actions[$0.id]) }
         add(clips, limit: 50, source: 5, boost: 0) { .clip($0) }
+        let commandItems = commands.enumerated().map { SearchItem(id: $0.offset, title: $0.element.title) }
+        add(commandItems, limit: 5, source: 7, boost: -50) { .command(commands[$0.id]) }
         add(historyProvider(), limit: 30, source: 6, boost: 0) { .history($0) }
 
         var ranked = scored.sorted {
@@ -613,6 +618,7 @@ final class LauncherViewController: NSViewController {
         case .action(_, let a), .aliasAction(let a, _):
             return .text(title: a.name, facts: [("Runs", a.run)], body: "", code: false)
         case .builtin(let b, _): return .text(title: b.rawValue, facts: [("Key", b.hint)], body: "", code: false)
+        case .command(let c): return .text(title: c.title, facts: [("About", c.detail)], body: "", code: false)
         case .app(let item):
             return .quickLook(URL(fileURLWithPath: item.subtitle))
         case .project(let p):
@@ -657,6 +663,7 @@ final class LauncherViewController: NSViewController {
             case .history(let item)?: list.append(H(key: "↵", label: "Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")"))
             case .app?, .project?, .file?, .bitbucket?, .content?: list.append(H(key: "↵", label: "Open"))
             case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
+            case .command(let c)? where c.kind == .toggleAutoInstall: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))
             }
@@ -714,6 +721,7 @@ final class LauncherViewController: NSViewController {
         case .snippet(_, let s): onPasteText?(s.expanded(clipboard: Self.clipboardText))
         case .content(let c): c.kind == .note ? onOpenNote?(c.ref) : onOpenURL?(c.ref)
         case .bitbucket(let b): onOpenURL?(b.url)
+        case .command(let c): onCommand?(c)
         case .builtin(.paste, let id): onPaste?(id)
         case .builtin(.copy, let id): onCopy?(id)
         case .builtin(.delete, let id):
@@ -896,6 +904,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             case .repo: ("shippingbox", "Repo")
             }
             show(symbol, b.title, detail: b.subtitle, label)
+        case .command(let c):
+            show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
         }
         return cell
     }
