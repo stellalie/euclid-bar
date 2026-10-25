@@ -13,6 +13,10 @@ public enum DefaultConfig {
 # Modifiers: cmd, opt, ctrl, shift. Keys: a–z, 0–9, space, return, tab, f1–f12.
 hotkey = "opt+space"
 
+# What Edit Config… opens this file with. Unset = your default text editor.
+# An app ("Sublime Text", "Zed", "Visual Studio Code") or a command ("subl", "code", "zed").
+# editor = "Sublime Text"
+
 [clipboard]
 limit = 5000                 # entries kept
 ignore_apps = []             # bundle IDs never recorded, e.g. ["com.1password.1password"]

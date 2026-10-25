@@ -199,6 +199,7 @@ Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-yo
 include = ["~/work/team/euclid.toml"]         # shared team config, see below
 
 hotkey = "opt+space"                          # cmd, opt, ctrl, shift + a–z, 0–9, space, return, tab, f1–f12
+editor = "Sublime Text"                       # what Edit Config… opens, see below
 
 [clipboard]
 limit       = 5000                            # entries kept (applies on next launch)
@@ -286,6 +287,15 @@ run    = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
 ```
 
 </details>
+
+**Edit Config… in your editor.** Set `editor` at the top of the file (before any `[table]`).
+Unset, it's your macOS default text editor.
+
+```toml
+editor = "Sublime Text"            # an app: by name, or a path like "/Applications/Zed.app"
+editor = "subl"                    # or a command on your PATH; the file is added at the end
+editor = 'code --new-window "$1"'  # or a command with $1 where the file goes
+```
 
 About `[pages]`: when on, Euclid downloads recent pages from your history **without cookies** (so
 only what's public) and indexes their text locally. Logins, password resets and URLs with query
