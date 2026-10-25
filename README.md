@@ -25,8 +25,8 @@ one keystroke away. Then Euclid gets out of your way.
 ## Why Euclid
 
 - ⚡ **Blazing fast.** Native Swift + AppKit. No Electron, no web views. Searches **10,000 items in
-  under a millisecond**, opens in ~20 ms, idles at ~0% CPU and ~30 MB of RAM. The footer shows you
-  the receipts: `26 items · 0.82 ms`.
+  1.4 ms** (worst case), shows the panel in ~9 ms, idles at 0% CPU and ~54 MB of RAM, measured by
+  the Perf workflow on a GitHub macOS runner. The footer shows you the receipts: `26 items · 0.82 ms`.
 - 🛠️ **Built for developers.** Every action is **one shell command** in a TOML file. Epochs, JSON,
   JWTs, base64 and colours are answered inline. First-class Ghostty, herdr, Bitbucket and Jira.
 - 🧩 **Config is a file, not a settings window.** `~/.config/euclid/config.toml`, dotfiles-friendly,

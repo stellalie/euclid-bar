@@ -1,0 +1,49 @@
+name: Perf
+
+# Real numbers for the website: search speed, panel open time, idle memory and CPU.
+# Run it from the Actions tab; results land in the job summary.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: [.github/workflows/perf.yml]
+
+jobs:
+  perf:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Search benchmarks (release build)
+        run: swift test -c release --filter performance 2>&1 | tee "$RUNNER_TEMP/bench.txt" | grep -E "worst|passed|failed"
+      - name: Launch the app and measure
+        run: |
+          scripts/bundle.sh release
+          export EUCLID_CONFIG_DIR="$RUNNER_TEMP/config" EUCLID_DATA_DIR="$RUNNER_TEMP/data"
+          # Through Launch Services, so euclid:// reaches this copy.
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f build/euclid-bar.app
+          open --env EUCLID_CONFIG_DIR="$EUCLID_CONFIG_DIR" --env EUCLID_DATA_DIR="$EUCLID_DATA_DIR" build/euclid-bar.app
+          sleep 2
+          PID=$(pgrep -n -f euclid-bar.app/Contents/MacOS/euclid-bar)
+          sleep 15 # let indexing settle
+          for i in 1 2 3 4 5 6; do
+            open "euclid://toggle"; sleep 1; open "euclid://toggle"; sleep 1
+          done
+          sleep 20
+          ps -o rss=,%cpu= -p "$PID" > "$RUNNER_TEMP/idle.txt"
+          log show --last 3m --predicate 'subsystem == "dev.euclid"' --style compact > "$RUNNER_TEMP/log.txt" || true
+          kill "$PID"
+      - name: Summary
+        run: |
+          {
+            echo "## Euclid perf ($(sw_vers -productVersion), $(sysctl -n machdep.cpu.brand_string))"
+            echo '```'
+            grep -h "worst" "$RUNNER_TEMP/bench.txt" || echo "no benchmark output"
+            echo
+            grep -hoE "show: [0-9.e-]+ seconds" "$RUNNER_TEMP/log.txt" || echo "no show timings logged"
+            grep -hoE "search -> [0-9]+ rows in [0-9.e-]+ seconds" "$RUNNER_TEMP/log.txt" | tail -5 || true
+            echo
+            read RSS CPU < "$RUNNER_TEMP/idle.txt"
+            echo "idle: $((RSS / 1024)) MB resident, ${CPU}% CPU"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
