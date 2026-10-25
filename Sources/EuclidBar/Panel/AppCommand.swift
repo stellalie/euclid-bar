@@ -9,6 +9,21 @@ struct AppCommand: Equatable {
     let symbol: String
     /// Right-hand label: "On"/"Off" for a toggle.
     var accessory = ""
+    /// What the command acts on: the request, for `mod:`.
+    var argument = ""
+
+    /// `mod: <request>` and `mod: undo`, typed in the bar.
+    static func mod(_ request: ModRequest.Parsed, agent: String) -> AppCommand {
+        switch request {
+        case .make(let text):
+            AppCommand(kind: .makeMod, title: "Make a mod: \(text)",
+                       detail: "\(agent) builds it in a terminal; Euclid loads it on save · “mod: undo” takes it back",
+                       symbol: "wand.and.stars", argument: text)
+        case .undo:
+            AppCommand(kind: .undoMod, title: "Undo the last mod",
+                       detail: "Puts your plugins folder back as it was before the last “mod:”", symbol: "arrow.uturn.backward")
+        }
+    }
 
     static let importLauncher = AppCommand(kind: .importLauncher, title: "Import from Raycast or Alfred…",
                                            detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")

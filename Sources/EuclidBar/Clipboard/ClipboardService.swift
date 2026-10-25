@@ -16,6 +16,8 @@ final class ClipboardService {
 
     /// Called after any change, so a visible panel can refresh its results.
     var onChange: (() -> Void)?
+    /// Text was copied (and recorded), with the app it came from: for `clipboard` hooks.
+    var onText: ((String, _ appName: String?) -> Void)?
     /// Copies made in these apps are never recorded (from config `clipboard.ignore_apps`).
     var ignoredBundleIDs: Set<String> = []
 
@@ -50,6 +52,7 @@ final class ClipboardService {
             switch copied {
             case .text(let text):
                 self.apply(self.history.record(text, sourceBundleID: bundle, sourceName: name))
+                self.onText?(text, name)
             case .files(let paths):
                 self.apply(self.history.record(paths.joined(separator: "\n"), kind: .files, sourceBundleID: bundle, sourceName: name))
             case .image(let data):

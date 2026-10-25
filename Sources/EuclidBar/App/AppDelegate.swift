@@ -205,6 +205,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .connectAgents:
             panel.hide()
             connectAgents()
+        case .makeMod:
+            panel.makeMod(command.argument)
+        case .undoMod:
+            panel.undoMod()
         case .showUsage:
             panel.hide()
             let alert = NSAlert()
