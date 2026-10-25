@@ -1,0 +1,166 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		EC0000000000000000000011 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0000000000000000000010 /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		EC0000000000000000000010 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		EC0000000000000000000020 /* EuclidCI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EuclidCI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		EC0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				EC0000000000000000000002 /* EuclidCI */,
+				EC0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EC0000000000000000000002 /* EuclidCI */ = {
+			isa = PBXGroup;
+			children = (
+				EC0000000000000000000010 /* main.swift */,
+			);
+			path = EuclidCI;
+			sourceTree = "<group>";
+		};
+		EC0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				EC0000000000000000000020 /* EuclidCI.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		EC0000000000000000000030 /* EuclidCI */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EC0000000000000000000050 /* Build configuration list for PBXNativeTarget "EuclidCI" */;
+			buildPhases = (
+				EC0000000000000000000031 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = EuclidCI;
+			productName = EuclidCI;
+			productReference = EC0000000000000000000020 /* EuclidCI.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		EC0000000000000000000040 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = EC0000000000000000000060 /* Build configuration list for PBXProject "EuclidCI" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = EC0000000000000000000001;
+			productRefGroup = EC0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EC0000000000000000000030 /* EuclidCI */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		EC0000000000000000000031 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EC0000000000000000000011 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		EC0000000000000000000061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		EC0000000000000000000062 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		EC0000000000000000000051 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.euclid.ci;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		EC0000000000000000000052 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.euclid.ci;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		EC0000000000000000000050 /* Build configuration list for PBXNativeTarget "EuclidCI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EC0000000000000000000051 /* Debug */,
+				EC0000000000000000000052 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EC0000000000000000000060 /* Build configuration list for PBXProject "EuclidCI" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EC0000000000000000000061 /* Debug */,
+				EC0000000000000000000062 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = EC0000000000000000000040 /* Project object */;
+}

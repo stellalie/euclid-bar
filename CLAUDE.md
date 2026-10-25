@@ -1,7 +1,8 @@
 # euclid-bar
 
 AppKit macOS launcher. Building the app needs macOS; on Linux run `scripts/test-core-linux.sh`
-(EuclidCore tests only). The macOS `CI` check is the real build gate.
+(EuclidCore tests only). The macOS `CI` check is the real build gate; Xcode Cloud runs the same
+checks from `XcodeCloud/` (see its README).
 
 ## Shipping
 
