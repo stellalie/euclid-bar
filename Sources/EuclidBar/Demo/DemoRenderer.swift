@@ -57,7 +57,7 @@ enum DemoRenderer {
         // 1. Summon
         shot(.panel(caption: "⌥Space summons it, instantly, over any app", key: "⌥ Space"), 1.6)
         // 2. Fuzzy search: clipboard + browser history together
-        let searchCaption = "Clipboard + browser history: 10,000 items searched in under 1 ms"
+        let searchCaption = "Clipboard + browser history: 10,000 items, 1.4 ms worst case"
         type("rebase", caption: searchCaption)
         shot(.panel(caption: searchCaption, key: nil), 1.4)
         vc.demoSelect(row: 0)
@@ -90,10 +90,23 @@ enum DemoRenderer {
             "  Lost a commit? It's almost always still in there.",
         ]), 3.2)
 
-        // 6. Config
+        vc.demoToggleActions()
+
+        // 6. Plugins and hotkeys
+        ScreensRenderer.wire(vc, clips: history)
+        vc.badges = [.init(pluginID: "tokens", text: "1.2M tok · $4.10", icon: "gauge.with.dots.needle.33percent", hasClick: true)]
+        vc.demoSetQuery("")
+        let pluginCaption = "Plugins: a script becomes a source. GitHub here, Claude tokens on the bar"
+        type("filters", caption: pluginCaption)
+        shot(.panel(caption: pluginCaption, key: nil), 2.2)
+        vc.demoSetQuery("term")
+        shot(.panel(caption: "Give any app, action or snippet its own hotkey", key: "⌃⌥T"), 1.8)
+        vc.badges = []
+
+        // 7. Config
         shot(.config(caption: "Every action is a shell command in config.toml. Bring any CLI"), 3.6)
 
-        // 7. End card
+        // 8. End card
         shot(.endCard, 3.2)
 
         if ProcessInfo.processInfo.environment["DEMO_FRAMES"] != nil { // inspect individual frames
@@ -316,9 +329,9 @@ enum DemoRenderer {
         centered("Meet Euclid", .systemFont(ofSize: 56, weight: .bold), .white, y: 300)
         centered("Your blazing fast, fully customisable search-anything companion", .systemFont(ofSize: 23, weight: .medium),
                  NSColor.white.withAlphaComponent(0.92), y: 255)
-        centered("⚡ sub-millisecond search   ·   🧩 any CLI is an action   ·   🔒 stays on your Mac",
+        centered("⚡ 1.4 ms search   ·   🧩 plugins in any language   ·   🔒 stays on your Mac",
                  .systemFont(ofSize: 18, weight: .regular), NSColor.white.withAlphaComponent(0.85), y: 190)
-        centered("Built for developers · native Swift · pay once", .systemFont(ofSize: 16, weight: .regular),
+        centered("Built for developers · native Swift · free during the beta", .systemFont(ofSize: 16, weight: .regular),
                  NSColor.white.withAlphaComponent(0.7), y: 150)
         centered("euclid.lgtmworks.com", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
     }
@@ -349,9 +362,9 @@ enum DemoRenderer {
     }
 
     /// Variable frame durations: each frame is appended once at its start time.
-    static func writeMP4(_ frames: [Frame], to url: URL) throws {
+    static func writeMP4(_ frames: [Frame], size: NSSize = canvas, to url: URL) throws {
         try? FileManager.default.removeItem(at: url)
-        let w = Int(canvas.width * scale), h = Int(canvas.height * scale)
+        let w = Int(size.width * scale), h = Int(size.height * scale)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: w, AVVideoHeightKey: h,
