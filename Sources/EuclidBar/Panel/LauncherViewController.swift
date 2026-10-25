@@ -111,6 +111,8 @@ final class LauncherViewController: NSViewController {
     private var rows: [Row] = []
     /// Rows from the instant sources; async hits (pages, notes, files) are appended below them.
     private var baseRows: [Row] = []
+    /// The instant rows are only the “Use … with” fallback, so an answer can go above them.
+    private var baseIsFallback = false
     private var fileHits: (query: String, hits: [FileHit]) = ("", [])
     private var contentHits: (query: String, hits: [ContentHit]) = ("", [])
     private var pluginAnswers: (query: String, entries: [PluginService.Entry]) = ("", [])
@@ -444,10 +446,12 @@ final class LauncherViewController: NSViewController {
             if text.isEmpty {
                 let clips = FuzzyMatcher.search(text, in: all).map(Row.clip)
                 baseRows = suggestions() + (clips.isEmpty ? [] : [.header("Clipboard")] + clips)
+                baseIsFallback = false
                 searched = all.count
             } else {
                 let ranked = rankedRows(for: text, clips: all)
                 searched = ranked.searched
+                baseIsFallback = ranked.rows.isEmpty && !actions.isEmpty
                 // Nothing matched: offer the actions instead, Raycast-style.
                 if !ranked.rows.isEmpty { baseRows = ranked.rows.sectioned() }
                 else if actions.isEmpty { baseRows = [] }
@@ -512,16 +516,17 @@ final class LauncherViewController: NSViewController {
         return "\(items.formatted()) items · \(time)"
     }
 
-    /// Async hits go last, so they never push the instant rows around.
+    /// Async hits go last, so they never push the instant rows around. The one exception:
+    /// when nothing matched, plugin answers go above the “Use … with” fallback, so ↵ takes the answer.
     private func withAsyncRows(_ base: [Row]) -> [Row] {
-        var out = base
         // Answers first: they reply to exactly what was typed.
-        var answered: [String] = [], byPlugin: [String: [Row]] = [:]
+        var answers: [Row] = [], answered: [String] = [], byPlugin: [String: [Row]] = [:]
         for e in pluginAnswers.entries {
             if byPlugin[e.pluginName] == nil { answered.append(e.pluginName) }
             byPlugin[e.pluginName, default: []].append(.plugin(e))
         }
-        for name in answered { out += [.header(name)] + byPlugin[name]! }
+        for name in answered { answers += [.header(name)] + byPlugin[name]! }
+        var out = baseIsFallback ? answers + base : base + answers
         let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
         if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
         if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
@@ -669,10 +674,12 @@ final class LauncherViewController: NSViewController {
         let previous = selectedRow.map(\.key)
         let newRows = withAsyncRows(baseRows)
         guard newRows.map(\.key) != rows.map(\.key) else { return }
+        // Still on the first fallback action: the user hasn't picked it, so let an answer above it take ↵.
+        let untouched = baseIsFallback && tableView.selectedRow == rows.firstIndex { !$0.isHeader }
         rows = newRows
         tableView.reloadData()
         emptyLabel.isHidden = !rows.isEmpty
-        select(row: previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
+        select(row: untouched ? 0 : previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
         notifySize()
     }
 
