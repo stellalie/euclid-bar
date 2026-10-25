@@ -63,6 +63,8 @@ public struct EuclidConfig: Equatable, Sendable {
     /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
     public var pluginPaths: [String] = []
     public var pluginsDisabled: Set<String> = []
+    /// Where plugins were looked for: `<config>/plugins`, then `[plugins] paths`.
+    public var pluginDirectories: [String] = []
     /// `[plugin.<id>]`: your values for a plugin's settings.
     public var pluginSettings: [String: [String: String]] = [:]
 
@@ -267,6 +269,7 @@ public enum ConfigLoader {
             let (plugins, watched) = PluginLoader.load(directories: dirs, disabled: config.pluginsDisabled,
                                                        overrides: config.pluginSettings, &issues)
             config.plugins = plugins
+            config.pluginDirectories = dirs
             pluginFiles = dirs + watched
             var names = Set(config.actions.map(\.name))
             for plugin in plugins {
