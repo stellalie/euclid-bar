@@ -412,6 +412,8 @@ folder, checks it with `--try-plugin`, and it shows up in the bar on save.
 
 ```sh
 euclid-bar --plugin add github      # your PRs, reviews and issues (needs the gh CLI)
+euclid-bar --plugin add linear      # Linear issues assigned to you
+euclid-bar --plugin add slack       # jump to channels; `slack <words>` searches messages
 euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
 euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
 euclid-bar --try-plugin github      # run it once and print what the bar would show
