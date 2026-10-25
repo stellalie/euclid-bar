@@ -192,10 +192,6 @@ enum ScreensRenderer {
         vc.demoSetQuery("filters")
         try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
         vc.modKeys = []
-        vc.demoSetQuery("")
-        try type("mod: make", caption: "Mods: describe a behaviour, your agent builds it")
-        vc.demoSetQuery("mod: make ⌘G open the selected PR in GitHub Desktop")
-        try step("Mods: describe a behaviour, your agent builds it", hold: 2.0, name: "mod")
 
         // Every built-in theme, last so the numbers of the shots above stay put.
         for name in Themes.names.dropFirst() {

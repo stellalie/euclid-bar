@@ -85,52 +85,6 @@ import Testing
         #expect(ModItem(kind: "app", title: "Safari").value == "Safari")
     }
 
-    @Test func modRequests() throws {
-        #expect(ModRequest.parse("mod: make ⌘G open PRs") == .make("make ⌘G open PRs"))
-        #expect(ModRequest.parse("MOD:undo") == .undo)
-        #expect(ModRequest.parse("mod:") == nil)
-        #expect(ModRequest.parse("modern") == nil)
-
-        // The command line survives quotes in the request.
-        let prompt = ModRequest.prompt("say \"hi\" and it's done", executable: "/Applications/euclid-bar.app/Contents/MacOS/euclid-bar")
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("euclid mods \(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let line = ModRequest.commandLine(agent: "printf '%s|%s'", prompt: prompt, directory: dir.path) + #"; printf '|%s' "$PWD""#
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", line]
-        let out = Pipe()
-        p.standardOutput = out
-        try p.run()
-        p.waitUntilExit()
-        let printed = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        #expect(printed == prompt + "||" + dir.path)
-        #expect(prompt.contains("--try-plugin"))
-    }
-
-    @Test func undoPutsTheFolderBack() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-undo-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: dir.appendingPathComponent("github"), withIntermediateDirectories: true)
-        try "name = \"GitHub\"".write(to: dir.appendingPathComponent("github/plugin.toml"), atomically: true, encoding: .utf8)
-        #expect(throws: ModHistory.Failure.self) { try ModHistory.undo(dir) }
-
-        try ModHistory.snapshot(dir, message: "before mod: links")
-        // The agent writes a mod and edits another plugin.
-        try FileManager.default.createDirectory(at: dir.appendingPathComponent("links"), withIntermediateDirectories: true)
-        try "name = \"Links\"".write(to: dir.appendingPathComponent("links/plugin.toml"), atomically: true, encoding: .utf8)
-        try "name = \"GitHub!\"".write(to: dir.appendingPathComponent("github/plugin.toml"), atomically: true, encoding: .utf8)
-        #expect(try ModHistory.undo(dir).hasPrefix("Undid the last mod"))
-        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("links").path))
-        #expect(try String(contentsOf: dir.appendingPathComponent("github/plugin.toml"), encoding: .utf8) == "name = \"GitHub\"")
-
-        // A mod that was kept (a later request snapshotted it) is undone by dropping that snapshot.
-        try ModHistory.snapshot(dir, message: "before mod: second")
-        try "x".write(to: dir.appendingPathComponent("kept.txt"), atomically: true, encoding: .utf8)
-        try ModHistory.snapshot(dir, message: "before mod: third")
-        #expect(try ModHistory.undo(dir) == "Undid “third”")
-        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("kept.txt").path))
-    }
-
     @Test func trialRunsHooksWithSampleText() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-trial-\(UUID().uuidString)")
         let folder = dir.appendingPathComponent("cleanlinks")

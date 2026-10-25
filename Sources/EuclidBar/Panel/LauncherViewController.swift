@@ -39,8 +39,6 @@ final class LauncherViewController: NSViewController {
     var onModKey: ((_ pluginID: String, Plugin.Key, ModItem) -> Void)?
     /// You picked a result with ↵ (for `choose` hooks).
     var onChoose: ((ModItem) -> Void)?
-    /// `[mods] agent`, named on the `mod:` row.
-    var modAgent = "claude"
     /// The panel should take this size (it grows with the results, and for the preview).
     var onPreferredSizeChange: ((NSSize) -> Void)?
     /// Browser history (searched only when there's a query).
@@ -410,8 +408,6 @@ final class LauncherViewController: NSViewController {
 
     func demoSetQuery(_ text: String) { searchField.stringValue = text; runSearch() }
 
-    func clearQuery() { enterSearchMode(query: "") }
-
     /// An `open` hook's `{"query":…}`: start the search with it, unless you already typed.
     func suggestQuery(_ text: String) {
         guard case .search = mode, searchField.stringValue.isEmpty else { return }
@@ -598,7 +594,6 @@ final class LauncherViewController: NSViewController {
         if let result = Calculator.evaluate(text) { pinned.append(.calc(result, expression: text)) }
         pinned += DevTransforms.evaluate(text).map(Row.transform)
         var top: [Row] = []
-        if let mod = ModRequest.parse(text) { top.append(.command(.mod(mod, agent: modAgent))) }
         if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) { top.append(row) }
         if let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
             top.append(.snippet(snippetItems[i], snippets[i]))

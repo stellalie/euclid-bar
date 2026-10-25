@@ -164,10 +164,6 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # disabled = ["github"]
 # [plugin.github]                             # your values for a plugin's settings
 # limit = 50
-# Mods: type `mod: <what you want>` in the bar and your coding agent builds it as a plugin.
-# `mod: undo` takes the last one back.
-# [mods]
-# agent = "claude"                            # or "codex", or any CLI that takes a prompt
 
 # Snippets: text you paste often. Find them by name or keyword; ↵ pastes.
 # Placeholders: {date} {time} {datetime} {clipboard} {uuid}
