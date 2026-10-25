@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, showUsage, connectAgents }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, showUsage, connectAgents, makeMod, undoMod }
     let kind: Kind
     let title: String
     var detail = ""

@@ -92,6 +92,11 @@ public struct Plugin: Equatable, Sendable {
     public struct Hook: Equatable, Sendable {
         public let event: Event
         public let run: String
+
+        public init(event: Event, run: String) {
+            self.event = event
+            self.run = run
+        }
     }
 
     public struct Key: Equatable, Sendable {
@@ -101,6 +106,13 @@ public struct Plugin: Equatable, Sendable {
         public let run: String
         /// Kinds of result it applies to ("file", "pr", or a plugin's id); empty = any.
         public let when: [String]
+
+        public init(key: HotkeySpec, name: String, run: String, when: [String] = []) {
+            self.key = key
+            self.name = name
+            self.run = run
+            self.when = when
+        }
 
         public func applies(to item: ModItem) -> Bool {
             when.isEmpty || when.contains(item.kind) || item.pluginID.map(when.contains) == true
