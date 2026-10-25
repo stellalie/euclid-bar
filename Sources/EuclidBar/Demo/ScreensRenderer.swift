@@ -88,7 +88,7 @@ enum ScreensRenderer {
         vc.demoSetQuery("")
         try type("rebase", caption: "Sections, matched letters highlighted, search speed in the footer")
         vc.setContentResults([
-            ContentHit(kind: .note, ref: "/Users/me/Notes/Git tips.md", title: "Git tips", snippet: "…interactive rebase: squash, fixup, reword…"),
+            ContentHit(ref: "/Users/me/Notes/Git tips.md", title: "Git tips", snippet: "…interactive rebase: squash, fixup, reword…"),
         ], for: "rebase")
         try step("Sections, matched letters highlighted, search speed in the footer", hold: 2.0, name: "search-sections")
 
@@ -128,10 +128,9 @@ enum ScreensRenderer {
         vc.demoSelect(row: 1)
         try step("Updates: check now, or let them install automatically", hold: 1.8, name: "updates")
 
-        let receipt = "412 opens on 21 days · 120 apps, 80 clips, 38 actions, 12 snippets"
-        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false) + AppCommand.usage(receipt: receipt)
+        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false)
         vc.licenceNote = "Unregistered"
-        vc.notice = "Trial over: search “licence” to buy. Your 30 days: \(receipt)"
+        vc.notice = "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register."
         vc.demoSetQuery("")
         try type("licence", caption: "After the trial: still works, says Unregistered, reminds every 3 days")
         try step("After the trial: still works, says Unregistered, reminds every 3 days", hold: 2.0, name: "licence")
@@ -254,7 +253,7 @@ enum ScreensRenderer {
         vc.pluginEntry = { github[safe: $0] }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
-            Action(name: "Claude in herdr", run: #"herdr-run split claude "$1""#),
+            Action(name: "Claude in a split", run: #"ghostty-run split claude "$1""#),
             Action(name: "Search web", run: #"open "https://www.google.com/search?q=$EUCLID_QUERY_URL""#),
             Action(name: "Search Bitbucket", run: #"open "https://bitbucket.org/search?q=$EUCLID_QUERY_URL""#),
         ]

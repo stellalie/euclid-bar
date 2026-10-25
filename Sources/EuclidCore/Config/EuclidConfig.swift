@@ -47,10 +47,6 @@ public struct EuclidConfig: Equatable, Sendable {
     public var expansionEnabled = false
     /// Hotkeys that run an app, project, action or snippet directly. Validated: no duplicates.
     public var commandHotkeys: [CommandHotkey] = []
-    /// Full-text index of visited pages (`[pages]`). Off by default: it downloads pages.
-    public var pagesEnabled = false
-    public var pagesLimit = 500
-    public var pagesExcludedHosts: [String] = []
     /// Obsidian vault for note search (`[obsidian] vault`). Nil = off.
     public var obsidianVault: String?
     /// Bitbucket integration (`[bitbucket]`). Nil = off.
@@ -434,7 +430,7 @@ public enum ConfigLoader {
             }
             if t.contains(key: "task") {
                 if let s = try? t.string(forKey: "task"), !s.trimmingCharacters(in: .whitespaces).isEmpty { config.projectTask = s }
-                else { issues.append(.warning("projects.task must be a command, e.g. 'herdr-run tab eval \"$1\"'")) }
+                else { issues.append(.warning("projects.task must be a command, e.g. 'ghostty-run tab eval \"$1\"'")) }
             }
         }
 
@@ -540,14 +536,10 @@ public enum ConfigLoader {
             }
         }
 
-        if let t = table(root, "pages", &issues) {
-            warnUnknownKeys(t, known: ["enabled", "limit", "exclude_hosts"], in: "[pages]", &issues)
-            if let b = bool(t, "enabled", in: "pages", &issues) { config.pagesEnabled = b }
-            if t.contains(key: "limit") {
-                if let n = try? t.integer(forKey: "limit"), (1...5_000).contains(n) { config.pagesLimit = Int(n) }
-                else { issues.append(.warning("pages.limit must be a number from 1 to 5000")) }
-            }
-            if let a = strings(t, "exclude_hosts", in: "pages", &issues) { config.pagesExcludedHosts = a.map { $0.lowercased() } }
+        // Page text search was removed. Older configs still have the (off) [pages] table: only
+        // say something if it was turned on.
+        if root.contains(key: "pages"), (try? root.table(forKey: "pages").bool(forKey: "enabled")) == true {
+            issues.append(.warning("[pages] was removed: Euclid no longer downloads pages. Delete the table; browser history still works"))
         }
 
         if let t = table(root, "obsidian", &issues) {
@@ -622,6 +614,7 @@ public enum ConfigLoader {
                 var share = Set<AgentTools.Source>()
                 for name in a {
                     if let s = AgentTools.Source(rawValue: name.lowercased()) { share.insert(s) }
+                    else if name.lowercased() == "pages" { continue } // removed with page text search; in older default configs
                     else { issues.append(.warning("agents.share: unknown source '\(name)' (use \(AgentTools.Source.allCases.map(\.rawValue).joined(separator: ", ")))")) }
                 }
                 config.agentShare = share

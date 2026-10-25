@@ -28,7 +28,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         searchItem: { $0.searchItem(id: $1) })
     private let plugins: PluginService
     private let ranking: RankingService
-    private let usage: UsageService
     /// euclid-bar's own commands, for search. The app delegate runs them.
     var commands: [AppCommand] {
         get { content.commands }
@@ -38,7 +37,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
     /// "412 opens on 21 days · 120 apps, 38 actions" for the last 30 days, or nil before any use.
-    var usageReceipt: String? { usage.summary.receipt }
     /// Shown after the search speed while unregistered.
     var licenceNote: String {
         get { content.licenceNote }
@@ -64,7 +62,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         contentSearch = ContentService(databaseURL: config.paths.contentDatabase)
         ranking = RankingService(databaseURL: config.paths.rankingDatabase)
         plugins = PluginService(binDirectory: config.paths.binDirectory.path)
-        usage = UsageService(file: config.paths.usageFile)
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
         super.init()
@@ -90,7 +87,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             self.run(Action(name: task.command, run: self.config.current.config.projectTask), query: task.commandLine)
         }
         content.onCommand = { [weak self] command in self?.onCommand?(command) }
-        content.onUse = { [unowned usage] kind in usage.recordPick(kind) }
         content.historyProvider = { [unowned history] in history.items }
         content.historyURL = { [unowned history] id in history.entry(id: id)?.url }
         content.favicon = { [unowned history] host in history.favicon(host: host) }
@@ -180,7 +176,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         history.onChange = { [weak self] in
             guard let self else { return }
             self.updateProblem()
-            self.contentSearch.indexPages(from: self.history.entries)
             if self.panel.isVisible { self.content.refreshAfterExternalChange() }
         }
         clipboard.onChange = { [weak self] in
@@ -199,9 +194,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.snippets = settings.snippets
         content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
-        contentSearch.configure(vault: settings.obsidianVault, pagesEnabled: settings.pagesEnabled,
-                                pagesLimit: settings.pagesLimit, excludedHosts: settings.pagesExcludedHosts)
-        if settings.pagesEnabled { contentSearch.indexPages(from: history.entries) }
+        contentSearch.configure(vault: settings.obsidianVault)
         bitbucket.configure(settings.bitbucket, shell: settings.shellPath, environment: settings.environment)
         jira.configure(settings.jira, shell: settings.shellPath, environment: settings.environment)
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
@@ -393,7 +386,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     func show() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("show")
-        usage.recordOpen()
         anchor = topCenter()
         history.refreshIfStale()
         apps.refreshIfStale()

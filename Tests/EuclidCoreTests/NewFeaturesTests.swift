@@ -119,9 +119,8 @@ import Testing
             show_speed = false
 
             [pages]
-            enabled = true
-            limit = 50
-            exclude_hosts = ["Mail.Google.com"]
+            enabled = false
+            limit = 500
 
             [obsidian]
             vault = "~/Notes"
@@ -133,10 +132,14 @@ import Testing
         #expect(c.config.appearance.accent == "#7c5cff")
         #expect(c.config.appearance.density == .compact)
         #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed)
-        #expect(c.config.pagesEnabled && c.config.pagesLimit == 50 && c.config.pagesExcludedHosts == ["mail.google.com"])
         #expect(c.config.obsidianVault == "~/Notes")
         #expect(c.config.bitbucket?.repos == ["team/app"])
-        #expect(c.issues.count == 1) // the bad repo slug
+        #expect(c.issues.count == 1) // the bad repo slug; the old, off [pages] table is ignored quietly
+    }
+
+    @Test func removedPagesTableSaysSoOnlyWhenOn() throws {
+        let c = try ConfigLoader.parse("[pages]\nenabled = true")
+        #expect(c.issues.map(\.message) == ["[pages] was removed: Euclid no longer downloads pages. Delete the table; browser history still works"])
     }
 
     @Test func badValuesWarn() throws {
@@ -191,18 +194,6 @@ import Testing
 }
 
 @Suite struct ContentIndexTests {
-    @Test func pagesSearchWithSnippets() throws {
-        let index = try ContentIndex(path: nil)
-        try index.savePage(url: "https://a.dev/x", title: "Swift Testing guide", text: "Use #expect to check values in swift-testing.")
-        try index.savePage(url: "https://b.dev/y", title: "Other", text: nil)
-        let hits = try index.search("expect val")
-        #expect(hits.map(\.ref) == ["https://a.dev/x"])
-        #expect(hits[0].snippet.contains("expect"))
-        #expect(try index.fetchedURLs() == ["https://a.dev/x", "https://b.dev/y"])
-        #expect(try index.search("ex").isEmpty)              // too short
-        #expect(try index.search(#"a" OR "b"#).isEmpty)      // FTS syntax stays inert
-    }
-
     @Test func notesFollowTheVault() throws {
         let vault = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: vault.appendingPathComponent(".obsidian"), withIntermediateDirectories: true)
@@ -213,29 +204,12 @@ import Testing
         #expect(try index.syncNotes(vault: vault) == 0) // unchanged
         let hits = try index.search("rollout")
         #expect(hits.map(\.title) == ["Standup"])
-        #expect(hits[0].kind == .note)
+        #expect(hits[0].snippet.contains("rollout"))
+        #expect(try index.search("ro").isEmpty)                // too short
+        #expect(try index.search(#"a" OR "b"#).isEmpty)        // FTS syntax stays inert
         try FileManager.default.removeItem(at: vault.appendingPathComponent("Standup.md"))
         try index.syncNotes(vault: vault)
         #expect(try index.search("rollout").isEmpty)
-    }
-
-    @Test func fetchPolicy() {
-        #expect(PageText.shouldFetch("https://developer.apple.com/documentation/appkit"))
-        #expect(!PageText.shouldFetch("https://example.com/reset-password"))
-        #expect(!PageText.shouldFetch("https://example.com/page?id=1"))
-        #expect(!PageText.shouldFetch("http://localhost:3000/docs"))
-        #expect(!PageText.shouldFetch("http://192.168.1.2/docs"))
-        #expect(!PageText.shouldFetch("https://mail.google.com/x", excludedHosts: ["google.com"]))
-    }
-
-    @Test func extractsVisibleText() {
-        let html = """
-            <html><head><title>My &amp; Page</title><style>body{}</style></head>
-            <body><script>var x = 1;</script><h1>Hello</h1><p>World&nbsp;&#x41;&#66;</p><!-- hidden --></body></html>
-            """
-        let (title, text) = PageText.extract(html: html)
-        #expect(title == "My & Page")
-        #expect(text == "Hello\nWorld AB")
     }
 }
 

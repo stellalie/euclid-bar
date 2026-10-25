@@ -34,7 +34,7 @@ enum DemoRenderer {
         vc.historyProvider = { pages }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
-            Action(name: "pi in herdr", run: #"herdr-run tab pi "$1""#),
+            Action(name: "Claude in a split", run: #"ghostty-run split claude "$1""#),
             Action(name: "Search web", run: "open …"),
             Action(name: "Search GitHub", run: "open …"),
         ]
@@ -304,8 +304,8 @@ enum DemoRenderer {
             [("run", key), ("  = ", dim), (#"'ghostty-run tab pi "$1"'"#, str)],
             [],
             [("[[action]]", head), ("                          # ⌘2", dim)],
-            [("name", key), (" = ", dim), (#""pi in herdr""#, str)],
-            [("run", key), ("  = ", dim), (#"'herdr-run tab pi "$1"'"#, str)],
+            [("name", key), (" = ", dim), (#""Claude in a split""#, str)],
+            [("run", key), ("  = ", dim), (#"'ghostty-run split claude "$1"'"#, str)],
             [],
             [("[[action]]", head), ("                          # ⌘3", dim)],
             [("name", key), (" = ", dim), (#""Search web""#, str)],

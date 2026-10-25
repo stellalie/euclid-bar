@@ -402,8 +402,8 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 - Working directory: the plugin folder. `$EUCLID_PLUGIN_DIR` is its path.
 - `$1` and `$EUCLID_QUERY`: the text (answers and actions); `$EUCLID_QUERY_URL`: URL-encoded.
 - `$EUCLID_SETTING_<KEY>` for each setting, uppercased.
-- `~/.config/euclid/bin` first on PATH: `ghostty-run tab|split|window <cmd>` and
-  `herdr-run tab|split <cmd>` open a terminal running a command.
+- `~/.config/euclid/bin` first on PATH: `ghostty-run tab|split|window <cmd>` opens a
+  terminal running a command.
 - `[env]` from config.toml. Scripts run in a login shell, so Homebrew tools are on PATH.
 
 The text you type is only ever passed as `$1` and environment variables, never pasted into a

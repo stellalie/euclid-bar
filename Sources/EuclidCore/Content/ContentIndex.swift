@@ -1,25 +1,22 @@
 import Foundation
 import GRDB
 
-/// One full-text hit: a visited page or an Obsidian note.
+/// One full-text hit: an Obsidian note.
 public struct ContentHit: Sendable, Equatable {
-    public enum Kind: String, Sendable { case page, note }
-    public let kind: Kind
-    /// URL for a page, file path for a note.
+    /// The note's file path.
     public let ref: String
     public let title: String
     /// A few words around the match, with "…" where text was cut.
     public let snippet: String
 
-    public init(kind: Kind, ref: String, title: String, snippet: String) {
-        self.kind = kind
+    public init(ref: String, title: String, snippet: String) {
         self.ref = ref
         self.title = title
         self.snippet = snippet
     }
 }
 
-/// Local SQLite FTS5 index of page and note text. Searched off the main thread;
+/// Local SQLite FTS5 index of note text. Searched off the main thread;
 /// results arrive after the instant sources, like Spotlight files.
 public final class ContentIndex: @unchecked Sendable {
     private let db: DatabaseQueue
@@ -43,6 +40,10 @@ public final class ContentIndex: @unchecked Sendable {
                 CREATE TABLE notes_meta (path TEXT PRIMARY KEY, mtime DOUBLE NOT NULL);
                 """)
         }
+        // Page text search was removed: drop what it downloaded.
+        m.registerMigration("v2_drop_pages") { db in
+            try db.execute(sql: "DELETE FROM content WHERE kind = 'page'; DROP TABLE pages_meta;")
+        }
         try m.migrate(db)
     }
 
@@ -53,10 +54,10 @@ public final class ContentIndex: @unchecked Sendable {
         guard let match = Self.matchExpression(query) else { return [] }
         return try db.read { db in
             try Row.fetchAll(db, sql: """
-                SELECT kind, ref, title, snippet(content, 3, '', '', '…', 12) AS snip
+                SELECT ref, title, snippet(content, 3, '', '', '…', 12) AS snip
                 FROM content WHERE content MATCH ? ORDER BY bm25(content, 0, 0, 10.0, 1.0) LIMIT ?
                 """, arguments: [match, limit]).map { row in
-                ContentHit(kind: ContentHit.Kind(rawValue: row["kind"]) ?? .page, ref: row["ref"], title: row["title"],
+                ContentHit(ref: row["ref"], title: row["title"],
                            snippet: (row["snip"] as String? ?? "").replacingOccurrences(of: "\n", with: " "))
             }
         }
@@ -72,24 +73,6 @@ public final class ContentIndex: @unchecked Sendable {
     /// Full stored text, for the preview pane.
     public func body(ref: String) -> String? {
         try? db.read { db in try String.fetchOne(db, sql: "SELECT body FROM content WHERE ref = ? LIMIT 1", arguments: [ref]) }
-    }
-
-    // MARK: - Pages
-
-    public func fetchedURLs() throws -> Set<String> {
-        try db.read { db in Set(try String.fetchAll(db, sql: "SELECT url FROM pages_meta")) }
-    }
-
-    /// `text == nil` records a failed fetch, so it isn't retried every time.
-    public func savePage(url: String, title: String, text: String?, at now: Date = Date()) throws {
-        try db.write { db in
-            try db.execute(sql: "DELETE FROM content WHERE kind = 'page' AND ref = ?", arguments: [url])
-            if let text, !text.isEmpty {
-                try db.execute(sql: "INSERT INTO content (kind, ref, title, body) VALUES ('page', ?, ?, ?)", arguments: [url, title, text])
-            }
-            try db.execute(sql: "INSERT OR REPLACE INTO pages_meta (url, fetched_at, ok) VALUES (?, ?, ?)",
-                           arguments: [url, now.timeIntervalSince1970, text != nil])
-        }
     }
 
     // MARK: - Notes

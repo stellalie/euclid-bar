@@ -36,7 +36,7 @@ struct Theme {
         case .calc: .systemGreen
         case .transform: .systemTeal
         case .snippet: .systemPink
-        case .content(let c): c.kind == .note ? .systemPurple : .systemIndigo
+        case .content: .systemPurple
         case .bitbucket: .systemBlue
         case .jira: .systemCyan
         case .plugin: .systemMint

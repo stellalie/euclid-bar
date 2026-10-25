@@ -1,10 +1,10 @@
 import Foundation
 
 /// What Euclid shares with your coding agents over MCP (`euclid-bar --mcp`): your clipboard
-/// history, the pages and notes it indexed, and browser history. Read-only, local, and only
+/// history, the Obsidian notes it indexed, and browser history. Read-only, local, and only
 /// the sources listed in `[agents] share`.
 public enum AgentTools {
-    public enum Source: String, CaseIterable, Sendable { case clipboard, pages, notes, history }
+    public enum Source: String, CaseIterable, Sendable { case clipboard, notes, history }
 
     /// Where the data comes from. Closures, so tests can hand in fixtures.
     public struct Store {
@@ -51,25 +51,22 @@ public enum AgentTools {
             })
         }
 
-        let kinds = Set([share.contains(.pages) ? ContentHit.Kind.page : nil, share.contains(.notes) ? .note : nil].compactMap { $0 })
-        if !kinds.isEmpty {
-            let what = kinds.count == 2 ? "web pages the user visited and their Obsidian notes" : kinds.contains(.page) ? "web pages the user visited" : "the user's Obsidian notes"
+        if share.contains(.notes) {
             tools.append(.init(
-                name: "search_pages_and_notes",
-                description: "Full-text search of \(what), indexed on their Mac. Returns titles, refs (URL or note path) and matching snippets; read one with read_page_or_note.",
+                name: "search_notes",
+                description: "Full-text search of the user's Obsidian notes, indexed on their Mac. Returns titles, note paths and matching snippets; read one with read_note.",
                 inputSchema: schema(["query": query, "limit": limit(8)], required: ["query"])) { args in
                 let words = try terms(args)
-                let hits = try data.search(words.joined(separator: " "), 50).filter { kinds.contains($0.kind) }.prefix(count(args, 8))
+                let hits = try data.search(words.joined(separator: " "), count(args, 8))
                 guard !hits.isEmpty else { return "No matches." }
                 return hits.map { "\($0.title)\n\($0.ref)\n\($0.snippet)" }.joined(separator: "\n\n")
             })
             tools.append(.init(
-                name: "read_page_or_note",
-                description: "The full indexed text of a page or note, by the ref search_pages_and_notes returned.",
-                inputSchema: schema(["ref": ["type": "string", "description": "A URL or note path from search_pages_and_notes."]], required: ["ref"])) { args in
+                name: "read_note",
+                description: "The full text of a note, by the path search_notes returned.",
+                inputSchema: schema(["ref": ["type": "string", "description": "A note path from search_notes."]], required: ["ref"])) { args in
                 guard let ref = args["ref"] as? String, !ref.isEmpty else { throw MCPServer.ToolError("ref is required") }
-                let isNote = ref.hasPrefix("/")
-                guard kinds.contains(isNote ? .note : .page), let body = data.body(ref) else { return "Not in the index: \(ref)" }
+                guard let body = data.body(ref) else { return "Not in the index: \(ref)" }
                 return body.count > maxBody ? String(body.prefix(maxBody)) + "\n…(cut)" : body
             })
         }

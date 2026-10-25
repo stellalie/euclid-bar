@@ -50,7 +50,7 @@ depth = 3                        # how deep to look for repos under each root
 open  = 'open "$1"'              # e.g. 'code "$1"', 'zed "$1"', 'ghostty-run tab nvim "$1"'
 # ⌘K on a project lists its Makefile targets, package.json scripts, just recipes and
 # swift/cargo/go build + test. This runs the one you pick ($1 = "cd '<repo>' && make test"):
-task  = 'ghostty-run tab eval "$1"'   # or 'herdr-run tab eval "$1"'
+task  = 'ghostty-run tab eval "$1"'
 
 # Files by name, via Spotlight. Shown below everything else, after 3+ letters.
 [files]
@@ -67,14 +67,6 @@ favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
-
-# Full-text search of the pages in your browser history. Off by default: when on,
-# Euclid downloads recent pages (no cookies, so only what's public) and indexes
-# their text locally. Links that look like logins, resets or have query strings are skipped.
-[pages]
-enabled = false
-limit   = 500                    # most recent pages to index
-exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.com"]
 
 # Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
 [obsidian]
@@ -100,7 +92,7 @@ exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.co
 
 # What `euclid-bar --mcp` lets your coding agents (Claude Code, Codex) search. Read-only, local.
 [agents]
-share = ["clipboard", "pages", "notes", "history"]
+share = ["clipboard", "notes", "history"]
 
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
@@ -127,8 +119,7 @@ channel      = "stable"          # "dev": a build of every change merged to main
 #
 # Commands run in the background. Anything goes: open URLs, call CLIs, scripts.
 # Scripts in ~/.config/euclid/bin are on PATH. Euclid installs one you can edit:
-#   ghostty-run tab|split|window <command...>     run a command in Ghostty
-#   herdr-run   tab|split|split-down <command...> run a command in herdr
+#   ghostty-run tab|split|window <command...>   run a command in Ghostty
 # ---------------------------------------------------------------------------
 
 [[action]]
@@ -144,10 +135,6 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # [[action]]
 # name = "pi in Ghostty"
 # run  = 'ghostty-run tab pi "$1"'          # or: split, window
-
-# [[action]]
-# name = "pi in herdr"
-# run  = 'herdr-run tab pi "$1"'            # or: split, split-down
 
 # Plugins: folders in ~/.config/euclid/plugins; AGENTS.md there is the whole format.
 # `euclid-bar --plugin add github` adds an example.

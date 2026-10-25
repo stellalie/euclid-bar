@@ -16,8 +16,6 @@ final class LauncherViewController: NSViewController {
     var onRunAction: ((Action, _ query: String) -> Void)?
     var onRunTask: ((ProjectTask) -> Void)?
     var onCommand: ((AppCommand) -> Void)?
-    /// Something was picked, by `Row.usageKind`, for the usage receipt.
-    var onUse: ((String) -> Void)?
     var onOpenHistory: ((Int) -> Void)?
     var onCopyHistory: ((Int) -> Void)?
     var onOpenApp: ((String) -> Void)?
@@ -107,7 +105,7 @@ final class LauncherViewController: NSViewController {
     private let itemsProvider: () -> [SearchItem]
     private var snippetItems: [SearchItem] = []
     private var rows: [Row] = []
-    /// Rows from the instant sources; async hits (pages, notes, files) are appended below them.
+    /// Rows from the instant sources; async hits (notes, files) are appended below them.
     private var baseRows: [Row] = []
     /// The instant rows are only the “Use … with” fallback, so an answer can go above them.
     private var baseIsFallback = false
@@ -351,7 +349,6 @@ final class LauncherViewController: NSViewController {
 
     @objc private func badgeClicked(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, badges.first(where: { $0.pluginID == id })?.hasClick == true else { return }
-        onUse?("plugins")
         onBadgeClick?(id)
     }
 
@@ -523,9 +520,7 @@ final class LauncherViewController: NSViewController {
         }
         for name in answered { answers += [.header(name)] + byPlugin[name]! }
         var out = baseIsFallback ? answers + base : base + answers
-        let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
-        if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
-        if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
+        if !contentHits.hits.isEmpty { out += [.header("Notes")] + contentHits.hits.map(Row.content) }
         if !fileHits.hits.isEmpty { out += [.header("Files")] + fileHits.hits.map(Row.file) }
         return out
     }
@@ -742,8 +737,7 @@ final class LauncherViewController: NSViewController {
             }
         case .history(let item):
             let url = historyURL(item.id) ?? ""
-            let body = contentBody(url) ?? ""
-            return .text(title: item.title, facts: [("URL", url), ("Where", ResultCell.historySubtitle(item))], body: body, code: false)
+            return .text(title: item.title, facts: [("URL", url), ("Where", ResultCell.historySubtitle(item))], body: "", code: false)
         case .action(_, let a), .aliasAction(let a, _):
             return .text(title: a.name, facts: [("Runs", a.run)], body: "", code: false)
         case .builtin(let b, _): return .text(title: b.rawValue, facts: [("Key", b.hint)], body: "", code: false)
@@ -761,7 +755,7 @@ final class LauncherViewController: NSViewController {
             return .text(title: s.name, facts: s.keyword.map { [("Keyword", $0)] } ?? [], body: s.expanded(clipboard: Self.clipboardText), code: false)
         case .content(let c):
             let body = contentBody(c.ref) ?? c.snippet
-            return .text(title: c.title, facts: [(c.kind == .note ? "Note" : "URL", c.ref)], body: body, code: false)
+            return .text(title: c.title, facts: [("Note", c.ref)], body: body, code: false)
         case .bitbucket(let b):
             let updated = b.updated.map { RelativeAge.short($0) } ?? "—"
             return .text(title: b.title, facts: [("Where", b.subtitle), ("Updated", updated), ("URL", b.url)], body: "", code: false)
@@ -871,7 +865,6 @@ final class LauncherViewController: NSViewController {
 
     /// Open, run or paste a row, as ↵ does. Also used by hotkeys with the panel closed.
     func activate(_ row: Row, query: String) {
-        if let kind = row.usageKind { onUse?(kind) }
         switch row {
         case .header: return
         case .clip(let item): onPaste?(item.id)
@@ -884,7 +877,7 @@ final class LauncherViewController: NSViewController {
         case .calc(let result, _): onCopyText?(result.text)
         case .transform(let t): onCopyText?(t.value)
         case .snippet(_, let s): onPasteText?(s.expanded(clipboard: Self.clipboardText))
-        case .content(let c): c.kind == .note ? onOpenNote?(c.ref) : onOpenURL?(c.ref)
+        case .content(let c): onOpenNote?(c.ref)
         case .bitbucket(let b): onOpenURL?(b.url)
         case .jira(let j): onOpenURL?(j.url)
         case .task(let t, _): onRunTask?(t)
@@ -901,7 +894,6 @@ final class LauncherViewController: NSViewController {
     /// ⌘1–⌘9 (any mode) or plain 1–9 (in ⌘K): run the Nth action.
     private func runAction(number n: Int) {
         guard actions.indices.contains(n - 1) else { NSSound.beep(); return }
-        onUse?("actions")
         onRunAction?(actions[n - 1], query)
     }
 
@@ -954,7 +946,6 @@ final class LauncherViewController: NSViewController {
             case .bitbucket(let b)?: onCopyText?(b.url)
             case .jira(let j)?: onCopyText?(j.key)
             case .plugin(let e)? where (e.item.copy ?? e.item.open) != nil: onCopyText?(e.item.copy ?? e.item.open!)
-            case .content(let c)? where c.kind == .page: onCopyText?(c.ref)
             case .snippet(_, let s)?: onCopyText?(s.expanded(clipboard: Self.clipboardText))
             case let row? where row.path != nil: onCopyText?(row.path!)
             default: return false
@@ -1008,7 +999,7 @@ final class LauncherViewController: NSViewController {
         case .transform(let t): return ModItem(kind: "answer", title: t.display, subtitle: t.label, text: t.value)
         case .snippet(_, let s): return ModItem(kind: "snippet", title: s.name, text: s.text)
         case .content(let c):
-            return c.kind == .note ? ModItem(kind: "note", title: c.title, path: c.ref) : ModItem(kind: "page", title: c.title, url: c.ref)
+            return ModItem(kind: "note", title: c.title, path: c.ref)
         case .bitbucket(let b): return ModItem(kind: "pr", title: b.title, subtitle: b.subtitle, url: b.url)
         case .jira(let j): return ModItem(kind: "issue", title: "\(j.key) \(j.summary)", url: j.url, text: j.key)
         case .task(let t, let project): return ModItem(kind: "task", title: t.command, subtitle: project, text: t.commandLine)
@@ -1117,7 +1108,7 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .snippet(let item, let s):
             show("text.quote", s.name, detail: s.keyword ?? "", tagged("Snippet", title: item.title))
         case .content(let c):
-            show(c.kind == .note ? "note.text" : "doc.richtext", c.title, detail: c.snippet, c.kind == .note ? "Note" : "Page", plain: true)
+            show("note.text", c.title, detail: c.snippet, "Note", plain: true)
         case .bitbucket(let b):
             let (symbol, label) = switch b.kind {
             case .reviewPR: ("arrow.triangle.pull", "Review")

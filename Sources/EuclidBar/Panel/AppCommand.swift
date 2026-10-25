@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, showUsage, connectAgents }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents }
     let kind: Kind
     let title: String
     var detail = ""
@@ -14,17 +14,12 @@ struct AppCommand: Equatable {
                                            detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
 
     static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
-                                          detail: "Let your agents search your clipboard, pages and notes", symbol: "point.3.connected.trianglepath.dotted")
+                                          detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
 
     /// Snippet keywords expanding in any app (`[expansion] enabled`).
     static func expansion(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleExpansion, title: "Text Expansion", detail: "Type a snippet keyword in any app · [expansion] enabled",
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
-    }
-
-    /// How much you used Euclid lately, once there's something to show.
-    static func usage(receipt: String?) -> [AppCommand] {
-        receipt.map { [AppCommand(kind: .showUsage, title: "Usage: Your Last 30 Days", detail: $0, symbol: "chart.bar")] } ?? []
     }
 
     /// The update commands for the current `[updates]` settings.
