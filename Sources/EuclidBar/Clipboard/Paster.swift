@@ -57,6 +57,30 @@ enum Paster {
         for _ in 0..<count { press(51, flags: []) } // kVK_Delete
     }
 
+    /// Types `text` into the front app as keystrokes, leaving the pasteboard alone. For short,
+    /// single-line text: a typed newline would press Return (and send a chat message).
+    static func type(_ text: String) {
+        let source = CGEventSource(stateID: .combinedSessionState)
+        source?.setLocalEventsFilterDuringSuppressionState(
+            [.permitLocalMouseEvents, .permitSystemDefinedEvents], state: .eventSuppressionStateSuppressionInterval)
+        // One event carries at most 20 UTF-16 units; split on whole characters so emoji stay intact.
+        var chunks: [[UniChar]] = [[]]
+        for ch in text {
+            let units = Array(String(ch).utf16)
+            if chunks[chunks.count - 1].count + units.count > 20 { chunks.append([]) }
+            chunks[chunks.count - 1] += units
+        }
+        for chunk in chunks where !chunk.isEmpty {
+            for down in [true, false] {
+                guard let e = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: down) else { continue }
+                e.flags = []
+                e.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+                e.setIntegerValueField(.eventSourceUserData, value: syntheticMarker)
+                e.post(tap: .cgAnnotatedSessionEventTap)
+            }
+        }
+    }
+
     private static func press(_ key: CGKeyCode, flags: CGEventFlags) {
         let source = CGEventSource(stateID: .combinedSessionState)
         // Briefly suppress the user's own keystrokes so they can't interleave with ours.

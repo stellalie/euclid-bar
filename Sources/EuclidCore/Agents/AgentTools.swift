@@ -12,6 +12,8 @@ public enum AgentTools {
         public var search: (_ query: String, _ limit: Int) throws -> [ContentHit]
         public var body: (_ ref: String) -> String?
         public var history: () -> [HistoryEntry]
+        /// Why some browser history couldn't be read (e.g. Safari without Full Disk Access), told to the agent.
+        public var historyNote: () -> String? = { nil }
 
         public init(clips: @escaping () throws -> [Clip], search: @escaping (String, Int) throws -> [ContentHit],
                     body: @escaping (String) -> String?, history: @escaping () -> [HistoryEntry]) {
@@ -80,9 +82,10 @@ public enum AgentTools {
                 let words = try terms(args)
                 let hits = data.history().filter { e in words.allSatisfy { "\(e.title) \(e.url)".lowercased().contains($0) } }
                     .sorted { $0.lastVisit > $1.lastVisit }.prefix(count(args, 20))
-                guard !hits.isEmpty else { return "No matches." }
+                let note = data.historyNote().map { "\n\nNote: \($0)" } ?? ""
+                guard !hits.isEmpty else { return "No matches." + note }
                 return hits.map { "\($0.title.isEmpty ? $0.url : $0.title) — \($0.url) (\($0.browser), \(RelativeAge.short($0.lastVisit, now: now())))" }
-                    .joined(separator: "\n")
+                    .joined(separator: "\n") + note
             })
         }
         return tools

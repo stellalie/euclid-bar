@@ -23,7 +23,9 @@ public final class MCPServer {
         public init(_ description: String) { self.description = description }
     }
 
-    static let latestProtocol = "2025-06-18"
+    /// Protocol versions this server speaks, newest first. A client asking for another gets the newest,
+    /// as the spec says, and decides itself whether it can go on.
+    static let supportedProtocols = ["2025-06-18", "2025-03-26", "2024-11-05"]
     let tools: [Tool]
     let name: String
     let version: String
@@ -59,7 +61,7 @@ public final class MCPServer {
         case "initialize":
             let asked = params["protocolVersion"] as? String
             return reply(id, [
-                "protocolVersion": asked ?? Self.latestProtocol,
+                "protocolVersion": asked.flatMap { Self.supportedProtocols.contains($0) ? $0 : nil } ?? Self.supportedProtocols[0],
                 "capabilities": ["tools": [String: Any]()],
                 "serverInfo": ["name": name, "version": version],
             ])

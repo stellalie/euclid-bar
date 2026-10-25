@@ -70,6 +70,24 @@ import Testing
                 == "Search latency — https://grafana.example.com/d/search (Dia, 5m ago)")
     }
 
+    @Test func protocolVersionIsNegotiated() throws {
+        func version(_ asked: String) throws -> String {
+            let reply = try #require(server().handle(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"\#(asked)"}}"#))
+            let obj = try #require(try JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
+            return try #require((obj["result"] as? [String: Any])?["protocolVersion"] as? String)
+        }
+        #expect(try version("2024-11-05") == "2024-11-05")
+        #expect(try version("2099-01-01") == MCPServer.supportedProtocols[0]) // unknown: offer our newest
+    }
+
+    @Test func historyToolSaysWhatItCouldNotRead() throws {
+        var store = store
+        store.historyNote = { "couldn't read Safari history." }
+        let s = MCPServer(tools: AgentTools.make(store, share: [.history], now: { self.now }), name: "euclid", version: "1.0")
+        #expect(try call(s, "search_browser_history", ["query": "nothing-like-this"]).text == "No matches.\n\nNote: couldn't read Safari history.")
+        #expect(try call(s, "search_browser_history", ["query": "latency"]).text.hasSuffix("\n\nNote: couldn't read Safari history."))
+    }
+
     @Test func onlySharedSourcesAreExposed() throws {
         let s = server([.notes])
         let list = try #require(s.handle(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))

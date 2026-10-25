@@ -129,7 +129,6 @@ channel      = "stable"          # "dev": a build of every change merged to main
 # Scripts in ~/.config/euclid/bin are on PATH. Euclid installs one you can edit:
 #   ghostty-run tab|split|window <command...>     run a command in Ghostty
 #   herdr-run   tab|split|split-down <command...> run a command in herdr
-# Coming next: output = "panel" streams a command's output into Euclid.
 # ---------------------------------------------------------------------------
 
 [[action]]
@@ -141,11 +140,6 @@ run   = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
 name  = "Search GitHub"
 alias = "gh"
 run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
-
-# [[action]]
-# name   = "Ask pi"
-# run    = 'pi --print "$1"'
-# output = "panel"
 
 # [[action]]
 # name = "pi in Ghostty"
