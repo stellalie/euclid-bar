@@ -88,7 +88,7 @@ final class ResultCell: NSTableCellView {
         let firstLine = text.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         let shown = firstLine.trimmingCharacters(in: .whitespaces)
         let font = NSFont.systemFont(ofSize: theme.titleSize)
-        let attributed = NSMutableAttributedString(string: shown, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+        let attributed = NSMutableAttributedString(string: shown, attributes: [.font: font, .foregroundColor: theme.text])
         if let highlight, !highlight.isEmpty {
             let bold = NSFont.systemFont(ofSize: theme.titleSize, weight: .bold)
             for r in FuzzyMatcher.matchRanges(query: highlight, in: shown) {
@@ -96,6 +96,8 @@ final class ResultCell: NSTableCellView {
             }
         }
         title.attributedStringValue = attributed
+        detail.textColor = theme.muted
+        subtitle.textColor = theme.subtext
         detail.stringValue = extra
         subtitle.stringValue = accessory
     }
@@ -138,13 +140,18 @@ final class SectionHeaderCell: NSTableCellView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    func configure(_ text: String) { label.stringValue = text.uppercased() }
+    func configure(_ text: String, theme: Theme) {
+        label.stringValue = text.uppercased()
+        label.textColor = theme.muted
+    }
 }
 
 /// Selection drawn as a soft rounded pill in the accent colour, not the stock solid blue.
 /// Never "emphasized", so text keeps its normal colours on the selected row.
 final class ResultRowView: NSTableRowView {
     var accent: NSColor = .controlAccentColor
+    /// The theme's own selection colour; nil = a faint accent.
+    var fill: NSColor?
     var isHeader = false
 
     override var isEmphasized: Bool {
@@ -155,7 +162,7 @@ final class ResultRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard !isHeader else { return }
         let rect = bounds.insetBy(dx: 6, dy: 1)
-        accent.withAlphaComponent(0.2).setFill()
+        (fill ?? accent.withAlphaComponent(0.2)).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
     }
 }
@@ -163,12 +170,14 @@ final class ResultRowView: NSTableRowView {
 /// A key drawn as a small rounded keycap, e.g. ⌘K.
 final class KeycapView: NSView {
     private let text: NSAttributedString
+    private let ink: NSColor
 
-    init(_ key: String) {
+    init(_ key: String, theme: Theme) {
         text = NSAttributedString(string: key, attributes: [
             .font: NSFont.systemFont(ofSize: 10.5, weight: .semibold),
-            .foregroundColor: NSColor.secondaryLabelColor,
+            .foregroundColor: theme.subtext,
         ])
+        ink = theme.text
         super.init(frame: .zero)
         setContentHuggingPriority(.required, for: .horizontal)
     }
@@ -182,9 +191,9 @@ final class KeycapView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)
-        NSColor.labelColor.withAlphaComponent(0.07).setFill()
+        ink.withAlphaComponent(0.07).setFill()
         path.fill()
-        NSColor.labelColor.withAlphaComponent(0.14).setStroke()
+        ink.withAlphaComponent(0.14).setStroke()
         path.lineWidth = 1
         path.stroke()
         let s = text.size()
@@ -195,6 +204,9 @@ final class KeycapView: NSView {
 /// The footer's shortcut hints: keycap + label pairs.
 final class HintBar: NSStackView {
     private var current: [Hint] = []
+    var theme = Theme() {
+        didSet { let hints = current; current = []; set(hints) }
+    }
 
     struct Hint: Equatable {
         let key: String
@@ -219,9 +231,9 @@ final class HintBar: NSStackView {
         for (i, hint) in hints.enumerated() {
             let label = NSTextField(labelWithString: hint.label)
             label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
+            label.textColor = theme.subtext
             label.lineBreakMode = .byTruncatingTail
-            let pair = NSStackView(views: [KeycapView(hint.key), label])
+            let pair = NSStackView(views: [KeycapView(hint.key, theme: theme), label])
             pair.spacing = 5
             pair.alignment = .centerY
             // Later hints give way first when space runs out.

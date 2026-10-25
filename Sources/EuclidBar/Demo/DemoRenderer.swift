@@ -40,7 +40,7 @@ enum DemoRenderer {
         ]
         let window = ScreensRenderer.offscreenWindow(for: vc) // the layout engine lives in a window, like the real panel
         let view = vc.view
-        view.appearance = NSAppearance(named: .darkAqua)
+        vc.defaultAppearance = NSAppearance(named: .darkAqua)
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
