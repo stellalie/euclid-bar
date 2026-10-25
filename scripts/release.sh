@@ -46,12 +46,22 @@ rm -rf "$OUT" && mkdir -p "$OUT"
 ZIP="$OUT/euclid-bar-$VERSION.zip"
 DMG="$OUT/euclid-bar-$VERSION.dmg"
 
+# Apple's ticket service can lag behind "Accepted" or drop the connection; retry before failing.
+staple() {
+  for wait in 10 20 40 0; do
+    xcrun stapler staple "$1" && return 0
+    [[ $wait == 0 ]] && return 1
+    echo "stapling failed, retrying in ${wait}s" >&2
+    sleep "$wait"
+  done
+}
+
 # 1. Notarize the app itself and staple the ticket, so it opens offline on first launch.
 if can_notarize; then
   ditto -c -k --keepParent "$APP" "$OUT/notarize.zip"
   notarize "$OUT/notarize.zip"
   rm "$OUT/notarize.zip"
-  xcrun stapler staple "$APP"
+  staple "$APP"
 else
   echo "warning: not notarized (set SIGN_IDENTITY and notary credentials)" >&2
 fi
@@ -68,7 +78,7 @@ hdiutil create -volname "euclid-bar" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 if can_notarize; then
   codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
   notarize "$DMG"
-  xcrun stapler staple "$DMG"
+  staple "$DMG"
   spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 fi
 
