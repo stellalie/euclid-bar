@@ -7,9 +7,9 @@
 	<key>CFBundleIdentifier</key>
 	<string>dev.euclid.Euclid</string>
 	<key>CFBundleName</key>
-	<string>euclid-bar</string>
+	<string>Euclid</string>
 	<key>CFBundleDisplayName</key>
-	<string>euclid-bar</string>
+	<string>Euclid</string>
 	<key>CFBundleExecutable</key>
 	<string>euclid-bar</string>
 	<key>CFBundlePackageType</key>
@@ -23,7 +23,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>euclid-bar opens your actions in terminal apps like Ghostty.</string>
+	<string>Euclid opens your actions in terminal apps like Ghostty.</string>
 	<key>SUFeedURL</key>
 	<string>https://github.com/stellalie/euclid-bar-releases/releases/latest/download/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>

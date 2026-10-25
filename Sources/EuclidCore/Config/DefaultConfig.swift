@@ -3,7 +3,7 @@ public enum DefaultConfig {
     public static let text = #"""
 # Euclid configuration. Changes apply on save, no restart needed
 # (except clipboard.limit, which applies on next launch).
-# Check from a terminal: euclid-bar.app/Contents/MacOS/euclid-bar --check-config
+# Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
 
 # Shared files (your team's actions, snippets, Bitbucket server) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.

@@ -9,7 +9,7 @@ app: toolchain
 
 run: app
 	-pkill -x euclid-bar
-	open build/euclid-bar.app
+	open build/Euclid.app
 
 test: toolchain
 	swift test

@@ -44,7 +44,7 @@ struct AppCommand: Equatable {
 
     /// The update commands for the current `[updates]` settings.
     static func updates(_ settings: UpdateSettings, version: String, enabled: Bool) -> [AppCommand] {
-        let note = enabled ? "euclid-bar \(version)" : "Local build: updates are off"
+        let note = enabled ? "Euclid \(version)" : "Local build: updates are off"
         return [
             AppCommand(kind: .checkForUpdates, title: "Check for Updates", detail: note, symbol: "arrow.down.circle"),
             AppCommand(kind: .toggleAutoInstall, title: "Install Updates Automatically",

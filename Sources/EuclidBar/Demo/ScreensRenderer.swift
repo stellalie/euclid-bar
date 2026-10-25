@@ -4,7 +4,8 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// `euclid-bar --render-screens <dir>`: screenshots of each panel state plus `flow.gif`,
-/// an animation of the panel growing, shrinking and opening the preview.
+/// an animation of the panel growing, shrinking and opening the preview, and `clips/<name>.mp4`,
+/// a few seconds of video leading up to each screenshot (the website shows one per feature).
 ///
 /// Like `--render-demo`, every frame is the real LauncherViewController rendered
 /// offscreen with sample data. Size changes are drawn as the real app animates them
@@ -35,6 +36,9 @@ enum ScreensRenderer {
         var frames: [Frame] = []
         var shown = size
         var shotNumber = 0
+        var clipStart = 0
+        let clipsDir = dir.appendingPathComponent("clips")
+        try FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
 
         /// Let async work (app icons) land, then draw the panel at `size`.
         func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
@@ -69,6 +73,8 @@ enum ScreensRenderer {
             if let name {
                 shotNumber += 1
                 try writePNG(image, to: dir.appendingPathComponent(String(format: "%02d-%@.png", shotNumber, name)))
+                try DemoRenderer.writeMP4(frames[clipStart...].map { .init(image: $0.image, duration: $0.duration) }, size: canvas, to: clipsDir.appendingPathComponent("\(name).mp4"))
+                clipStart = frames.count
             }
         }
         func type(_ text: String, caption: String, from prefix: String = "") throws {
@@ -150,7 +156,36 @@ enum ScreensRenderer {
         vc.demoSetQuery("")
         try type("filters", caption: "Plugins: GitHub from a script, today's Claude tokens as a badge")
         try step("Plugins: GitHub from a script, today's Claude tokens as a badge", hold: 2.0, name: "plugins")
+
+        // One scene per example plugin, for the website's Plugins page.
+        vc.demoSetQuery("")
+        try step("tokens plugin: a badge on the bar, refreshed every 5 minutes", hold: 2.0, name: "plugin-tokens")
         vc.badges = []
+        let sources = samplePluginSources()
+        let items = sources.enumerated().map { $0.element.item.searchItem(id: $0.offset) }
+        vc.pluginProvider = { items }
+        vc.pluginEntry = { sources[safe: $0] }
+        func plugin(_ query: String, caption: String, name: String, answers: [PluginService.Entry] = []) throws {
+            vc.demoSetQuery("")
+            try type(query, caption: caption)
+            if !answers.isEmpty { vc.setPluginAnswers(answers, for: query) }
+            try step(caption, hold: 2.0, name: name)
+        }
+        try plugin("onboarding", caption: "linear plugin: issues assigned to you", name: "plugin-linear")
+        try plugin("slack deploy failed", caption: "slack plugin: type slack and words to search messages", name: "plugin-slack",
+                   answers: sampleSlackMatches())
+        try plugin("lovelace", caption: "contacts plugin: people by name, company, email or phone", name: "plugin-contacts")
+        try plugin("log water", caption: "shortcuts plugin: ↵ runs a shortcut", name: "plugin-shortcuts")
+        try plugin("define serendipity", caption: "define plugin: the macOS Dictionary, inline", name: "plugin-define", answers: [
+            entry("define", "Dictionary", PluginItem(
+                title: "serendipity: the occurrence of events by chance in a happy or beneficial way",
+                subtitle: "serendipity · Dictionary", open: "dict://serendipity", icon: "character.book.closed")),
+        ])
+        try plugin("100 usd to eur", caption: "currency plugin: daily rates, no API key", name: "plugin-currency", answers: [
+            entry("currency", "Currency", PluginItem(
+                title: "86.12 EUR", subtitle: "100 USD · 1 USD = 0.8612 EUR · sample rate", copy: "86.12",
+                icon: "dollarsign.arrow.circlepath", label: "Currency")),
+        ])
         if case .success(let g) = HotkeySpec.parse("cmd+g") {
             vc.modKeys = [("github", Plugin.Key(key: g, name: "GitHub Desktop", run: "open -a 'GitHub Desktop' \"$1\"", when: ["github"]))]
         }
@@ -233,6 +268,32 @@ enum ScreensRenderer {
         vc.hotkeys = hotkeys.compactMap { name, kind, key in
             (try? HotkeySpec.parse(key).get()).map { CommandHotkey(hotkey: $0, target: name, kind: kind) }
         }
+    }
+
+    static func entry(_ id: String, _ name: String, _ item: PluginItem) -> PluginService.Entry {
+        .init(pluginID: id, pluginName: name, item: item)
+    }
+
+    /// Rows the linear, slack, contacts and shortcuts example plugins print.
+    static func samplePluginSources() -> [PluginService.Entry] {
+        [
+            entry("linear", "Linear", PluginItem(title: "Onboarding checklist for new hires", subtitle: "ENG-311 · In Progress",
+                                                 open: "https://linear.app/acme/issue/ENG-311", copy: "ENG-311", icon: "checklist", label: "ENG")),
+            entry("linear", "Linear", PluginItem(title: "Onboarding emails go to spam", subtitle: "ENG-298 · Todo",
+                                                 open: "https://linear.app/acme/issue/ENG-298", copy: "ENG-298", icon: "checklist", label: "ENG")),
+            entry("slack", "Slack", PluginItem(title: "#deploys", subtitle: "Every production deploy", open: "slack://channel", icon: "number")),
+            entry("contacts", "Contacts", PluginItem(title: "Ada Lovelace", subtitle: "Analytical Engines · ada@example.com",
+                                                     open: "addressbook://ada", copy: "ada@example.com", icon: "person.crop.circle")),
+            entry("shortcuts", "Shortcuts", PluginItem(title: "Log water", subtitle: "Shortcut", run: "shortcuts run 'Log water'",
+                                                       icon: "square.2.layers.3d")),
+        ]
+    }
+
+    static func sampleSlackMatches() -> [PluginService.Entry] {
+        [
+            ("deploy failed on web-3: health check timed out", "#deploys · deploybot"),
+            ("rolled back, deploy failed again after the cache change", "#incidents · sam"),
+        ].map { entry("slack", "Slack", PluginItem(title: $0.0, subtitle: $0.1, open: "https://acme.slack.com/archives/C1", icon: "bubble.left")) }
     }
 
     static func offscreenWindow(for vc: NSViewController) -> NSWindow {

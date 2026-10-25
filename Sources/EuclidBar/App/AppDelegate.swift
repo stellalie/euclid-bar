@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = BrainMark.menuBarImage()
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(withTitle: "Open euclid-bar", action: #selector(openPanel), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Import from Raycast or Alfred…", action: #selector(importLauncher), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
@@ -129,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(.separator())
         menu.addItem(withTitle: "Send Feedback…", action: #selector(sendFeedback), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Quit euclid-bar", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Quit Euclid", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
     }
 
