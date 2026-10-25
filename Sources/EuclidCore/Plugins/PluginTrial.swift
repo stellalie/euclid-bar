@@ -8,10 +8,11 @@ public enum PluginTrial {
                            environment: [String: String] = ProcessInfo.processInfo.environment) async -> (report: String, ok: Bool) {
         var lines = ["plugin: \(plugin.name) (\(plugin.id))", "folder: \(plugin.directory)"]
         var ok = true
-        func attempt(_ label: String, _ command: String, query: String, timeout: Duration) async -> Data? {
+        func attempt(_ label: String, _ command: String, query: String, environment extra: [String: String] = [:],
+                     timeout: Duration) async -> Data? {
             do {
-                return try await PluginRunner.output(of: command, plugin: plugin, query: query, shell: shell,
-                                                     pathPrefix: pathPrefix, environment: environment, timeout: timeout)
+                return try await PluginRunner.output(of: command, plugin: plugin, query: query, shell: shell, pathPrefix: pathPrefix,
+                                                     environment: environment.merging(extra) { $1 }, timeout: timeout)
             } catch {
                 lines.append("\(label): FAILED, \(error)")
                 ok = false
@@ -46,10 +47,35 @@ public enum PluginTrial {
             }
         }
         for a in plugin.actions { lines.append("action: \(a.name)  runs: \(a.run)") }
+        for hook in plugin.hooks {
+            // Hooks get real text from Euclid; here they get the query, so `--try-plugin <id> "<text>"` tests one.
+            guard !query.isEmpty || hook.event == .open else {
+                lines.append("on \(hook.event.rawValue): not run; pass sample text after the plugin name to try it")
+                continue
+            }
+            let item = ModItem(kind: "page", title: query, url: query)
+            guard let data = await attempt("on \(hook.event.rawValue)", hook.run, query: query, environment: hook.event == .choose ? item.environment : [:],
+                                           timeout: PluginTiming.hook) else { continue }
+            let effects = PluginEffect.parse(data)
+            lines.append("on \(hook.event.rawValue) “\(query)”: " + (effects.isEmpty ? "no effects (fine: it only acts on its own)" : "\(effects.count) effect(s)"))
+            for e in effects { lines.append("  " + describe(e)) }
+        }
+        for k in plugin.keys {
+            lines.append("key: \(k.key.symbols) \(k.name)\(k.when.isEmpty ? "" : " (on \(k.when.joined(separator: ", ")))")  runs: \(k.run)  (not run here)")
+        }
         let settings = plugin.environment.keys.sorted().filter { $0 != "EUCLID_PLUGIN_DIR" }
         if !settings.isEmpty { lines.append("settings: " + settings.map { "$\($0)" }.joined(separator: " ")) }
         lines.append(ok ? "OK" : "FAILED")
         return (lines.joined(separator: "\n"), ok)
+    }
+
+    static func describe(_ e: PluginEffect) -> String {
+        var parts: [String] = []
+        if let n = e.notice { parts.append("notice “\(n)”") }
+        if let c = e.copy { parts.append("copy “\(c.count > 80 ? String(c.prefix(79)) + "…" : c)”") }
+        if let o = e.open { parts.append("open \(o)") }
+        if let q = e.query { parts.append("search “\(q)”") }
+        return parts.joined(separator: ", ")
     }
 
     static func describe(_ item: PluginItem) -> String {
@@ -73,4 +99,6 @@ public enum PluginTiming {
     public static let source = Duration.seconds(30)
     /// An answer is for the query being typed; late ones are useless.
     public static let answer = Duration.seconds(2)
+    /// Hooks and keys run in the background; they shouldn't linger.
+    public static let hook = Duration.seconds(10)
 }

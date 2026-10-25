@@ -1,7 +1,7 @@
 import Foundation
 
 /// A parsed, validated hotkey like `opt+space` or `cmd+shift+k`.
-public struct HotkeySpec: Equatable, Sendable {
+public struct HotkeySpec: Hashable, Sendable {
     public enum Modifier: String, Sendable, CaseIterable { case command, option, control, shift }
 
     public let modifiers: Set<Modifier>
