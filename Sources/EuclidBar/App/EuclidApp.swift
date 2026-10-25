@@ -10,6 +10,12 @@ enum EuclidApp {
     static func main() {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
         if CommandLine.arguments.contains("--mcp") { exit(AgentServer.run()) }
+        if let i = CommandLine.arguments.firstIndex(of: "--try-plugin") {
+            exit(PluginCommands.tryPlugin(Array(CommandLine.arguments.dropFirst(i + 1))))
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--plugin") {
+            exit(PluginCommands.run(Array(CommandLine.arguments.dropFirst(i + 1))))
+        }
         if CommandLine.arguments.contains("--licence-keygen") { exit(LicenceTool.keygen()) }
         if let i = CommandLine.arguments.firstIndex(of: "--issue-licence") {
             exit(LicenceTool.issue(Array(CommandLine.arguments.dropFirst(i + 1))))
@@ -59,6 +65,11 @@ enum EuclidApp {
             print("hotkey: \(c.hotkey.map { ($0.modifiers.map(\.rawValue).sorted() + [$0.key]).joined(separator: "+") } ?? "(app setting)")")
             for (i, a) in c.actions.enumerated() {
                 print("  \(i < 9 ? "⌘\(i + 1)" : "  ") \(a.name)  [\(a.output.rawValue)]")
+            }
+            for p in c.plugins {
+                let parts = [p.source.map { _ in "source" }, p.answer.map { _ in "answer" }, p.badge.map { _ in "badge" },
+                             p.actions.isEmpty ? nil : "\(p.actions.count) action(s)"].compactMap { $0 }
+                print("plugin: \(p.id)  \(p.name)  [\(parts.joined(separator: ", "))]  \(p.directory)")
             }
             for issue in loaded.issues { print(issue) }
             print(loaded.issues.isEmpty ? "OK" : "\(loaded.issues.count) issue(s)")

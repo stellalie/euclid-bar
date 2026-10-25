@@ -10,6 +10,9 @@ public struct EuclidPaths: Sendable {
     public var configFile: URL { configDirectory.appendingPathComponent("config.toml") }
     /// Helper scripts; on PATH for every action.
     public var binDirectory: URL { configDirectory.appendingPathComponent("bin") }
+    /// One folder per plugin, plus AGENTS.md (the plugin guide).
+    public var pluginsDirectory: URL { configDirectory.appendingPathComponent(Self.pluginsFolderName) }
+    static let pluginsFolderName = "plugins"
     public var historyDatabase: URL { dataDirectory.appendingPathComponent("history.sqlite") }
     /// What you picked for what you typed (learned ranking).
     public var rankingDatabase: URL { dataDirectory.appendingPathComponent("ranking.sqlite") }

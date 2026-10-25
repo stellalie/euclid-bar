@@ -26,6 +26,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         name: "Jira", table: "jira",
         fetch: { try await JiraClient(settings: $0, token: $1).fetchAll() },
         searchItem: { $0.searchItem(id: $1) })
+    private let plugins: PluginService
     private let ranking: RankingService
     private let usage: UsageService
     /// euclid-bar's own commands, for search. The app delegate runs them.
@@ -57,6 +58,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         files = FileSearchService()
         contentSearch = ContentService(databaseURL: config.paths.contentDatabase)
         ranking = RankingService(databaseURL: config.paths.rankingDatabase)
+        plugins = PluginService(binDirectory: config.paths.binDirectory.path)
         usage = UsageService(file: config.paths.usageFile)
         content = LauncherViewController(items: { [unowned clipboard] in clipboard.history.items })
         panel = LauncherPanel(size: LauncherViewController.size)
@@ -102,6 +104,17 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         bitbucket.onChange = remoteChanged
         jira.onChange = remoteChanged
+        content.pluginProvider = { [unowned plugins] in plugins.items }
+        content.pluginEntry = { [unowned plugins] id in plugins.entry(id: id) }
+        content.pluginAnswer = { [unowned plugins] text in plugins.answer(text) }
+        content.onPluginItem = { [weak self] entry in self?.activate(entry) }
+        content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
+        plugins.onAnswers = { [weak self] text, entries in self?.content.setPluginAnswers(entries, for: text) }
+        plugins.onChange = { [weak self] in
+            guard let self else { return }
+            self.content.badges = self.plugins.badges
+            remoteChanged()
+        }
         content.onOpenHistory = { [weak self] id in self?.openHistory(id: id) }
         content.onCopyHistory = { [weak self] id in
             guard let self, let entry = self.history.entry(id: id) else { return }
@@ -153,6 +166,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         if settings.pagesEnabled { contentSearch.indexPages(from: history.entries) }
         bitbucket.configure(settings.bitbucket, shell: settings.shellPath, environment: settings.environment)
         jira.configure(settings.jira, shell: settings.shellPath, environment: settings.environment)
+        plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
+        content.badges = plugins.badges
         files.enabled = settings.filesEnabled
         files.limit = settings.filesLimit
         let folders = settings.appFolders
@@ -202,7 +217,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func updateProblem() {
-        content.problem = config.problemSummary ?? extraProblem() ?? history.problem ?? bitbucket.problem ?? jira.problem
+        content.problem = config.problemSummary ?? extraProblem() ?? history.problem ?? bitbucket.problem ?? jira.problem ?? plugins.problem
     }
 
     /// A `[hotkeys]` hotkey: open, run or paste what it names, without showing the panel.
@@ -245,9 +260,41 @@ final class PanelController: NSObject, NSWindowDelegate {
             }
         }
         let env = ProcessInfo.processInfo.environment.merging(config.current.config.environment) { $1 }
+            .merging(action.environment) { $1 }
         CommandRunner.runInBackground(shell: shell, command: action.run, query: query,
-                                      pathPrefix: config.paths.binDirectory.path, baseEnvironment: env,
-                                      completion: completion)
+                                      pathPrefix: config.paths.binDirectory.path, directory: action.directory,
+                                      baseEnvironment: env, completion: completion)
+    }
+
+    /// ↵ on a plugin's item: the first of open, paste, copy, run that it set.
+    private func activate(_ entry: PluginService.Entry) {
+        let item = entry.item
+        if let open = item.open {
+            hide()
+            let expanded = (open as NSString).expandingTildeInPath
+            if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
+            else if let url = URL(string: open) { NSWorkspace.shared.open(url) }
+        } else if let text = item.paste {
+            pasteText(text)
+        } else if let text = item.copy {
+            Paster.copy(text)
+            hide()
+        } else if let run = item.run {
+            runPluginCommand(run, pluginID: entry.pluginID, label: item.title)
+        }
+    }
+
+    private func clickBadge(pluginID: String) {
+        guard let click = plugins.plugin(id: pluginID)?.badge?.click else { return }
+        runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID)
+    }
+
+    private func runPluginCommand(_ command: String, pluginID: String, label: String) {
+        hide()
+        plugins.runCommand(command, pluginID: pluginID) { [weak self] result in
+            guard case .failure(let failure) = result else { return }
+            DispatchQueue.main.async { self?.content.notice = "⚠︎ “\(label)” failed (\(failure.description))" }
+        }
     }
 
     /// Enter: put the entry on the pasteboard, hide, and ⌘V into the previous app.
@@ -294,6 +341,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         projects.refreshIfStale()
         bitbucket.refreshIfStale()
         jira.refreshIfStale()
+        plugins.refreshIfStale()
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results
         if let message = reminder?() { content.notice = message }
@@ -310,6 +358,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard panel.isVisible else { return }
         panel.orderOut(nil)
         files.cancel()
+        plugins.cancelAnswers()
         content.didHide()
         anchor = nil
     }

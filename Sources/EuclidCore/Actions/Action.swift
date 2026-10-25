@@ -13,10 +13,17 @@ public struct Action: Equatable, Sendable {
     public let name: String
     public let run: String
     public let output: Output
+    /// Working directory (a plugin's folder); nil = home.
+    public let directory: String?
+    /// Extra environment on top of `[env]` (a plugin's settings).
+    public let environment: [String: String]
 
-    public init(name: String, run: String, output: Output = .background) {
+    public init(name: String, run: String, output: Output = .background,
+                directory: String? = nil, environment: [String: String] = [:]) {
         self.name = name
         self.run = run
         self.output = output
+        self.directory = directory
+        self.environment = environment
     }
 }

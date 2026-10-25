@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
         }
+        do { try PluginGuide.install(in: config.paths.pluginsDirectory) } catch {
+            perfLog.error("can't write the plugin guide: \(error.localizedDescription, privacy: .public)")
+        }
         let settings = config.current.config
         clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, imagesDirectory: config.paths.clipImagesDirectory,
                                      limit: settings.clipboardLimit)
