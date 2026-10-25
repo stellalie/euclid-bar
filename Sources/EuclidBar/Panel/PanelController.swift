@@ -90,7 +90,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         plugins.onChange = { [weak self] in
             guard let self else { return }
             self.content.badges = self.plugins.badges
-            remoteChanged()
+            self.updateProblem()
+            if self.panel.isVisible { self.content.refreshAfterExternalChange() }
         }
         // Mods: hooks and keys.
         let front = NSWorkspace.shared.frontmostApplication
