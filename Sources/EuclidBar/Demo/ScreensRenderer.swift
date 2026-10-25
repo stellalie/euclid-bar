@@ -31,7 +31,6 @@ enum ScreensRenderer {
         let window = offscreenWindow(for: vc)
         let view = vc.view
         vc.defaultAppearance = NSAppearance(named: .darkAqua)
-        vc.theme = Theme(rendering: Appearance())
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
@@ -142,11 +141,11 @@ enum ScreensRenderer {
         var compact = Appearance()
         compact.density = .compact
         compact.accent = "#ff8a3d"
-        vc.theme = Theme(rendering: compact)
+        vc.theme = Theme(compact)
         vc.demoSetQuery("git")
         try step("[appearance] density = \"compact\", accent = \"#ff8a3d\"", hold: 2.0, name: "compact-accent")
 
-        vc.theme = Theme(rendering: Appearance())
+        vc.theme = Theme(Appearance())
         vc.commands += [.expansion(enabled: false)]
         vc.demoSetQuery("")
         try type("expansion", caption: "Text expansion: type a snippet's keyword in any app")
@@ -199,11 +198,11 @@ enum ScreensRenderer {
             var look = Appearance()
             look.theme = name
             look.palette = Themes.builtIn[name]
-            vc.theme = Theme(rendering: look)
+            vc.theme = Theme(look)
             vc.demoSetQuery("git")
             try step("[appearance] theme = \"\(name)\"", hold: 1.2, name: "theme-\(name)")
         }
-        vc.theme = Theme(rendering: Appearance())
+        vc.theme = Theme(Appearance())
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
@@ -401,14 +400,4 @@ enum ScreensRenderer {
 
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
-
-extension Theme {
-    /// For offscreen renders: macOS 26 can't snapshot Liquid Glass (the panel comes out
-    /// plain white), so draw the blur instead, as macOS 15 does anyway.
-    init(rendering a: Appearance) {
-        var a = a
-        a.glass = false
-        self.init(a)
-    }
 }
