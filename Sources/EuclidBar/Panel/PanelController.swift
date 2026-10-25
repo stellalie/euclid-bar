@@ -207,7 +207,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
         content.badges = plugins.badges
         content.modKeys = plugins.keys
-        content.modAgent = settings.modAgent
         files.enabled = settings.filesEnabled
         files.limit = settings.filesLimit
         let folders = settings.appFolders
@@ -342,42 +341,6 @@ final class PanelController: NSObject, NSWindowDelegate {
                 content.notice = notice.hasPrefix("⚠︎") ? notice : "\(pluginName): \(notice)"
             }
         }
-    }
-
-    /// `mod: <request>`: commit the plugins folder (so `mod: undo` can go back), then open the
-    /// coding agent in a terminal there with the request.
-    func makeMod(_ request: String) {
-        hide()
-        let settings = config.current.config
-        let dir = config.paths.pluginsDirectory
-        let prompt = ModRequest.prompt(request, executable: Bundle.main.executablePath ?? "euclid-bar")
-        let line = ModRequest.commandLine(agent: settings.modAgent, prompt: prompt, directory: dir.path)
-        let task = settings.projectTask
-        DispatchQueue.global(qos: .userInitiated).async {
-            var problem: String?
-            do {
-                try PluginGuide.install(in: dir)
-                try ModHistory.snapshot(dir, message: "before mod: \(request)")
-            } catch {
-                problem = "⚠︎ “mod: undo” won't work for this one (\(error))"
-            }
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated {
-                    if let problem { self.content.notice = problem }
-                    self.run(Action(name: "Make a mod", run: task), query: line)
-                }
-            }
-        }
-    }
-
-    /// `mod: undo`: put the plugins folder back as it was before the last `mod:`.
-    func undoMod() {
-        do {
-            content.notice = try ModHistory.undo(config.paths.pluginsDirectory)
-        } catch {
-            content.notice = "⚠︎ \(error)"
-        }
-        content.clearQuery()
     }
 
     private func clickBadge(pluginID: String) {

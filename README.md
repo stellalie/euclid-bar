@@ -474,18 +474,9 @@ them, and a failing one shows its first error in the footer.
 
 ### Mods: change how Euclid behaves
 
-A plugin can also hook into what happens and add keys. Type what you want in the bar and your
-coding agent builds it:
-
-```
-mod: make ⌘G open the selected PR in GitHub Desktop
-mod: when I copy a Jira link, put just the issue key on the clipboard
-mod: undo
-```
-
-`mod:` opens your agent (`[mods] agent = "claude"`, or `"codex"`) in a terminal, in the plugins
-folder, with the request. It writes the mod, checks it with `--try-plugin`, and Euclid loads it on
-save. `mod: undo` puts the folder back as it was before the last request (it's a git repo).
+A plugin can also hook into what happens and add keys. To make one, ask your coding agent in
+the plugins folder (it reads `AGENTS.md` there), e.g. "make ⌘G open the selected PR in GitHub
+Desktop". Euclid loads it on save; `--try-plugin <id>` checks it.
 
 ```toml
 [[on]]                      # clipboard · open · choose · app
