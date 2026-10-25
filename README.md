@@ -331,8 +331,6 @@ theme = "tokyo-night"
 **Switch any time.** Change `theme` in `config.toml` and save: the panel restyles at once, no
 restart. Back to the system look with `theme = "default"`.
 
-<!-- theme-gallery -->
-
 Make your own as `~/.config/euclid/themes/<name>.toml`; it reloads when you save. Start from a
 built-in with `base` and change only what you want, or set everything:
 
