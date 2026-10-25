@@ -34,6 +34,7 @@ enum EuclidApp {
             do { try IconRenderer.render(to: URL(fileURLWithPath: out)) } catch { print("error: \(error)"); exit(1) }
             exit(0)
         }
+        if CommandLine.arguments.contains("--speed-budget") { exit(speedBudget()) }
         if let i = CommandLine.arguments.firstIndex(of: "--render-screens") {
             _ = NSApplication.shared
             let dir = CommandLine.arguments.dropFirst(i + 1).first ?? "screens"
@@ -51,6 +52,15 @@ enum EuclidApp {
         app.setActivationPolicy(.accessory) // no Dock icon, no menu bar takeover
         app.delegate = delegate
         app.run()
+    }
+
+    /// `euclid-bar --speed-budget`: time every keystroke over 10k+ items. Exit 1 = over budget.
+    private static func speedBudget() -> Int32 {
+        let r = SearchBudget.run()
+        let worst = r.worst
+        print("\(r.items.formatted()) items, \(r.timings.count) keystrokes, slowest \"\(worst.query)\" \(worst.time) (budget \(SearchBudget.limit))")
+        if !r.passed { print("error: search is over its speed budget") }
+        return r.passed ? 0 : 1
     }
 
     /// `euclid-bar --check-config`: validate config.toml and print problems. Exit 0 = clean.
