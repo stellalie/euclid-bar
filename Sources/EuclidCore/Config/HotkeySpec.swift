@@ -23,6 +23,19 @@ public struct HotkeySpec: Equatable, Sendable {
         public var description: String { message }
     }
 
+    /// How macOS menus write it: "⌃⌥T", "⇧⌘Space", "F5".
+    public var symbols: String {
+        let order: [(Modifier, String)] = [(.control, "⌃"), (.option, "⌥"), (.shift, "⇧"), (.command, "⌘")]
+        let mods = order.filter { modifiers.contains($0.0) }.map(\.1).joined()
+        let name = switch key {
+        case "space": "Space"
+        case "return": "↩"
+        case "tab": "⇥"
+        default: key.uppercased()
+        }
+        return mods + name
+    }
+
     public static func parse(_ text: String) -> Result<HotkeySpec, ParseError> {
         let parts = text.lowercased().split(separator: "+").map { $0.trimmingCharacters(in: .whitespaces) }
         guard let rawKey = parts.last, !rawKey.isEmpty else { return .failure(ParseError(message: "empty hotkey")) }
@@ -42,5 +55,23 @@ public struct HotkeySpec: Equatable, Sendable {
             return .failure(ParseError(message: "'\(text)' needs a modifier, or it would block normal typing"))
         }
         return .success(HotkeySpec(modifiers: mods, key: key))
+    }
+}
+
+/// A global hotkey that runs one thing without opening the panel: `[hotkeys]`, or `hotkey`
+/// on an `[[action]]` or `[[snippet]]`.
+public struct CommandHotkey: Equatable, Sendable {
+    public enum Kind: String, Sendable { case action, snippet }
+
+    public let hotkey: HotkeySpec
+    /// An app, project, action or snippet, by name (as in `[aliases]`).
+    public let target: String
+    /// Set when the hotkey sits in an action or snippet block: that one, even if an app shares its name.
+    public let kind: Kind?
+
+    public init(hotkey: HotkeySpec, target: String, kind: Kind? = nil) {
+        self.hotkey = hotkey
+        self.target = target
+        self.kind = kind
     }
 }
