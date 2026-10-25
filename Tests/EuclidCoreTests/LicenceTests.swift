@@ -41,27 +41,44 @@ import Testing
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let day: TimeInterval = 86_400
         let state = LicenceState(firstRun: start)
-        #expect(Evaluation.status(state, publicKey: publicKey, now: start) == .trial(daysLeft: 30))
-        #expect(Evaluation.status(state, publicKey: publicKey, now: start + 29.5 * day) == .trial(daysLeft: 1))
-        #expect(Evaluation.status(state, publicKey: publicKey, now: start + 30 * day) == .unregistered)
-        #expect(Evaluation.status(state, publicKey: publicKey, now: start - day) == .trial(daysLeft: 30), "clock moved back")
+        #expect(Evaluation.status(state, publicKey: publicKey, betaEnds: start, now: start) == .trial(daysLeft: 30))
+        #expect(Evaluation.status(state, publicKey: publicKey, betaEnds: start, now: start + 29.5 * day) == .trial(daysLeft: 1))
+        #expect(Evaluation.status(state, publicKey: publicKey, betaEnds: start, now: start + 30 * day) == .unregistered)
+        #expect(Evaluation.status(state, publicKey: publicKey, betaEnds: start, now: start - day) == .trial(daysLeft: 30), "clock moved back")
 
         var licensed = state
         licensed.key = try ada.sign(with: seller)
-        #expect(Evaluation.status(licensed, publicKey: publicKey, now: start + 400 * day) == .licensed(ada))
+        #expect(Evaluation.status(licensed, publicKey: publicKey, betaEnds: start, now: start + 400 * day) == .licensed(ada))
         licensed.key = "EUCLID-junk"
-        #expect(Evaluation.status(licensed, publicKey: publicKey, now: start + 31 * day) == .unregistered)
+        #expect(Evaluation.status(licensed, publicKey: publicKey, betaEnds: start, now: start + 31 * day) == .unregistered)
+    }
+
+    @Test func betaInstallsStayFree() throws {
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        let day: TimeInterval = 86_400
+        let early = LicenceState(firstRun: start)
+        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: nil, now: start + 90 * day) == .beta, "still in beta")
+        let launch = start + 60 * day
+        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: launch, now: start + 400 * day) == .beta, "beta users keep it")
+        #expect(!Evaluation.shouldRemind(early, publicKey: publicKey, betaEnds: launch, now: start + 400 * day))
+
+        let late = LicenceState(firstRun: launch + day)
+        #expect(Evaluation.status(late, publicKey: publicKey, betaEnds: launch, now: launch + 2 * day) == .trial(daysLeft: 29))
+
+        var bought = early
+        bought.key = try ada.sign(with: seller)
+        #expect(Evaluation.status(bought, publicKey: publicKey, betaEnds: nil) == .licensed(ada), "a key still wins")
     }
 
     @Test func remindsEveryFewDaysOnceUnregistered() {
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let day: TimeInterval = 86_400
         var state = LicenceState(firstRun: start)
-        #expect(!Evaluation.shouldRemind(state, publicKey: publicKey, now: start + 10 * day), "still in trial")
-        #expect(Evaluation.shouldRemind(state, publicKey: publicKey, now: start + 31 * day))
+        #expect(!Evaluation.shouldRemind(state, publicKey: publicKey, betaEnds: start, now: start + 10 * day), "still in trial")
+        #expect(Evaluation.shouldRemind(state, publicKey: publicKey, betaEnds: start, now: start + 31 * day))
         state.lastReminder = start + 31 * day
-        #expect(!Evaluation.shouldRemind(state, publicKey: publicKey, now: start + 33 * day))
-        #expect(Evaluation.shouldRemind(state, publicKey: publicKey, now: start + 34 * day))
+        #expect(!Evaluation.shouldRemind(state, publicKey: publicKey, betaEnds: start, now: start + 33 * day))
+        #expect(Evaluation.shouldRemind(state, publicKey: publicKey, betaEnds: start, now: start + 34 * day))
     }
 
     @Test func stateIsSavedOnFirstLoad() throws {
