@@ -1,7 +1,8 @@
 name: UI screens
 
 # Renders the panel offscreen (`euclid-bar --render-screens`) for UI review:
-# one PNG per state plus flow.gif. Published as a run artifact and, for PRs from
+# one PNG per state, flow.gif, a short clip per feature (clips/), and the website's
+# demo video (`--render-demo`, demo/). Published as a run artifact and, for PRs from
 # this repo, to the `screens/pr-<number>` branch so the images can be linked.
 on:
   pull_request:
@@ -19,6 +20,8 @@ jobs:
         run: |
           swift build -c release
           "$(swift build -c release --show-bin-path)/euclid-bar" --render-screens screens
+          "$(swift build -c release --show-bin-path)/euclid-bar" --render-demo screens/demo
+          du -sh screens/clips screens/demo
       - uses: actions/upload-artifact@v4
         with:
           name: ui-screens
