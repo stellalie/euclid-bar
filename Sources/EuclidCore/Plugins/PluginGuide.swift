@@ -19,6 +19,8 @@ public enum PluginGuide {
     /// An example plugin's files, by name: `euclid-bar --plugin add github`.
     public static let examples: [String: [(name: String, text: String, executable: Bool)]] = [
         "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true)],
+        "linear": [("plugin.toml", linearManifest, false), ("items.sh", linearScript, true)],
+        "slack": [("plugin.toml", slackManifest, false), ("channels.sh", slackChannels, true), ("search.sh", slackSearch, true)],
         "tokens": [("plugin.toml", tokensManifest, false), ("today.sh", tokensScript, true)],
     ]
 
@@ -69,6 +71,80 @@ gh search prs --author=@me --state=open --limit "$limit" --json number,title,url
   --jq ".[] | $row + {label: \"Your PR\"} | tojson"
 gh search issues --assignee=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Issue\", icon: \"smallcircle.filled.circle\"} | tojson"
+"""#
+
+    static let linearManifest = #"""
+name = "Linear"
+description = "Linear issues assigned to you. Store a personal API key (Linear › Settings › Security & access) in the Keychain: security add-generic-password -s euclid-linear -a \"$USER\" -w '<key>'"
+
+[source]
+run = "./items.sh"
+refresh_minutes = 5
+
+[settings]
+token_command = "security find-generic-password -s euclid-linear -w"
+limit = 50
+"""#
+
+    static let linearScript = #"""
+#!/bin/sh
+# Linear issues assigned to you and not done. ↵ opens the issue, ⌘C copies its ID (ENG-123).
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+key=$(eval "$EUCLID_SETTING_TOKEN_COMMAND" 2>/dev/null) || key=""
+[ -n "$key" ] || { echo "no Linear API key: security add-generic-password -s euclid-linear -a \"$USER\" -w '<key>'" >&2; exit 1; }
+query='query($n: Int) { viewer { assignedIssues(first: $n, orderBy: updatedAt,
+  filter: { state: { type: { nin: ["completed", "canceled"] } } }) {
+  nodes { identifier title url state { name } team { key } } } } }'
+jq -n --arg q "$query" --argjson n "${EUCLID_SETTING_LIMIT:-50}" '{query: $q, variables: {n: $n}}' |
+  curl -fsS https://api.linear.app/graphql -H "Authorization: $key" -H 'Content-Type: application/json' --data @- |
+  jq -c 'if .errors then error(.errors[0].message) else .data.viewer.assignedIssues.nodes[] end
+         | {title, subtitle: "\(.identifier) · \(.state.name)", open: .url, id: .url, copy: .identifier,
+            label: .team.key, icon: "checklist"}'
+"""#
+
+    static let slackManifest = #"""
+name = "Slack"
+description = "Jump to your Slack channels, and search messages with `slack <words>`. Needs a user token (xoxp-) with channels:read, groups:read and search:read, in the Keychain: security add-generic-password -s euclid-slack -a \"$USER\" -w '<token>'"
+
+[source]
+run = "./channels.sh"
+refresh_minutes = 60
+
+[answer]
+run    = "./search.sh"
+prefix = "slack"
+
+[settings]
+token_command = "security find-generic-password -s euclid-slack -w"
+"""#
+
+    static let slackChannels = #"""
+#!/bin/sh
+# Channels you're in; ↵ opens them in the Slack app.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+token=$(eval "$EUCLID_SETTING_TOKEN_COMMAND" 2>/dev/null) || token=""
+[ -n "$token" ] || { echo "no Slack token: security add-generic-password -s euclid-slack -a \"$USER\" -w '<xoxp-token>'" >&2; exit 1; }
+api() { curl -fsS -H "Authorization: Bearer $token" "https://slack.com/api/$1"; }
+team=$(api auth.test | jq -r 'if .ok then .team_id else error(.error) end')
+api "users.conversations?types=public_channel,private_channel&exclude_archived=true&limit=1000" |
+  jq -c --arg team "$team" 'if .ok then .channels[] else error(.error) end
+         | {title: "#\(.name)", subtitle: (.purpose.value // ""), open: "slack://channel?team=\($team)&id=\(.id)",
+            id: .id, icon: (if .is_private then "lock" else "number" end)}'
+"""#
+
+    static let slackSearch = #"""
+#!/bin/sh
+# `slack deploy failed`: the 10 best matching messages; ↵ opens the message.
+set -eu
+token=$(eval "$EUCLID_SETTING_TOKEN_COMMAND" 2>/dev/null) || token=""
+[ -n "$token" ] || { echo "no Slack token (see plugin.toml)" >&2; exit 1; }
+q=$(jq -rn --arg q "$1" '$q | @uri')
+curl -fsS -H "Authorization: Bearer $token" "https://slack.com/api/search.messages?count=10&query=$q" |
+  jq -c 'if .ok then .messages.matches[] else error(.error) end
+         | {title: (.text | gsub("\\s+"; " ") | .[0:140]), subtitle: "#\(.channel.name) · \(.username // "")",
+            open: .permalink, id: .permalink, icon: "bubble.left", preview: .text}'
 """#
 
     static let tokensManifest = #"""
@@ -190,8 +266,12 @@ command, so quote it: `"$1"`.
 
 ## Examples
 
-`euclid-bar --plugin add github` (PRs, reviews and issues, through the `gh` CLI) and
-`euclid-bar --plugin add tokens` (today's Claude Code tokens on the bar, through `ccusage`)
-write working examples into this folder. Read them, copy them, change them.
+`euclid-bar --plugin add <name>` writes a working example into this folder. Read them, copy them,
+change them:
+
+- `github`: your PRs, review requests and issues, through the `gh` CLI (a source).
+- `linear`: Linear issues assigned to you, through the GraphQL API (a source, key in the Keychain).
+- `slack`: jump to channels, and `slack <words>` searches messages (a source and an answer).
+- `tokens`: today's Claude Code tokens and cost on the bar, through `ccusage` (a badge).
 """#
 }

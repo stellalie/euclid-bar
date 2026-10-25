@@ -203,6 +203,14 @@ import Testing
             let text = try String(contentsOf: folder.appendingPathComponent("plugin.toml"), encoding: .utf8)
             #expect(PluginLoader.parse(text, id: name, directory: folder.path, &issues) != nil)
             #expect(issues.isEmpty, "\(name): \(issues)")
+            for file in PluginGuide.examples[name]! where file.executable { // valid shell, at least
+                let check = Process()
+                check.executableURL = URL(fileURLWithPath: "/bin/sh")
+                check.arguments = ["-n", folder.appendingPathComponent(file.name).path]
+                try check.run()
+                check.waitUntilExit()
+                #expect(check.terminationStatus == 0, "\(name)/\(file.name) isn't valid sh")
+            }
         }
         #expect(throws: PluginRunner.Failure.self) { try PluginGuide.installExample("github", in: dir) }
     }
