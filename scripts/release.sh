@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build, sign, notarize and package a release.
 # Usage: scripts/release.sh 1.2.0
-#   → build/release/euclid-bar-1.2.0.dmg   (download from the website / GitHub release)
-#     build/release/euclid-bar-1.2.0.zip   (Sparkle update archive)
+#   → build/release/Euclid-1.2.0.dmg   (download from the website / GitHub release)
+#     build/release/Euclid-1.2.0.zip   (Sparkle update archive)
 #     build/release/appcast.xml            (Sparkle feed, attached to the GitHub release)
 #
 # Env (all optional; without them you get a locally signed, un-notarized build):
@@ -22,7 +22,7 @@ RELEASE_TAG="${RELEASE_TAG:-v$VERSION}"
 # stable and dev builds, so either channel can move to the other's next build.
 BUILD="$(git rev-list --count HEAD)"
 OUT="build/release"
-APP="build/euclid-bar.app"
+APP="build/Euclid.app"
 REPO_URL="https://github.com/stellalie/euclid-bar-releases" # public: downloads + Sparkle feed (source repo is private)
 
 notarize() { # <file>
@@ -43,8 +43,8 @@ lipo -info "$APP/Contents/MacOS/euclid-bar"
 codesign --verify --strict --deep "$APP" && echo "signature ok"
 
 rm -rf "$OUT" && mkdir -p "$OUT"
-ZIP="$OUT/euclid-bar-$VERSION.zip"
-DMG="$OUT/euclid-bar-$VERSION.dmg"
+ZIP="$OUT/Euclid-$VERSION.zip"
+DMG="$OUT/Euclid-$VERSION.dmg"
 
 # Apple's ticket service can lag behind "Accepted" or drop the connection; retry before failing.
 staple() {
@@ -72,9 +72,9 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 # 3. Drag-to-Applications disk image, signed and notarized on its own.
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-ditto "$APP" "$STAGE/euclid-bar.app"
+ditto "$APP" "$STAGE/Euclid.app"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "euclid-bar" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+hdiutil create -volname "Euclid" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 if can_notarize; then
   codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
   notarize "$DMG"

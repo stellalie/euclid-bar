@@ -133,15 +133,16 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 ## Install
 
-1. **Download** `euclid-bar-<version>-macos-universal.zip` from
+1. **Download** `Euclid-<version>.dmg` from
    [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
-   macOS 14+).
-2. **Unzip** and drag `euclid-bar.app` into `/Applications`.
-3. **First launch:** Euclid isn't notarized by Apple (yet), so macOS blocks it the first time. Run
+   macOS 14+). It's signed and notarized, so it opens without warnings.
+2. **Open** it and drag `Euclid.app` into `/Applications`.
+3. **Command line** *(optional)*: the CLI inside is `euclid-bar`. To type it short:
    ```sh
-   xattr -dr com.apple.quarantine /Applications/euclid-bar.app
+   alias euclid-bar=/Applications/Euclid.app/Contents/MacOS/euclid-bar
    ```
-   or open it once, then click **Open Anyway** in **System Settings › Privacy & Security**.
+   Installed before v1.2? Updates keep your copy at `/Applications/euclid-bar.app`; rename it to
+   `Euclid.app` in Finder whenever you like (settings, permissions and updates carry over).
 4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…*, *Check for Updates…*,
    *Install Updates Automatically*, *Send Feedback…* and *Quit*. Typing `update` in the bar finds the two update items.
 
@@ -304,7 +305,7 @@ strings are skipped.
 Validate it from a terminal (great in dotfiles CI):
 
 ```sh
-/Applications/euclid-bar.app/Contents/MacOS/euclid-bar --check-config
+/Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
 ```
 
 ### Coming from Raycast or Alfred
@@ -392,13 +393,13 @@ page about rebase I read yesterday", "my deploy notes". Read-only, and nothing l
 except what your agent asks for.
 
 ```sh
-claude mcp add euclid -- /Applications/euclid-bar.app/Contents/MacOS/euclid-bar --mcp
+claude mcp add euclid -- /Applications/Euclid.app/Contents/MacOS/euclid-bar --mcp
 ```
 
 ```toml
 # Codex: ~/.codex/config.toml
 [mcp_servers.euclid]
-command = "/Applications/euclid-bar.app/Contents/MacOS/euclid-bar"
+command = "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
 args    = ["--mcp"]
 ```
 
@@ -519,7 +520,7 @@ Every `make` target checks this first and prints the fix.
 
 ```sh
 git clone https://github.com/stellalie/euclid-bar && cd euclid-bar
-make run       # build build/euclid-bar.app and launch it
+make run       # build build/Euclid.app and launch it
 make test      # unit tests
 make perf      # release-mode search benchmarks
 make screens   # render every panel state + docs/flow.gif from the real UI

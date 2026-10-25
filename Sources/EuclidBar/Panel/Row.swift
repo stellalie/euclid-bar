@@ -120,7 +120,7 @@ enum Row {
         case .bitbucket: "Bitbucket"
         case .jira: "Jira"
         case .task(_, let project): "Tasks · \(project)"
-        case .command: "euclid-bar"
+        case .command: "Euclid"
         case .plugin(let e): e.pluginName
         }
     }

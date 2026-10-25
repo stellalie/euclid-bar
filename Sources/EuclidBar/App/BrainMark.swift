@@ -48,7 +48,7 @@ enum BrainMark {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "euclid-bar"
+        image.accessibilityDescription = "Euclid"
         return image
     }
 

@@ -21,7 +21,7 @@ fail() {
   echo "  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer make run     # this build only, no sudo" >&2
   echo "  xcode-select --install                                                # update Command Line Tools" >&2
   echo >&2
-  echo "Or skip building: download the app from https://github.com/stellalie/euclid-bar/releases/latest" >&2
+  echo "Or skip building: download the app from https://github.com/stellalie/euclid-bar-releases/releases/latest" >&2
   exit 1
 }
 

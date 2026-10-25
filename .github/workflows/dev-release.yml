@@ -70,7 +70,7 @@ jobs:
           gh release upload dev --repo "$REPO" --clobber build/release/*.zip build/release/*.dmg
           gh release upload dev --repo "$REPO" --clobber build/release/appcast.xml
           for asset in $(gh release view dev --repo "$REPO" --json assets -q '.assets[].name'); do
-            case "$asset" in appcast.xml|"euclid-bar-$VERSION".*) ;; *) gh release delete-asset dev "$asset" --repo "$REPO" --yes ;; esac
+            case "$asset" in appcast.xml|"Euclid-$VERSION".*) ;; *) gh release delete-asset dev "$asset" --repo "$REPO" --yes ;; esac
           done
           gh release edit dev --repo "$REPO" --title "Dev build $VERSION" \
-            --notes "euclid-bar $VERSION, built from main @ $(git rev-parse --short HEAD). For testing: set \`[updates] channel = \"dev\"\` to get these automatically."
+            --notes "Euclid $VERSION, built from main @ $(git rev-parse --short HEAD). For testing: set \`[updates] channel = \"dev\"\` to get these automatically."
