@@ -65,6 +65,7 @@ import Testing
             """, directory: dir)
         #expect(loaded.config.plugins.isEmpty)
         #expect(loaded.config.actions.isEmpty)
+        #expect(PluginList.lines(loaded.config) == ["PLUGIN  ON   NAME", "github  off  GitHub"])
         #expect(loaded.issues.map(\.message) == ["[plugin.gitlab]: no plugin named 'gitlab' is installed"])
     }
 
@@ -78,6 +79,7 @@ import Testing
         }
         let loaded = try ConfigLoader.parse("[plugins]\npaths = [\"team\"]", directory: dir)
         #expect(loaded.config.plugins.map(\.name) == ["GitHub", "Team runbooks"])
+        #expect(PluginList.lines(loaded.config) == ["PLUGIN    ON   NAME", "github    on   GitHub", "runbooks  on   Team runbooks"])
     }
 
     @Test func manifestProblemsAreReported() {

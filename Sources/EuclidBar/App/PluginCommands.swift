@@ -52,9 +52,15 @@ enum PluginCommands {
             return add(what, into: paths.pluginsDirectory)
         case ("list", nil):
             let loaded = try? ConfigLoader.loadOrCreate(at: paths.configFile)
-            for p in loaded?.config.plugins ?? [] { print("\(p.id)  \(p.name)  \(p.description)") }
-            print("examples you can add: \(PluginGuide.examples.keys.sorted().joined(separator: ", "))")
-            print("guide: \(paths.pluginsDirectory.appendingPathComponent("AGENTS.md").path)")
+            let config = loaded?.config ?? EuclidConfig()
+            for line in PluginList.lines(config) { print(line) }
+            for issue in loaded?.issues ?? [] where issue.message.hasPrefix("plugin ") { print("⚠︎ \(issue.message)") }
+            let installed = Set(PluginList.rows(config).map(\.id))
+            let more = PluginGuide.examples.keys.filter { !installed.contains($0) }.sorted()
+            print("")
+            if !more.isEmpty { print("Add one:   euclid-bar --plugin add <\(more.joined(separator: "|"))>") }
+            print("Turn off:  [plugins] disabled = [\"<plugin>\"] in ~/.config/euclid/config.toml")
+            print("Write one: ask your coding agent to read ~/.config/euclid/plugins/AGENTS.md")
             return 0
         default:
             print("""
