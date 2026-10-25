@@ -22,6 +22,10 @@ public enum PluginGuide {
         "linear": [("plugin.toml", linearManifest, false), ("items.sh", linearScript, true)],
         "slack": [("plugin.toml", slackManifest, false), ("channels.sh", slackChannels, true), ("search.sh", slackSearch, true)],
         "tokens": [("plugin.toml", tokensManifest, false), ("today.sh", tokensScript, true)],
+        "define": [("plugin.toml", defineManifest, false), ("define.js", defineScript, false)],
+        "currency": [("plugin.toml", currencyManifest, false), ("convert.sh", currencyScript, true)],
+        "contacts": [("plugin.toml", contactsManifest, false), ("people.js", contactsScript, false)],
+        "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -171,6 +175,113 @@ if command -v ccusage >/dev/null 2>&1; then set -- ccusage; else set -- npx -y c
                  printf "%s tok · $%.2f\n", s, $2 }'
 """#
 
+    static let defineManifest = #"""
+name = "Dictionary"
+description = "`define serendipity`: the macOS Dictionary's definition. ↵ opens it in Dictionary, ⌘C copies it."
+
+[answer]
+run    = 'osascript -l JavaScript ./define.js "$1"'
+prefix = "define"
+"""#
+
+    static let defineScript = #"""
+// The definition from the dictionaries you turned on in Dictionary.app, via Dictionary Services.
+ObjC.import('CoreServices')
+
+function run(argv) {
+  const word = argv.join(' ')
+  const open = 'dict://' + encodeURIComponent(word)
+  const ref = $.DCSCopyTextDefinition(null, $(word), $.NSMakeRange(0, word.length))
+  const text = ref ? ObjC.unwrap(ObjC.castRefToObject(ref)) : ''
+  if (!text) return JSON.stringify({ title: 'No definition for “' + word + '”', subtitle: 'Open Dictionary', open, icon: 'character.book.closed' })
+  return JSON.stringify({
+    title: text.replace(/\s+/g, ' ').slice(0, 140), subtitle: word + ' · Dictionary',
+    open, copy: text, preview: text, id: open, icon: 'character.book.closed',
+  })
+}
+"""#
+
+    static let currencyManifest = #"""
+name = "Currency"
+description = "`100 usd to eur`: converts with daily rates from open.er-api.com (free, no key). ↵ copies the amount."
+
+[answer]
+run    = "./convert.sh"
+match  = '(?i)^\d[\d,.]*\s*[a-z]{3}\s+(to|in)\s+[a-z]{3}$'
+prefix = "cur"      # or `cur 100 usd eur`
+"""#
+
+    static let currencyScript = #"""
+#!/bin/sh
+# Rates are cached for an hour outside this folder (writing here would reload the plugin).
+set -euf
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+# "100usd TO eur" → 100 USD EUR
+set -- $(printf '%s' "$1" | tr 'a-z' 'A-Z' | sed -E 's/,//g; s/([0-9])([A-Z])/\1 \2/; s/ (TO|IN) / /')
+[ $# -eq 3 ] || { echo "try: 100 usd to eur" >&2; exit 1; }
+amount=$1 from=$2 to=$3
+cache="${TMPDIR:-/tmp}/euclid-rates-$from.json"
+if [ ! -s "$cache" ] || [ -n "$(find "$cache" -mmin +60)" ]; then
+  # Not a currency (e.g. `10 kgs in lbs`): show nothing.
+  curl -fsS --max-time 1.5 "https://open.er-api.com/v6/latest/$from" > "$cache.tmp" 2>/dev/null || { rm -f "$cache.tmp"; exit 0; }
+  mv "$cache.tmp" "$cache"
+fi
+jq -c --arg to "$to" --arg from "$from" --arg n "$amount" '
+  select(.result == "success" and .rates[$to] != null)
+  | ($n | tonumber) as $a | .rates[$to] as $r | ($a * $r * 100 | round / 100 | tostring) as $v
+  | {title: "\($v) \($to)", subtitle: "\($n) \($from) · 1 \($from) = \($r) \($to) · \(.time_last_update_utc)",
+     copy: $v, icon: "dollarsign.arrow.circlepath", label: "Currency"}' "$cache"
+"""#
+
+    static let contactsManifest = #"""
+name = "Contacts"
+description = "People in Contacts by name, company, email or phone. ↵ opens the card, ⌘C copies the email. macOS asks once for access."
+
+[source]
+run = "osascript -l JavaScript ./people.js"
+refresh_minutes = 60
+"""#
+
+    static let contactsScript = #"""
+// Everyone in Contacts, one JSON line each. Reads whole columns at once, which is fast.
+function run() {
+  const people = Application('Contacts').people
+  const ids = people.id(), names = people.name(), orgs = people.organization()
+  const emails = people.emails.value(), phones = people.phones.value()
+  return ids.map((id, i) => {
+    const name = names[i] || orgs[i]
+    if (!name) return null
+    const email = (emails[i] || [])[0], phone = (phones[i] || [])[0]
+    return JSON.stringify({
+      title: name, subtitle: [orgs[i] !== name ? orgs[i] : null, email, phone].filter(Boolean).join(' · '),
+      open: 'addressbook://' + id, copy: email || phone || name, id, icon: 'person.crop.circle',
+    })
+  }).filter(Boolean).join('\n')
+}
+"""#
+
+    static let shortcutsManifest = #"""
+name = "Shortcuts"
+description = "Your Shortcuts by name. ↵ runs one."
+
+[source]
+run = "./list.sh"
+refresh_minutes = 30
+
+[[action]]
+name = "Open in Shortcuts"
+run  = 'open "shortcuts://open-shortcut?name=$EUCLID_QUERY_URL"'
+"""#
+
+    static let shortcutsScript = #"""
+#!/bin/sh
+# One row per shortcut; ↵ runs it with the shortcuts CLI.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+shortcuts list | jq -Rc 'select(length > 0)
+  | {title: ., subtitle: "Shortcut", run: "shortcuts run \(@sh)", id: ., icon: "square.2.layers.3d"}'
+"""#
+
     public static let guide = marker + "\n" + #"""
 # Euclid plugins
 
@@ -273,5 +384,9 @@ change them:
 - `linear`: Linear issues assigned to you, through the GraphQL API (a source, key in the Keychain).
 - `slack`: jump to channels, and `slack <words>` searches messages (a source and an answer).
 - `tokens`: today's Claude Code tokens and cost on the bar, through `ccusage` (a badge).
+- `define`: `define <word>` from the macOS Dictionary, in JavaScript for Automation (an answer).
+- `currency`: `100 usd to eur` with daily rates, cached (an answer with a `match`).
+- `contacts`: people in Contacts, through JavaScript for Automation (a source).
+- `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
 """#
 }

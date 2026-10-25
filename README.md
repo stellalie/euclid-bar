@@ -54,6 +54,20 @@ and the list never reshuffles under your cursor.
 | **Actions** | Your shell commands, run on what you typed |
 | **Plugins** | Anything a script can print: [your own sources, answers and badges](#plugins) |
 
+**Add only what you use.** These ship as plugins, so they cost nothing until you add one
+with `euclid-bar --plugin add <name>`:
+
+| Plugin | What you get |
+|---|---|
+| `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI |
+| `linear` *(plugin)* | Linear issues assigned to you |
+| `slack` *(plugin)* | Jump to channels; `slack <words>` searches messages |
+| `contacts` *(plugin)* | People by name, company, email or phone; `↵` opens the card |
+| `shortcuts` *(plugin)* | Run your Shortcuts by name |
+| `define` *(plugin)* | `define serendipity` from the macOS Dictionary |
+| `currency` *(plugin)* | `100 usd to eur` with daily rates (no key) |
+| `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
+
 **Answers as you type.** `↵` copies the answer.
 
 | Type | Get |
@@ -415,6 +429,7 @@ euclid-bar --plugin add github      # your PRs, reviews and issues (needs the gh
 euclid-bar --plugin add linear      # Linear issues assigned to you
 euclid-bar --plugin add slack       # jump to channels; `slack <words>` searches messages
 euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
+euclid-bar --plugin add currency    # `100 usd to eur`; also define, contacts, shortcuts
 euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
 euclid-bar --try-plugin github      # run it once and print what the bar would show
 ```

@@ -213,5 +213,13 @@ import Testing
             }
         }
         #expect(throws: PluginRunner.Failure.self) { try PluginGuide.installExample("github", in: dir) }
+
+        // The currency answer wakes on conversions, not on the calculator's units.
+        var issues: [ConfigIssue] = []
+        let currency = try #require(PluginLoader.parse(PluginGuide.currencyManifest, id: "currency", directory: "/x", &issues)?.answer)
+        #expect(currency.input(for: "100 USD to eur") == "100 USD to eur")
+        #expect(currency.input(for: "1,250.5aud in jpy") != nil)
+        #expect(currency.input(for: "cur 100 usd eur") == "100 usd eur")
+        #expect(currency.input(for: "1.5 gb in mb") == nil)
     }
 }
