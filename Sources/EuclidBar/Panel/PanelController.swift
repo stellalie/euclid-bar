@@ -18,14 +18,6 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let projects: BackgroundIndex<ProjectEntry>
     private let files: FileSearchService
     private let contentSearch: ContentService
-    private let bitbucket = RemoteSourceService<BitbucketSettings, BitbucketItem>(
-        name: "Bitbucket", table: "bitbucket",
-        fetch: { try await BitbucketClient(settings: $0, token: $1).fetchAll() },
-        searchItem: { $0.searchItem(id: $1) })
-    private let jira = RemoteSourceService<JiraSettings, JiraIssue>(
-        name: "Jira", table: "jira",
-        fetch: { try await JiraClient(settings: $0, token: $1).fetchAll() },
-        searchItem: { $0.searchItem(id: $1) })
     private let plugins: PluginService
     private let ranking: RankingService
     /// euclid-bar's own commands, for search. The app delegate runs them.
@@ -75,10 +67,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.clip = { [unowned clipboard] id in clipboard.history.clip(id: id) }
         content.clipImage = { [unowned clipboard] clip in clipboard.image(for: clip) }
         content.onPasteText = { [weak self] text in self?.pasteText(text) }
-        content.onOpenURL = { [weak self] url in
-            self?.hide()
-            if let u = URL(string: url) { NSWorkspace.shared.open(u) }
-        }
         content.onOpenNote = { [weak self] path in self?.openNote(path: path) }
         content.onPreferredSizeChange = { [weak self] size in self?.resize(to: size) }
         content.onRunAction = { [weak self] action, query in self?.run(action, query: query) }
@@ -90,21 +78,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.historyProvider = { [unowned history] in history.items }
         content.historyURL = { [unowned history] id in history.entry(id: id)?.url }
         content.favicon = { [unowned history] host in history.favicon(host: host) }
-        content.bitbucketProvider = { [unowned bitbucket] in bitbucket.items }
-        content.bitbucketItem = { [unowned bitbucket] id in bitbucket.entry(id: id) }
-        content.jiraProvider = { [unowned jira] in jira.items }
-        content.jiraIssue = { [unowned jira] id in jira.entry(id: id) }
-        content.jiraBaseURL = { [unowned jira] in jira.settings?.baseURL }
         content.contentSearch = { [unowned contentSearch] text in contentSearch.search(text) }
         content.contentBody = { [unowned contentSearch] ref in contentSearch.body(ref: ref) }
         contentSearch.onResults = { [weak self] text, hits in self?.content.setContentResults(hits, for: text) }
-        let remoteChanged = { [weak self] in
-            guard let self else { return }
-            self.updateProblem()
-            if self.panel.isVisible { self.content.refreshAfterExternalChange() }
-        }
-        bitbucket.onChange = remoteChanged
-        jira.onChange = remoteChanged
         content.pluginProvider = { [unowned plugins] in plugins.items }
         content.pluginEntry = { [unowned plugins] id in plugins.entry(id: id) }
         content.pluginAnswer = { [unowned plugins] text in plugins.answer(text) }
@@ -195,8 +171,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
         contentSearch.configure(vault: settings.obsidianVault)
-        bitbucket.configure(settings.bitbucket, shell: settings.shellPath, environment: settings.environment)
-        jira.configure(settings.jira, shell: settings.shellPath, environment: settings.environment)
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
         content.badges = plugins.badges
         content.modKeys = plugins.keys
@@ -249,7 +223,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func updateProblem() {
-        content.problem = config.problemSummary ?? extraProblem() ?? history.problem ?? bitbucket.problem ?? jira.problem ?? plugins.problem
+        content.problem = config.problemSummary ?? extraProblem() ?? history.problem ?? plugins.problem
     }
 
     /// A `[hotkeys]` hotkey: open, run or paste what it names, without showing the panel.
@@ -390,8 +364,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         history.refreshIfStale()
         apps.refreshIfStale()
         projects.refreshIfStale()
-        bitbucket.refreshIfStale()
-        jira.refreshIfStale()
         plugins.refreshIfStale()
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results

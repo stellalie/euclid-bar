@@ -124,17 +124,12 @@ import Testing
 
             [obsidian]
             vault = "~/Notes"
-
-            [bitbucket]
-            email = "me@example.com"
-            repos = ["team/app", "bad"]
             """)
         #expect(c.config.appearance.accent == "#7c5cff")
         #expect(c.config.appearance.density == .compact)
         #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed)
         #expect(c.config.obsidianVault == "~/Notes")
-        #expect(c.config.bitbucket?.repos == ["team/app"])
-        #expect(c.issues.count == 1) // the bad repo slug; the old, off [pages] table is ignored quietly
+        #expect(c.issues.isEmpty) // the old, off [pages] table is ignored quietly
     }
 
     @Test func removedPagesTableSaysSoOnlyWhenOn() throws {
@@ -147,22 +142,9 @@ import Testing
             [appearance]
             accent = "purple"
             density = "huge"
-
-            [bitbucket]
-            enabled = true
             """)
         #expect(c.config.appearance == Appearance())
-        #expect(c.config.bitbucket == nil) // Cloud needs an email
-        #expect(c.issues.count == 3)
-    }
-
-    @Test func dataCenterNeedsNoEmail() throws {
-        let c = try ConfigLoader.parse("""
-            [bitbucket]
-            base_url = "https://stash.example.com/"
-            """)
-        #expect(c.config.bitbucket?.baseURL == "https://stash.example.com")
-        #expect(c.config.bitbucket?.isCloud == false)
+        #expect(c.issues.count == 2)
     }
 
     @Test func defaultConfigStillClean() throws {
@@ -210,59 +192,5 @@ import Testing
         try FileManager.default.removeItem(at: vault.appendingPathComponent("Standup.md"))
         try index.syncNotes(vault: vault)
         #expect(try index.search("rollout").isEmpty)
-    }
-}
-
-@Suite struct BitbucketTests {
-    final class Calls: @unchecked Sendable { var paths: [String] = []; var auth: [String] = [] }
-
-    func client(_ settings: BitbucketSettings, _ responses: [String: String], calls: Calls) -> BitbucketClient {
-        BitbucketClient(settings: settings, token: "tok") { request in
-            let url = request.url!.absoluteString
-            calls.paths.append(url)
-            calls.auth.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
-            guard let body = responses.first(where: { url.contains($0.key) })?.value else { return (Data(), 404) }
-            return (Data(body.utf8), 200)
-        }
-    }
-
-    @Test func cloud() async throws {
-        var s = BitbucketSettings()
-        s.email = "me@example.com"
-        let calls = Calls()
-        let c = client(s, [
-            "/user": #"{"uuid":"{abc}"}"#,
-            "/repositories?role=member": #"{"values":[{"full_name":"team/app","links":{"html":{"href":"https://bitbucket.org/team/app"}},"updated_on":"2024-01-01T12:00:00.123456+00:00"}]}"#,
-            "/pullrequests/%7Babc%7D": #"{"values":[{"id":7,"title":"Fix login","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/7"}},"destination":{"repository":{"full_name":"team/app"}},"author":{"display_name":"Me"}}]}"#,
-            "/repositories/team/app/pullrequests": #"{"values":[{"id":9,"title":"Add cache","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/9"}},"author":{"display_name":"Sam"}}]}"#,
-        ], calls: calls)
-        let items = try await c.fetchAll()
-        #expect(items.map(\.kind) == [.reviewPR, .myPR, .repo])
-        #expect(items[1].subtitle == "team/app · #7 · Me")
-        #expect(items[2].updated != nil)
-        #expect(calls.auth.allSatisfy { $0 == "Basic " + Data("me@example.com:tok".utf8).base64EncodedString() })
-    }
-
-    @Test func dataCenter() async throws {
-        var s = BitbucketSettings()
-        s.baseURL = "https://stash.example.com"
-        let calls = Calls()
-        let pr = #"{"values":[{"id":3,"title":"Bump deps","updatedDate":1700000000000,"links":{"self":[{"href":"https://stash.example.com/projects/P/repos/r/pull-requests/3"}]},"toRef":{"repository":{"slug":"r","project":{"key":"P"}}},"author":{"user":{"displayName":"Ana"}}}]}"#
-        let c = client(s, [
-            "role=AUTHOR": #"{"values":[]}"#,
-            "role=REVIEWER": pr,
-            "recent/repos": #"{"values":[{"slug":"r","project":{"key":"P"},"links":{"self":[{"href":"https://stash.example.com/projects/P/repos/r"}]}}]}"#,
-        ], calls: calls)
-        let items = try await c.fetchAll()
-        #expect(items.map(\.title) == ["Bump deps", "P/r"])
-        #expect(items[0].subtitle == "P/r · #3 · Ana")
-        #expect(calls.auth.allSatisfy { $0 == "Bearer tok" })
-    }
-
-    @Test func authFailureIsReadable() async {
-        var s = BitbucketSettings()
-        s.baseURL = "https://stash.example.com"
-        let c = BitbucketClient(settings: s, token: "x") { _ in (Data(), 401) }
-        await #expect(throws: BitbucketClient.Failure.self) { try await c.fetchAll() }
     }
 }

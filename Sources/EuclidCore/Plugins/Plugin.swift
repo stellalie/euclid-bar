@@ -104,7 +104,7 @@ public struct Plugin: Equatable, Sendable {
         /// Shown in the footer when the key applies.
         public let name: String
         public let run: String
-        /// Kinds of result it applies to ("file", "pr", or a plugin's id); empty = any.
+        /// Kinds of result it applies to ("file", "project", or a plugin's id); empty = any.
         public let when: [String]
 
         public init(key: HotkeySpec, name: String, run: String, when: [String] = []) {
@@ -290,7 +290,8 @@ public enum PluginLoader {
         return plugin
     }
 
-    /// `[settings]` / `[plugin.<id>]`: strings, numbers and booleans, passed on as text.
+    /// `[settings]` / `[plugin.<id>]`: strings, numbers and booleans, passed on as text;
+    /// a list of strings as one space-separated string.
     static func settings(_ t: TOMLTable, in place: String, _ issues: inout [ConfigIssue]) -> [String: String] {
         var out: [String: String] = [:]
         for key in t.keys.sorted() {
@@ -300,7 +301,10 @@ public enum PluginLoader {
             if let s = try? t.string(forKey: key) { out[key] = s }
             else if let n = try? t.integer(forKey: key) { out[key] = String(n) }
             else if let b = try? t.bool(forKey: key) { out[key] = String(b) }
-            else { issues.append(.warning("\(place).\(key) must be a string, number or true/false")) }
+            else if let a = try? t.array(forKey: key), let list = try? (0..<a.count).map({ try a.string(atIndex: $0) }) {
+                out[key] = list.joined(separator: " ")
+            }
+            else { issues.append(.warning("\(place).\(key) must be a string, number, true/false or a list of strings")) }
         }
         return out
     }
@@ -317,7 +321,7 @@ public enum PluginLoader {
     static let reservedKeys: [HotkeySpec: String] = {
         var keys: [HotkeySpec: String] = [:]
         func add(_ text: String, _ what: String) { if case .success(let s) = HotkeySpec.parse(text) { keys[s] = what } }
-        add("cmd+k", "actions"); add("cmd+y", "preview"); add("cmd+c", "copy"); add("cmd+shift+c", "copy branch")
+        add("cmd+k", "actions"); add("cmd+y", "preview"); add("cmd+c", "copy")
         add("cmd+return", "first action"); add("cmd+a", "select all"); add("cmd+x", "cut"); add("cmd+v", "paste")
         add("cmd+z", "undo"); add("cmd+q", "quit"); add("cmd+w", "close"); add("cmd+h", "hide")
         for n in 0...9 { add("cmd+\(n)", "action \(n)") }

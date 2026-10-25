@@ -53,7 +53,7 @@ public enum PluginTrial {
                 lines.append("on \(hook.event.rawValue): not run; pass sample text after the plugin name to try it")
                 continue
             }
-            let item = ModItem(kind: "page", title: query, url: query)
+            let item = ModItem(kind: "history", title: query, url: query)
             guard let data = await attempt("on \(hook.event.rawValue)", hook.run, query: query, environment: hook.event == .choose ? item.environment : [:],
                                            timeout: PluginTiming.hook) else { continue }
             let effects = PluginEffect.parse(data)

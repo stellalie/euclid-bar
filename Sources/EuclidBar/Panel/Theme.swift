@@ -37,8 +37,6 @@ struct Theme {
         case .transform: .systemTeal
         case .snippet: .systemPink
         case .content: .systemPurple
-        case .bitbucket: .systemBlue
-        case .jira: .systemCyan
         case .plugin: .systemMint
         case .app, .project, .file, .header: .secondaryLabelColor
         }

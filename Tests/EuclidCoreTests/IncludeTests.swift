@@ -19,7 +19,7 @@ import Testing
         [[snippet]]
         name = "PR template"
         text = "## Why"
-        [bitbucket]
+        [plugin.bitbucket]
         base_url = "https://bitbucket.example.com"
         """
 
@@ -40,7 +40,7 @@ import Testing
             run = 'open mine'
             """, files: ["/home/me/.config/euclid/team.toml": team])
         let c = loaded.config
-        #expect(loaded.issues.isEmpty, "\(loaded.issues)")
+        #expect(loaded.issues.map(\.message) == ["[plugin.bitbucket]: no plugin named 'bitbucket' is installed"])
         #expect(loaded.includedFiles == ["/home/me/.config/euclid/team.toml"])
         #expect(c.hotkey == HotkeySpec(modifiers: [.command], key: "space"))
         #expect(c.environment == ["TEAM": "platform", "SHARED": "mine"])
@@ -49,23 +49,32 @@ import Testing
         #expect(c.actions[1].run == "open mine")
         #expect(c.snippets.map(\.name) == ["PR template"])
         #expect(c.aliases.match("dash")?.target == "Team dashboard")
-        #expect(c.bitbucket?.baseURL == "https://bitbucket.example.com")
+        #expect(c.pluginSettings["bitbucket"]?["base_url"] == "https://bitbucket.example.com")
     }
 
     @Test func teamSetsTheServerYouSetTheEmail() throws {
-        let cloudTeam = """
-            [bitbucket]
-            repos = ["team/app"]
-            """
-        let files = ["/srv/team.toml": cloudTeam]
-        let withEmail = try parse("include = \"/srv/team.toml\"\n[bitbucket]\nemail = \"me@example.com\"", files: files)
-        #expect(withEmail.issues.isEmpty, "\(withEmail.issues)")
-        #expect(withEmail.config.bitbucket?.repos == ["team/app"])
-        #expect(withEmail.config.bitbucket?.email == "me@example.com")
+        let files = ["/srv/team.toml": "[plugin.bitbucket]\nrepos = [\"team/app\"]\nemail = \"team@example.com\""]
+        let loaded = try parse("include = \"/srv/team.toml\"\n[plugin.bitbucket]\nemail = \"me@example.com\"", files: files)
+        #expect(loaded.config.pluginSettings["bitbucket"] == ["repos": "team/app", "email": "me@example.com"])
+    }
 
-        let noEmail = try parse("include = \"/srv/team.toml\"", files: files)
-        #expect(noEmail.config.bitbucket == nil)
-        #expect(noEmail.issues.map(\.message) == ["bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"])
+    @Test func oldBitbucketAndJiraTablesCarryOverToThePlugins() throws {
+        let loaded = try parse("""
+            [bitbucket]
+            email = "me@example.com"
+            repos = ["team/app", "team/api"]
+            refresh_minutes = 5
+            [jira]
+            base_url = "https://acme.atlassian.net"
+            [plugin.jira]
+            base_url = "https://new.atlassian.net"
+            """, files: [:])
+        #expect(loaded.config.pluginSettings["bitbucket"] == ["email": "me@example.com", "repos": "team/app team/api"])
+        #expect(loaded.config.pluginSettings["jira"] == ["base_url": "https://new.atlassian.net"]) // [plugin.jira] wins
+        #expect(loaded.issues.map(\.message) == [
+            "[bitbucket] is now a plugin: run `euclid-bar --plugin add bitbucket` (your settings carry over), then rename the table to [plugin.bitbucket]",
+            "[jira] is now a plugin: run `euclid-bar --plugin add jira` (your settings carry over), then rename the table to [plugin.jira]",
+        ])
     }
 
     @Test func badIncludesAreWarningsNotFatal() throws {

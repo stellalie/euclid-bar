@@ -5,7 +5,7 @@ public enum DefaultConfig {
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
 
-# Shared files (your team's actions, snippets, Bitbucket server) read underneath this one.
+# Shared files (your team's actions, snippets, plugin settings) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.
 # include = ["~/work/team-dotfiles/euclid.toml"]
 
@@ -72,24 +72,6 @@ show_speed = true                # "12,431 items · 0.6 ms" in the footer
 [obsidian]
 # vault = "~/Notes"
 
-# Bitbucket: your open PRs, PRs waiting on your review, and your repos (↵ opens in the browser).
-# Cloud: email + an API token (id.atlassian.com › Security › API tokens), stored in the Keychain:
-#   security add-generic-password -s euclid-bitbucket -a "$USER" -w <token>
-# Data Center: set base_url to your server and use an HTTP access token (no email).
-# [bitbucket]
-# email         = "you@example.com"
-# base_url      = "https://api.bitbucket.org/2.0"     # or "https://bitbucket.example.com"
-# token_command = "security find-generic-password -s euclid-bitbucket -w"
-# repos         = ["workspace/repo"]   # Cloud: where to look for review requests (default: your 10 latest repos)
-# refresh_minutes = 5
-
-# Jira: issues assigned to you and ones you viewed lately; type a key (ABC-123) to open it.
-# ⌘C copies the key, ⇧⌘C a branch name. Token in the Keychain, like Bitbucket's:
-#   security add-generic-password -s euclid-jira -a "$USER" -w <token>
-# [jira]
-# base_url = "https://your-site.atlassian.net"   # or your Data Center server
-# email    = "you@example.com"                   # Cloud only
-
 # What `euclid-bar --mcp` lets your coding agents (Claude Code, Codex) search. Read-only, local.
 [agents]
 share = ["clipboard", "notes", "history"]
@@ -137,7 +119,7 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # run  = 'ghostty-run tab pi "$1"'          # or: split, window
 
 # Plugins: folders in ~/.config/euclid/plugins; AGENTS.md there is the whole format.
-# `euclid-bar --plugin add github` adds an example.
+# `euclid-bar --plugin add github` adds an example (also: bitbucket, jira, linear, slack…).
 # [plugins]
 # paths    = ["~/work/team/euclid-plugins"]   # a team's shared plugins
 # disabled = ["github"]

@@ -49,10 +49,6 @@ public struct EuclidConfig: Equatable, Sendable {
     public var commandHotkeys: [CommandHotkey] = []
     /// Obsidian vault for note search (`[obsidian] vault`). Nil = off.
     public var obsidianVault: String?
-    /// Bitbucket integration (`[bitbucket]`). Nil = off.
-    public var bitbucket: BitbucketSettings?
-    /// Jira integration (`[jira]`). Nil = off.
-    public var jira: JiraSettings?
     /// What `euclid-bar --mcp` shares with coding agents (`[agents] share`).
     public var agentShare = Set(AgentTools.Source.allCases)
     /// Sparkle auto-update (`[updates]`).
@@ -66,6 +62,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var pluginDirectories: [String] = []
     /// `[plugin.<id>]`: your values for a plugin's settings.
     public var pluginSettings: [String: [String: String]] = [:]
+    /// Old built-in integrations found in the file (`[bitbucket]`, `[jira]`), now plugins.
+    var movedToPlugins: Set<String> = []
 
     public init() {}
 }
@@ -107,43 +105,6 @@ public struct Appearance: Equatable, Sendable {
     }
 }
 
-/// What a background-fetched integration needs: where its token comes from and how often to refresh.
-public protocol RemoteSourceSettings: Equatable, Sendable {
-    var tokenCommand: String { get }
-    var refreshMinutes: Int { get }
-}
-
-/// `[bitbucket]`: Cloud (api.bitbucket.org) or Data Center (your server's URL).
-public struct BitbucketSettings: RemoteSourceSettings {
-    public var baseURL = "https://api.bitbucket.org/2.0"
-    /// Cloud: your Atlassian account email (API tokens use Basic auth). Data Center: leave empty (Bearer token).
-    public var email = ""
-    /// Prints the token. Keeps secrets out of config.toml (Keychain, 1Password CLI…).
-    public var tokenCommand = "security find-generic-password -s euclid-bitbucket -w"
-    /// Cloud: "workspace/repo" slugs checked for PRs waiting on your review. Empty = your most recently updated repos.
-    public var repos: [String] = []
-    public var refreshMinutes = 5
-
-    public var isCloud: Bool { baseURL.contains("api.bitbucket.org") }
-    public init() {}
-}
-
-/// `[jira]`: Cloud (`https://<site>.atlassian.net`) or Data Center (your server's URL).
-public struct JiraSettings: RemoteSourceSettings {
-    /// Required: there's no default Jira.
-    public var baseURL = ""
-    /// Cloud: your Atlassian account email (API tokens use Basic auth). Data Center: leave empty (Bearer token).
-    public var email = ""
-    public var tokenCommand = "security find-generic-password -s euclid-jira -w"
-    /// Which issues to keep in search.
-    public var jql = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
-    /// Also the issues you viewed lately.
-    public var recent = true
-    public var refreshMinutes = 5
-
-    public var isCloud: Bool { URL(string: baseURL)?.host?.hasSuffix(".atlassian.net") ?? false }
-    public init() {}
-}
 
 public struct ConfigIssue: Equatable, Sendable, CustomStringConvertible {
     public enum Severity: String, Sendable { case error, warning }
@@ -248,18 +209,6 @@ public enum ConfigLoader {
             }
         }
 
-        // Checked once everything is merged: a team file can set base_url and repos, you the email.
-        if let b = config.bitbucket, b.isCloud, b.email.isEmpty {
-            issues.append(.warning("bitbucket.email is required for Bitbucket Cloud (your Atlassian account email)"))
-            config.bitbucket = nil
-        }
-        if let j = config.jira, j.baseURL.isEmpty {
-            issues.append(.warning("jira.base_url is required, e.g. \"https://your-site.atlassian.net\""))
-            config.jira = nil
-        } else if let j = config.jira, j.isCloud, j.email.isEmpty {
-            issues.append(.warning("jira.email is required for Jira Cloud (your Atlassian account email)"))
-            config.jira = nil
-        }
 
         // Plugins: <config>/plugins first, then [plugins] paths. Their actions come after everyone else's.
         var pluginFiles: [String] = []
@@ -277,6 +226,13 @@ public enum ConfigLoader {
                                                  directory: plugin.directory, environment: plugin.environment))
                 }
             }
+        }
+        // Old [bitbucket] / [jira] tables: say what to do, now that we know whether the plugin is there.
+        for name in config.movedToPlugins.sorted() {
+            issues.removeAll { $0.message == "[plugin.\(name)]: no plugin named '\(name)' is installed" }
+            issues.append(.warning(config.plugins.contains { $0.id == name }
+                ? "[\(name)] is now [plugin.\(name)]: rename the table"
+                : "[\(name)] is now a plugin: run `euclid-bar --plugin add \(name)` (your settings carry over), then rename the table to [plugin.\(name)]"))
         }
 
         return LoadedConfig(config: config, issues: issues, includedFiles: included, pluginFiles: pluginFiles)
@@ -550,62 +506,15 @@ public enum ConfigLoader {
             }
         }
 
-        if let t = table(root, "bitbucket", &issues) {
-            warnUnknownKeys(t, known: ["enabled", "base_url", "email", "token_command", "repos", "refresh_minutes"], in: "[bitbucket]", &issues)
-            var b = config.bitbucket ?? BitbucketSettings()
-            if t.contains(key: "base_url") {
-                if let s = try? t.string(forKey: "base_url"), let u = URL(string: s), u.scheme == "https" {
-                    b.baseURL = s.hasSuffix("/") ? String(s.dropLast()) : s
-                } else { issues.append(.warning("bitbucket.base_url must be an https URL")) }
-            }
-            if t.contains(key: "email") {
-                if let s = try? t.string(forKey: "email") { b.email = s } else { issues.append(.warning("bitbucket.email must be a string")) }
-            }
-            if t.contains(key: "token_command") {
-                if let s = try? t.string(forKey: "token_command"), !s.trimmingCharacters(in: .whitespaces).isEmpty { b.tokenCommand = s }
-                else { issues.append(.warning("bitbucket.token_command must be a command that prints your token")) }
-            }
-            if let a = strings(t, "repos", in: "bitbucket", &issues) {
-                b.repos = a.filter { r in
-                    let ok = r.split(separator: "/").count == 2
-                    if !ok { issues.append(.warning("bitbucket.repos: '\(r)' should be \"workspace/repo\"")) }
-                    return ok
-                }
-            }
-            if t.contains(key: "refresh_minutes") {
-                if let n = try? t.integer(forKey: "refresh_minutes"), (1...120).contains(n) { b.refreshMinutes = Int(n) }
-                else { issues.append(.warning("bitbucket.refresh_minutes must be a number from 1 to 120")) }
-            }
-            let enabled = bool(t, "enabled", in: "bitbucket", &issues) ?? true
-            config.bitbucket = enabled ? b : nil // email is checked after includes are merged
-        }
-
-        if let t = table(root, "jira", &issues) {
-            warnUnknownKeys(t, known: ["enabled", "base_url", "email", "token_command", "jql", "recent", "refresh_minutes"], in: "[jira]", &issues)
-            var j = config.jira ?? JiraSettings()
-            if t.contains(key: "base_url") {
-                if let s = try? t.string(forKey: "base_url"), let u = URL(string: s), u.scheme == "https", u.host != nil {
-                    j.baseURL = s.hasSuffix("/") ? String(s.dropLast()) : s
-                } else { issues.append(.warning("jira.base_url must be an https URL, e.g. \"https://your-site.atlassian.net\"")) }
-            }
-            if t.contains(key: "email") {
-                if let s = try? t.string(forKey: "email") { j.email = s } else { issues.append(.warning("jira.email must be a string")) }
-            }
-            if t.contains(key: "token_command") {
-                if let s = try? t.string(forKey: "token_command"), !s.trimmingCharacters(in: .whitespaces).isEmpty { j.tokenCommand = s }
-                else { issues.append(.warning("jira.token_command must be a command that prints your token")) }
-            }
-            if t.contains(key: "jql") {
-                if let s = try? t.string(forKey: "jql"), !s.trimmingCharacters(in: .whitespaces).isEmpty { j.jql = s }
-                else { issues.append(.warning("jira.jql must be a JQL query")) }
-            }
-            if let b = bool(t, "recent", in: "jira", &issues) { j.recent = b }
-            if t.contains(key: "refresh_minutes") {
-                if let n = try? t.integer(forKey: "refresh_minutes"), (1...120).contains(n) { j.refreshMinutes = Int(n) }
-                else { issues.append(.warning("jira.refresh_minutes must be a number from 1 to 120")) }
-            }
-            let enabled = bool(t, "enabled", in: "jira", &issues) ?? true
-            config.jira = enabled ? j : nil // base_url and email are checked after includes are merged
+        // Bitbucket and Jira became plugins. Their old tables carry over as the plugins' settings
+        // (same keys), so `euclid-bar --plugin add bitbucket` is all it takes.
+        for name in ["bitbucket", "jira"] where root.contains(key: name) {
+            guard let t = try? root.table(forKey: name) else { continue }
+            var values = PluginLoader.settings(t, in: "[\(name)]", &issues)
+            values["refresh_minutes"] = nil
+            values["enabled"] = nil
+            config.pluginSettings[name, default: [:]].merge(values) { $1 } // a [plugin.<name>] table, read later, wins
+            config.movedToPlugins.insert(name)
         }
 
         if let t = table(root, "agents", &issues) {
