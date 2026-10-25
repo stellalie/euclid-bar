@@ -5,12 +5,12 @@
 # Meet Euclid
 
 **The blazing fast, developer-first search bar for macOS.**<br>
-Apps, projects, files, clipboard, browser history, notes, snippets, your Bitbucket PRs and Jira issues.
+Apps, projects, files, clipboard, browser history, notes, snippets, and plugins for the rest.
 One keystroke, under a millisecond.
 
-[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Bitbucket](#bitbucket) · [Jira](#jira) · [Build from source](#build-from-source)
+[**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Plugins](#plugins) · [Build from source](#build-from-source)
 
-<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, Bitbucket, snippets and actions">
+<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, snippets and actions">
 
 <sub>Every frame is the real panel, rendered offscreen by the app itself (`make screens`)</sub>
 
@@ -28,7 +28,7 @@ one keystroke away. Then Euclid gets out of your way.
   1.4 ms** (worst case), shows the panel in ~9 ms, idles at 0% CPU and ~54 MB of RAM, measured by
   the Perf workflow on a GitHub macOS runner. The footer shows you the receipts: `26 items · 0.82 ms`.
 - 🛠️ **Built for developers.** Every action is **one shell command** in a TOML file. Epochs, JSON,
-  JWTs, base64 and colours are answered inline. First-class Ghostty, herdr, Bitbucket and Jira.
+  JWTs, base64 and colours are answered inline. First-class Ghostty; Bitbucket, Jira and GitHub as plugins.
 - 🧩 **Config is a file, not a settings window.** `~/.config/euclid/config.toml`, dotfiles-friendly,
   applies on save, validated with `--check-config` in CI.
 - 🔒 **Private by design.** Everything is indexed and stored on your Mac. Password-manager copies are
@@ -46,11 +46,8 @@ and the list never reshuffles under your cursor.
 | **Files** | Spotlight, by name, after 3+ letters |
 | **Clipboard** | Text, **images** and copied **files**, with the app and time they came from |
 | **Browser history** | Dia, Arc, Chrome, Brave, Edge, Vivaldi, Chromium, Safari |
-| **Page text** *(opt-in)* | Full-text search of the public pages you visited, indexed locally |
 | **Obsidian** | Your notes by title and text; `↵` opens them in Obsidian |
-| **Bitbucket** | Your open PRs, PRs waiting on your review, your repos (Cloud and Data Center) |
-| **Jira** | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
-| **Snippets** | Text you paste often, with `{date}` `{time}` `{clipboard}` `{uuid}` placeholders |
+| **Snippets** | Text you paste often, with `{date}` `{time}` `{datetime}` `{clipboard}` `{uuid}` placeholders |
 | **Actions** | Your shell commands, run on what you typed |
 | **Plugins** | Anything a script can print: [your own sources, answers and badges](#plugins) |
 
@@ -60,6 +57,8 @@ with `euclid-bar --plugin add <name>`:
 | Plugin | What you get |
 |---|---|
 | `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI |
+| `bitbucket` *(plugin)* | Your open PRs, PRs waiting on your review, your repos (Cloud and Data Center) |
+| `jira` *(plugin)* | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
 | `linear` *(plugin)* | Linear issues assigned to you |
 | `slack` *(plugin)* | Jump to channels; `slack <words>` searches messages |
 | `contacts` *(plugin)* | People by name, company, email or phone; `↵` opens the card |
@@ -90,11 +89,11 @@ own hotkey in `[hotkeys]`; its row shows it.
 **And the rest.**
 
 - 👀 **Preview pane** (`→` or `⌘Y`): the full clip, images, Quick Look for files, a project's README,
-  an indexed page's text.
+  a note's text.
 - 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
   anything a short **alias** and pin **favorites** to the empty box.
 - 🤖 **Agent-ready.** Nothing matches? Your actions show up instead, so a question is one `↵` away
-  from `pi`, `claude` or any agent in a new Ghostty or herdr tab. And your agents can [search what
+  from `pi`, `claude` or any agent in a new Ghostty tab. And your agents can [search what
   Euclid knows](#your-agents-can-search-it-too) over MCP.
 - 🎨 **Sharp and light.** Liquid Glass on macOS 26, a panel that grows with its results, your own
   accent colour, `comfortable` or `compact` density.
@@ -104,7 +103,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 <table>
 <tr>
 <td width="50%"><img src="docs/screens/02-search-sections.png" alt="Search results in sections"><br><sub><b>Sections.</b> Matched letters highlighted, search time in the footer.</sub></td>
-<td width="50%"><img src="docs/screens/07-bitbucket.png" alt="Bitbucket PRs and repos"><br><sub><b>Bitbucket.</b> Your PRs, review requests and repos.</sub></td>
+<td width="50%"><img src="docs/screens/03-epoch.png" alt="Epoch answer"><br><sub><b>Answers.</b> Paste an epoch, get the date.</sub></td>
 </tr>
 <tr>
 <td><img src="docs/screens/05-json.png" alt="JSON answer"><br><sub><b>Developer answers.</b> Paste JSON, get it pretty or minified.</sub></td>
@@ -117,7 +116,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 </table>
 
 <img src="docs/screens/06-preview-clip.png" alt="Preview pane showing a clipboard entry"><br>
-<sub><b>Preview.</b> <code>→</code> opens the full clip, image, file, README or page next to the results.</sub>
+<sub><b>Preview.</b> <code>→</code> opens the full clip, image, file or README next to the results.</sub>
 
 ## Keys
 
@@ -148,8 +147,10 @@ own hotkey in `[hotkeys]`; its row shows it.
 4. Press **`⌥Space`**. The 🧠 in your menu bar has *Edit Config…*, *Check for Updates…*,
    *Install Updates Automatically*, *Send Feedback…* and *Quit*. Typing `update` in the bar finds the two update items.
 
-**Permissions** (asked only when needed):
-- **Accessibility**: for `↵` to paste into the previous app. Without it, Euclid copies instead.
+**Permissions** (asked only when needed). Type `permissions` to see what's allowed and what's
+missing; `↵` opens the right pane in System Settings. The footer only mentions it when something
+you turned on is waiting.
+- **Accessibility**: for `↵` to paste into the previous app, and for text expansion. Without it, Euclid copies instead.
 - **Automation**: the first time an action drives Ghostty.
 - **Full Disk Access** *(optional)*: only to include Safari history.
 
@@ -165,8 +166,8 @@ name = "Ask pi in a new Ghostty tab"
 run  = 'ghostty-run tab pi "$1"'             # or: split, window
 
 [[action]]                                   # ⌘2
-name = "Claude in a herdr split"
-run  = 'herdr-run split claude "$1"'         # or: tab, split-down
+name = "Claude in a Ghostty split"
+run  = 'ghostty-run split claude "$1"'
 
 [[action]]
 name  = "Search GitHub code"
@@ -186,8 +187,9 @@ name = "Pretty-print JSON to clipboard"
 run  = 'printf %s "$1" | jq . | pbcopy'
 ```
 
-`ghostty-run` and `herdr-run` are small scripts Euclid installs into `~/.config/euclid/bin` (on
-`PATH` for every action). Read them, tweak them, or drop your own scripts next to them.
+`ghostty-run` is a small script Euclid installs into `~/.config/euclid/bin` (on `PATH` for every
+action). Read it, tweak it, or drop your own scripts next to it. Using herdr? Copy
+[`docs/recipes/herdr-run`](docs/recipes/herdr-run) there.
 
 ## Configuration
 
@@ -245,18 +247,10 @@ density    = "comfortable"                    # or "compact"
 glass      = true                             # Liquid Glass on macOS 26+
 show_speed = true                             # "12,431 items · 0.6 ms" in the footer
 
-[pages]                                       # full-text search of pages you visited
-enabled       = false                         # off by default
-limit         = 500
-exclude_hosts = ["internal.example.com"]
-
 [obsidian]
 vault = "~/Notes"
 
-[bitbucket]                                   # see below
-email = "you@example.com"
-
-[jira]                                        # see below
+[plugin.jira]                                 # a plugin's settings, see Plugins
 base_url = "https://your-site.atlassian.net"
 email    = "you@example.com"
 
@@ -300,10 +294,6 @@ editor = "subl"                    # or a command on your PATH; the file is adde
 editor = 'code --new-window "$1"'  # or a command with $1 where the file goes
 ```
 
-About `[pages]`: when on, Euclid downloads recent pages from your history **without cookies** (so
-only what's public) and indexes their text locally. Logins, password resets and URLs with query
-strings are skipped.
-
 Validate it from a terminal (great in dotfiles CI):
 
 ```sh
@@ -323,7 +313,7 @@ From a terminal: `euclid-bar --import snippets.json >> ~/.config/euclid/config.t
 
 ### Share a config with your team
 
-Put the team's actions, snippets and integration settings in a TOML file in a repo everyone clones,
+Put the team's actions, snippets and plugin settings in a TOML file in a repo everyone clones,
 then include it:
 
 ```toml
@@ -333,65 +323,54 @@ include = ["~/work/team-dotfiles/euclid.toml"]   # a path or a list; relative = 
 
 - Your own settings win. Your actions come first (so `⌘1` stays yours), then the team's.
 - An action or snippet with the same name as a team one replaces it.
-- Tables merge key by key: the team file sets `[bitbucket] base_url`, you set `email`.
+- Tables merge key by key: the team file sets `[plugin.jira] base_url`, you set `email`.
 - `git pull` in the team repo and Euclid reloads, like it does when you save `config.toml`.
 - `--check-config` lists the included files, and problems in them are prefixed with the file name.
 
-Type `usage` to see your last 30 days: how often you opened Euclid and what you picked (apps, clips,
-actions…). Only counts are kept, on your Mac, never what you typed.
-
-Clipboard history, the page index and learned ranking live in `~/Library/Application Support/Euclid`,
+Clipboard history, the notes index and learned ranking live in `~/Library/Application Support/Euclid`,
 separate from the config, so they never end up in your dotfiles repo.
 
-## Bitbucket
+## Bitbucket and Jira
 
-Your open PRs, PRs waiting on your review and your repos show up in search, and review requests are
-on the empty box. Refreshed in the background every 5 minutes. The token never goes in
-`config.toml`: Euclid runs `token_command` to read it, from the macOS Keychain by default.
+Both are plugins: add the one you use, and its settings go under `[plugin.<id>]`. Tokens never go
+in `config.toml`: the plugin runs `token_command`, which reads the macOS Keychain by default.
 
-**Bitbucket Cloud**
-
-1. Create an API token at [id.atlassian.com › Security › API tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
-2. Store it in the Keychain:
-   ```sh
-   security add-generic-password -s euclid-bitbucket -a "$USER" -w '<token>'
-   ```
-3. Add your Atlassian email to `config.toml`:
-   ```toml
-   [bitbucket]
-   email = "you@example.com"
-   repos = ["workspace/repo"]       # optional: where to look for review requests
-                                    # (default: your 10 most recently updated repos)
-   ```
-
-**Bitbucket Data Center**
-
-1. Create an HTTP access token in your Bitbucket profile and store it the same way (step 2 above).
-2. Point Euclid at your server, with no email:
-   ```toml
-   [bitbucket]
-   base_url = "https://bitbucket.example.com"
-   ```
-
-**All options**
-
-```toml
-[bitbucket]
-enabled         = true
-email           = "you@example.com"                                  # Cloud only
-base_url        = "https://api.bitbucket.org/2.0"                    # the default (Cloud)
-token_command   = "security find-generic-password -s euclid-bitbucket -w"   # the default
-repos           = ["workspace/repo"]                                 # Cloud only
-refresh_minutes = 5                                                  # 1–120
+```sh
+euclid-bar --plugin add bitbucket   # your PRs, review requests (on the empty box) and repos
+euclid-bar --plugin add jira        # assigned and recently viewed issues; type ABC-123 to open one
 ```
 
-Prefer 1Password? `token_command = "op read op://Private/Bitbucket/token"`.
+1. Create an API token at [id.atlassian.com › Security › API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+   (Data Center: an HTTP access or personal access token from your profile).
+2. Store it in the Keychain:
+   ```sh
+   security add-generic-password -s euclid-bitbucket -a "$USER" -w '<token>'   # or -s euclid-jira
+   ```
+3. Tell the plugin who you are:
+   ```toml
+   [plugin.bitbucket]
+   email    = "you@example.com"                  # Cloud only
+   base_url = "https://bitbucket.example.com"    # Data Center only (Cloud is the default)
+   repos    = ["workspace/repo"]                 # Cloud: where to look for review requests
+
+   [plugin.jira]
+   base_url = "https://your-site.atlassian.net"  # or "https://jira.example.com" (Data Center, no email)
+   email    = "you@example.com"                  # Cloud only
+   jql      = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+   recent   = true                               # also issues you viewed lately
+   ```
+
+On a Jira issue, `⌘C` copies the key and `⇧⌘C` a branch name (`ABC-123-fix-login-on-safari`).
+Prefer 1Password? `token_command = "op read op://Private/Bitbucket/token"`. A team can set
+`base_url` once in a [shared config](#share-a-config-with-your-team); each person adds their `email`.
+Upgrading from a version with `[bitbucket]` or `[jira]` tables: add the plugin and they keep working;
+`--check-config` tells you to rename them.
 
 ## Your agents can search it too
 
 `euclid-bar --mcp` is an [MCP](https://modelcontextprotocol.io) server, so Claude Code, Codex or
 any MCP client can search what Euclid indexed: "the kubectl command I copied this morning", "that
-page about rebase I read yesterday", "my deploy notes". Read-only, and nothing leaves your Mac
+page about rebase I visited yesterday", "my deploy notes". Read-only, and nothing leaves your Mac
 except what your agent asks for.
 
 ```sh
@@ -410,14 +389,14 @@ Menu bar 🧠 › **Connect Claude Code or Codex (MCP)…** copies the Claude co
 | Tool | What it does |
 |---|---|
 | `search_clipboard`, `recent_clipboard` | Text you copied, newest first |
-| `search_pages_and_notes`, `read_page_or_note` | Full text of indexed pages (`[pages]`) and Obsidian notes |
+| `search_notes`, `read_note` | Full text of your Obsidian notes |
 | `search_browser_history` | Titles and URLs from every browser |
 
 Choose what's shared:
 
 ```toml
 [agents]
-share = ["clipboard", "pages", "notes", "history"]   # the default; [] shares nothing
+share = ["clipboard", "notes", "history"]   # the default; [] shares nothing
 ```
 
 ## Plugins
@@ -470,7 +449,8 @@ limit = 50
 ```
 
 Plugins run as you, like your actions: read a plugin before you add it. `--check-config` lists
-them, and a failing one shows its first error in the footer.
+them, and a failing one shows its first error in the footer. If its script needs a CLI you don't
+have (`gh`, `jq`…), the plugin's row in search says which one.
 
 ### Mods: change how Euclid behaves
 
@@ -486,48 +466,13 @@ run   = "./clean.sh"        # $1 = the copied text; print {"copy":"…"} to repl
 [[key]]
 key  = "cmd+g"
 name = "GitHub Desktop"     # shown in the footer when it applies
-when = ["pr", "github"]     # kinds of result, or a plugin's id
+when = ["github"]           # kinds of result, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
 ```
 
 Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}` or, on `open`, `{"query":…}`.
 Examples: `euclid-bar --plugin add cleanlinks` (strips tracking parameters from copied links) and
 `euclid-bar --plugin add reveal` (⇧⌘R shows a file in Finder).
-
-## Jira
-
-Issues assigned to you (not done) and the ones you viewed lately show up in search, and your top
-three are on the empty box. Type an issue key like `abc-123` and `↵` opens it, even if it isn't in
-the list. `⌘C` copies the key, `⇧⌘C` a branch name (`ABC-123-fix-login-on-safari`).
-
-1. Create an API token at [id.atlassian.com › Security › API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
-   (Data Center: a personal access token from your profile).
-2. Store it in the Keychain:
-   ```sh
-   security add-generic-password -s euclid-jira -a "$USER" -w '<token>'
-   ```
-3. Point Euclid at your site:
-   ```toml
-   [jira]
-   base_url = "https://your-site.atlassian.net"   # or "https://jira.example.com" (Data Center, no email)
-   email    = "you@example.com"                   # Cloud only
-   ```
-
-**All options**
-
-```toml
-[jira]
-enabled         = true
-base_url        = "https://your-site.atlassian.net"                  # required
-email           = "you@example.com"                                  # Cloud only
-token_command   = "security find-generic-password -s euclid-jira -w" # the default
-jql             = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
-recent          = true                                               # also issues you viewed lately
-refresh_minutes = 5                                                  # 1–120
-```
-
-A team can set `base_url` (and `[bitbucket]`) once in a [shared config](#share-a-config-with-your-team);
-each person adds only their `email`.
 
 ## Build from source
 
@@ -546,7 +491,7 @@ Every `make` target checks this first and prints the fix.
 git clone https://github.com/stellalie/euclid-bar && cd euclid-bar
 make run       # build build/Euclid.app and launch it
 make test      # unit tests
-make perf      # release-mode search benchmarks
+make perf      # release-mode search benchmarks (CI also runs `euclid-bar --speed-budget`)
 make screens   # render every panel state + docs/flow.gif from the real UI
 ```
 
@@ -554,8 +499,8 @@ make screens   # render every panel state + docs/flow.gif from the real UI
 <summary>Project layout</summary>
 
 ```
-Sources/EuclidCore   UI-free logic: search, clipboard, history, content index, transforms,
-                     snippets, Bitbucket and Jira clients, config, actions
+Sources/EuclidCore   UI-free logic: search, clipboard, history, notes index, transforms,
+                     snippets, plugins, config, actions
 Sources/EuclidBar    AppKit app: hotkey, panel, preview, menu bar, screenshot/icon renderers
 Tests/               Swift Testing
 scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cert.sh,
@@ -568,8 +513,9 @@ rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI
 
 ## Roadmap
 
-- Stream an action's output into the panel (`output = "panel"`): ask `pi --print`, `↵` pastes the answer
-- Meaning-based search across history, pages and notes
+Feature freeze: no new features for now, only making the existing ones better. Later, maybe:
+
+- Meaning-based search across history and notes
 - A shared local memory that Euclid and your coding agents can both read
 
 ## License
