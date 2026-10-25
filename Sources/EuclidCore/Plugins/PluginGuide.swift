@@ -445,10 +445,6 @@ Hooks run in the background with a 10 s limit and never slow the panel down. Try
 sample text: `euclid-bar --try-plugin <id> "https://example.com/?utm_source=x"`. Keys aren't run
 by `--try-plugin`; it checks them and lists them.
 
-**From the bar:** typing `mod: <what you want>` opens your coding agent (`[mods] agent`, default
-`claude`) in this folder with the request. `mod: undo` puts this folder back as it was before
-the last request (it's a git repository; `git log` shows every mod).
-
 ## Rules of thumb
 
 - Keep sources fast and quiet: they run in the background with a 30 s limit, answers with 2 s.
@@ -471,7 +467,7 @@ change them:
 - `currency`: `100 usd to eur` with daily rates, cached (an answer with a `match`).
 - `contacts`: people in Contacts, through JavaScript for Automation (a source).
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
-- `cleanlinks`: strips tracking parameters from links you copy (a mod: a `clipboard` hook).
-- `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a mod: a `[[key]]`).
+- `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
+- `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
 """#
 }

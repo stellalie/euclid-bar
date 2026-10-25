@@ -66,9 +66,6 @@ public struct EuclidConfig: Equatable, Sendable {
     /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
     public var pluginPaths: [String] = []
     public var pluginsDisabled: Set<String> = []
-    /// The coding agent `mod:` in the bar hands requests to (`[mods] agent`), as you'd type it.
-    /// It runs in a terminal via `[projects] task`, in the plugins folder, with the request as its argument.
-    public var modAgent = "claude"
     /// Where plugins were looked for: `<config>/plugins`, then `[plugins] paths`.
     public var pluginDirectories: [String] = []
     /// `[plugin.<id>]`: your values for a plugin's settings.
@@ -308,7 +305,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin", "mods"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -619,13 +616,6 @@ public enum ConfigLoader {
             config.jira = enabled ? j : nil // base_url and email are checked after includes are merged
         }
 
-        if let t = table(root, "mods", &issues) {
-            warnUnknownKeys(t, known: ["agent"], in: "[mods]", &issues)
-            if t.contains(key: "agent") {
-                if let s = try? t.string(forKey: "agent"), !s.trimmingCharacters(in: .whitespaces).isEmpty { config.modAgent = s }
-                else { issues.append(.warning("mods.agent must be a command, e.g. \"claude\" or \"codex\"")) }
-            }
-        }
         if let t = table(root, "agents", &issues) {
             warnUnknownKeys(t, known: ["share"], in: "[agents]", &issues)
             if let a = strings(t, "share", in: "agents", &issues) {
