@@ -68,6 +68,10 @@ with `euclid-bar --plugin add <name>`:
 | `currency` *(plugin)* | `100 usd to eur` with daily rates (no key) |
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 
+**Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
+(`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
+own hotkey in `[hotkeys]`; its row shows it.
+
 **Answers as you type.** `↵` copies the answer.
 
 | Type | Get |
@@ -257,18 +261,27 @@ check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
 channel      = "stable"                       # "dev": a build of every change, for testing
 
+[expansion]
+enabled = true                                # snippet keywords expand in any app (needs Accessibility)
+
+[hotkeys]                                     # open or run one thing from anywhere, by name
+Ghostty      = "ctrl+opt+t"                   # an app, project, action or snippet
+"euclid-bar" = "ctrl+opt+e"
+
 [[snippet]]
 name    = "Standup"
-keyword = "standup"                           # typing it pins the snippet first
+keyword = "standup"                           # typing it pins the snippet first, and expands it
 text    = """
 Yesterday:
 Today:
 Blockers: none ({date})
 """
+hotkey  = "ctrl+opt+s"                        # pastes it into the front app
 
 [[action]]
 name   = "Search web"
 alias  = "g"
+hotkey = "ctrl+opt+g"                         # runs it with an empty $1
 run    = 'open "https://www.google.com/search?q=$EUCLID_QUERY_URL"'
 ```
 

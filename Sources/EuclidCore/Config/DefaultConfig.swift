@@ -169,5 +169,18 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # Today:
 # Blockers: none ({date})
 # """
+# hotkey  = "ctrl+opt+s"     # optional: pastes it from any app, panel closed
+
+# Text expansion: type a snippet's keyword in any app and it's replaced by the text.
+# A keyword starting with a symbol (";sig") expands at once; a plain word ("standup")
+# when you type a space or punctuation after it. Needs Accessibility access (macOS asks).
+[expansion]
+enabled = false
+
+# Hotkeys that open or run one thing directly: an app, project, action or snippet, by name.
+# An [[action]] or [[snippet]] can also take `hotkey = "…"`. Actions run with an empty $1.
+[hotkeys]
+# Ghostty      = "ctrl+opt+t"
+# "euclid-bar" = "ctrl+opt+e"
 """#
 }

@@ -68,6 +68,8 @@ final class LauncherViewController: NSViewController {
     var ranking: RankingService?
 
     var aliases = Aliases() { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
+    /// Shown on the rows they open, like aliases ("⌃⌥T · Application").
+    var hotkeys: [CommandHotkey] = [] { didSet { if isViewLoaded, hotkeys != oldValue { refreshAfterExternalChange() } } }
     var favorites: [String] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
     var snippets: [Snippet] = [] {
         didSet {
@@ -788,7 +790,7 @@ final class LauncherViewController: NSViewController {
             case .plugin(let e)?:
                 let i = e.item
                 list.append(H(key: "↵", label: i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
-            case .command(let c)? where c.kind == .toggleAutoInstall: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
+            case .command(let c)? where c.kind == .toggleAutoInstall || c.kind == .toggleExpansion: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))
             }
@@ -835,6 +837,17 @@ final class LauncherViewController: NSViewController {
     @objc private func activateSelection() {
         guard let row = selectedRow else { return }
         if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
+        activate(row, query: query)
+    }
+
+    /// What a `[hotkeys]` entry opens, if it exists right now.
+    func row(for hotkey: CommandHotkey) -> Row? {
+        if let kind = hotkey.kind { return resolve(key: "\(kind.rawValue):\(hotkey.target)") }
+        return resolve(title: hotkey.target, argument: nil)
+    }
+
+    /// Open, run or paste a row, as ↵ does. Also used by hotkeys with the panel closed.
+    func activate(_ row: Row, query: String) {
         if let kind = row.usageKind { onUse?(kind) }
         switch row {
         case .header: return
@@ -1068,8 +1081,9 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     /// "Application" → "code · Application" when it has an alias.
     private func tagged(_ label: String, title: String) -> String {
-        guard let alias = aliases.alias(for: title) else { return label }
-        return label.isEmpty ? alias : "\(alias) · \(label)"
+        let t = title.lowercased()
+        let hotkey = hotkeys.first { $0.target.lowercased() == t }?.hotkey.symbols
+        return [hotkey, aliases.alias(for: title), label.isEmpty ? nil : label].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// A rounded colour swatch for hex/rgb conversions.

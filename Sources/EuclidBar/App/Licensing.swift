@@ -29,6 +29,7 @@ final class Licensing {
     var summary: String {
         switch status {
         case .licensed(let l): "\(l.name) · \(l.edition == .business ? "Business, \(l.seats) seat\(l.seats == 1 ? "" : "s")" : "Personal")"
+        case .beta: "Free beta · Personal"
         case .trial(let days): "Trial · \(days) day\(days == 1 ? "" : "s") left"
         case .unregistered: "Unregistered"
         }

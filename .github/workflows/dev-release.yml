@@ -57,7 +57,12 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           REPO: stellalie/euclid-bar-releases
         run: |
-          xcrun stapler validate build/release/*.dmg
+          # Never publish an un-notarized build. Apple's ticket lookup drops connections now and then, so retry.
+          for wait in 10 20 40 0; do
+            xcrun stapler validate build/release/*.dmg && break
+            [[ $wait == 0 ]] && exit 1
+            sleep "$wait"
+          done
           [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY" >&2; exit 1; }
           gh release view dev --repo "$REPO" >/dev/null 2>&1 ||
             gh release create dev --repo "$REPO" --prerelease --target main --title "Dev build" --notes "Rolling build of main."

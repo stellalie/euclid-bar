@@ -7,6 +7,8 @@ import EuclidCore
 @MainActor
 enum Paster {
     static var isTrusted: Bool { AXIsProcessTrusted() }
+    /// Stamped on the keystrokes we post (`eventSourceUserData`), so text expansion skips them.
+    static let syntheticMarker: Int64 = 0x4555_434C
 
     /// Shows the system "allow Accessibility" prompt (only if not yet granted).
     static func requestPermission() {
@@ -47,16 +49,42 @@ enum Paster {
     /// Posts ⌘V. Our panel is non-activating, so the previous app is still
     /// frontmost; once the panel is hidden the keystroke lands there.
     static func pasteIntoFrontApp() {
+        press(9, flags: .maskCommand) // kVK_ANSI_V
+    }
+
+    /// Posts ⌫ `count` times into the front app (text expansion removing the keyword).
+    static func deleteBackward(_ count: Int) {
+        for _ in 0..<count { press(51, flags: []) } // kVK_Delete
+    }
+
+    private static func press(_ key: CGKeyCode, flags: CGEventFlags) {
         let source = CGEventSource(stateID: .combinedSessionState)
-        // Briefly suppress the user's own keystrokes so they can't interleave with the paste.
+        // Briefly suppress the user's own keystrokes so they can't interleave with ours.
         source?.setLocalEventsFilterDuringSuppressionState(
             [.permitLocalMouseEvents, .permitSystemDefinedEvents], state: .eventSuppressionStateSuppressionInterval)
-        let vKey: CGKeyCode = 9 // kVK_ANSI_V
-        let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
-        down?.flags = .maskCommand
-        up?.flags = .maskCommand
-        down?.post(tap: .cgAnnotatedSessionEventTap)
-        up?.post(tap: .cgAnnotatedSessionEventTap)
+        for down in [true, false] {
+            guard let e = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down) else { continue }
+            e.flags = flags // also clears a still-held ⇧ from the keystroke that triggered us
+            e.setIntegerValueField(.eventSourceUserData, value: syntheticMarker)
+            e.post(tap: .cgAnnotatedSessionEventTap)
+        }
+    }
+
+    /// Everything on the general pasteboard, to put back after borrowing it.
+    static func saveContents() -> [NSPasteboardItem] {
+        (NSPasteboard.general.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+    }
+
+    /// Put saved contents back, marked as ours so clipboard history doesn't record them again.
+    static func restore(_ items: [NSPasteboardItem]) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        guard !items.isEmpty else { return }
+        items[0].setString("", forType: NSPasteboard.PasteboardType(PasteboardFilter.euclidMarker))
+        pb.writeObjects(items)
     }
 }

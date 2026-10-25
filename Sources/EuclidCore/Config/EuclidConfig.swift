@@ -39,6 +39,11 @@ public struct EuclidConfig: Equatable, Sendable {
     public var appearance = Appearance()
     /// `[[snippet]]` blocks, in file order.
     public var snippets: [Snippet] = []
+    /// Snippet keywords expand as you type them in any app (`[expansion] enabled`).
+    /// Off by default: it needs Accessibility access to see keystrokes.
+    public var expansionEnabled = false
+    /// Hotkeys that run an app, project, action or snippet directly. Validated: no duplicates.
+    public var commandHotkeys: [CommandHotkey] = []
     /// Full-text index of visited pages (`[pages]`). Off by default: it downloads pages.
     public var pagesEnabled = false
     public var pagesLimit = 500
@@ -215,13 +220,32 @@ public enum ConfigLoader {
         }
 
         // Shared actions and snippets go after this file's own; a same-named one here replaces it.
-        let sharedActions = config.actions, sharedSnippets = config.snippets
+        let sharedActions = config.actions, sharedSnippets = config.snippets, sharedHotkeys = config.commandHotkeys
         config.actions = []
         config.snippets = []
+        config.commandHotkeys = []
         apply(root, to: &config, isInclude: false, fileExists: fileExists, &issues)
         let ownActions = Set(config.actions.map(\.name)), ownSnippets = Set(config.snippets.map(\.name))
         config.actions += sharedActions.filter { !ownActions.contains($0.name) }
         config.snippets += sharedSnippets.filter { !ownSnippets.contains($0.name) }
+        // Your hotkey for something replaces the team's for it.
+        let own = config.commandHotkeys
+        let merged = own + sharedHotkeys.filter { s in !own.contains { $0.target == s.target && $0.kind == s.kind } }
+        config.commandHotkeys = []
+        for h in merged {
+            if h.hotkey == config.hotkey {
+                issues.append(.warning("hotkey \(h.hotkey.symbols) for '\(h.target)' is the panel's hotkey, skipped")); continue
+            }
+            if let taken = config.commandHotkeys.first(where: { $0.hotkey == h.hotkey }) {
+                issues.append(.warning("hotkey \(h.hotkey.symbols) is already '\(taken.target)', so '\(h.target)' skipped")); continue
+            }
+            config.commandHotkeys.append(h)
+        }
+        if config.expansionEnabled {
+            issues += TextExpander.shadowedKeywords(in: config.snippets).map {
+                .warning("snippet keyword '\($0.long)' never expands: '\($0.short)' fires first")
+            }
+        }
 
         // Checked once everything is merged: a team file can set base_url and repos, you the email.
         if let b = config.bitbucket, b.isCloud, b.email.isEmpty {
@@ -275,7 +299,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "plugins", "plugin"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -432,6 +456,9 @@ public enum ConfigLoader {
                     }
                     if let action = parseAction(t, label: label, &issues) {
                         config.actions.append(action)
+                        if let h = commandHotkey(t, target: action.name, kind: .action, in: "\(label) '\(action.name)'", &issues) {
+                            config.commandHotkeys.append(h)
+                        }
                         if let alias = try? t.string(forKey: "alias") {
                             if alias.contains(" ") || alias.isEmpty { issues.append(.warning("\(label): alias can't be empty or contain spaces")) }
                             else { config.aliases.add(alias, target: action.name) }
@@ -462,7 +489,7 @@ public enum ConfigLoader {
                 for i in 0..<list.count {
                     let label = "snippet #\(i + 1)"
                     guard let t = try? list.table(atIndex: i) else { issues.append(.warning("\(label): use [[snippet]] blocks")); continue }
-                    warnUnknownKeys(t, known: ["name", "keyword", "text"], in: label, &issues)
+                    warnUnknownKeys(t, known: ["name", "keyword", "text", "hotkey"], in: label, &issues)
                     guard let name = try? t.string(forKey: "name"), !name.trimmingCharacters(in: .whitespaces).isEmpty else {
                         issues.append(.warning("\(label): missing name, skipped")); continue
                     }
@@ -475,9 +502,26 @@ public enum ConfigLoader {
                         else { issues.append(.warning("\(label) '\(name)': keyword can't be empty or contain spaces")) }
                     }
                     config.snippets.append(Snippet(name: name, keyword: keyword, text: text))
+                    if let h = commandHotkey(t, target: name, kind: .snippet, in: "\(label) '\(name)'", &issues) {
+                        config.commandHotkeys.append(h)
+                    }
                 }
             } else {
                 issues.append(.warning("snippets must be [[snippet]] blocks"))
+            }
+        }
+
+        if let t = table(root, "expansion", &issues) {
+            warnUnknownKeys(t, known: ["enabled"], in: "[expansion]", &issues)
+            if let b = bool(t, "enabled", in: "expansion", &issues) { config.expansionEnabled = b }
+        }
+
+        if let t = table(root, "hotkeys", &issues) {
+            for target in t.keys.sorted() {
+                guard !target.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+                if let h = commandHotkey(t, key: target, target: target, kind: nil, in: "hotkeys", &issues) {
+                    config.commandHotkeys.append(h)
+                }
             }
         }
 
@@ -601,7 +645,7 @@ public enum ConfigLoader {
     }
 
     static func parseAction(_ t: TOMLTable, label: String, _ issues: inout [ConfigIssue]) -> Action? {
-        warnUnknownKeys(t, known: ["name", "run", "output", "alias"], in: label, &issues)
+        warnUnknownKeys(t, known: ["name", "run", "output", "alias", "hotkey"], in: label, &issues)
         guard let name = try? t.string(forKey: "name"), !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             issues.append(.warning("\(label): missing name, skipped")); return nil
         }
@@ -627,6 +671,20 @@ public enum ConfigLoader {
             output = o
         }
         return Action(name: name, run: run, output: output)
+    }
+
+    /// `t[key]` as a hotkey for `target`, if present; a warning if it doesn't parse.
+    private static func commandHotkey(_ t: TOMLTable, key: String = "hotkey", target: String, kind: CommandHotkey.Kind?,
+                                      in place: String, _ issues: inout [ConfigIssue]) -> CommandHotkey? {
+        guard t.contains(key: key) else { return nil }
+        let label = kind == nil ? "\(place).\(key)" : "\(place): hotkey"
+        guard let s = try? t.string(forKey: key) else {
+            issues.append(.warning("\(label) must be a string like \"ctrl+opt+t\"")); return nil
+        }
+        switch HotkeySpec.parse(s) {
+        case .success(let spec): return CommandHotkey(hotkey: spec, target: target, kind: kind)
+        case .failure(let e): issues.append(.warning("\(label): \(e.message)")); return nil
+        }
     }
 
     /// `[name]` if present and a table; a warning if present but not a table.

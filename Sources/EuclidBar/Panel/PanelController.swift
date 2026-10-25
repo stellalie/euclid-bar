@@ -44,6 +44,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         get { content.licenceNote }
         set { content.licenceNote = newValue }
     }
+    /// Footer problems from outside the panel (hotkeys macOS refused, text expansion waiting for access).
+    var extraProblem: () -> String? = { nil }
     /// Where the panel's top edge sits while it's open: it grows and shrinks downwards from here.
     private var anchor: NSPoint?
 
@@ -157,6 +159,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.aliases = settings.aliases
         content.favorites = settings.favorites
         content.snippets = settings.snippets
+        content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
         contentSearch.configure(vault: settings.obsidianVault, pagesEnabled: settings.pagesEnabled,
                                 pagesLimit: settings.pagesLimit, excludedHosts: settings.pagesExcludedHosts)
@@ -213,8 +216,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         run(Action(name: "Open project", run: config.current.config.projectOpen), query: path)
     }
 
-    private func updateProblem() {
-        content.problem = config.problemSummary ?? history.problem ?? bitbucket.problem ?? jira.problem ?? plugins.problem
+    func updateProblem() {
+        content.problem = config.problemSummary ?? extraProblem() ?? history.problem ?? bitbucket.problem ?? jira.problem ?? plugins.problem
+    }
+
+    /// A `[hotkeys]` hotkey: open, run or paste what it names, without showing the panel.
+    func run(_ hotkey: CommandHotkey) {
+        guard let row = content.row(for: hotkey) else {
+            NSSound.beep()
+            perfLog.error("hotkey \(hotkey.hotkey.symbols, privacy: .public): nothing named '\(hotkey.target, privacy: .public)'")
+            content.notice = "⚠︎ hotkey \(hotkey.hotkey.symbols): no app, project, action or snippet named “\(hotkey.target)”"
+            return
+        }
+        content.activate(row, query: "")
     }
 
     /// Open a history entry in the browser it came from.
