@@ -155,7 +155,7 @@ public struct LoadedConfig: Equatable, Sendable {
     public let issues: [ConfigIssue]
     /// Absolute paths of the files `include` pulled in, in order (watched for changes too).
     public let includedFiles: [String]
-    /// Plugin folders and every plugin.toml in them, watched so a plugin loads on save.
+    /// Plugin folders and the files in them, watched so a plugin reloads on save.
     public let pluginFiles: [String]
 
     public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = [], pluginFiles: [String] = []) {
@@ -239,11 +239,11 @@ public enum ConfigLoader {
         // Plugins: <config>/plugins first, then [plugins] paths. Their actions come after everyone else's.
         var pluginFiles: [String] = []
         if let directory {
-            let dirs = [directory.appendingPathComponent("plugins").path] + config.pluginPaths.map { resolve($0, from: directory) }
-            let (plugins, manifests) = PluginLoader.load(directories: dirs, disabled: config.pluginsDisabled,
-                                                         overrides: config.pluginSettings, &issues)
+            let dirs = [EuclidPaths.pluginsFolderName].map { directory.appendingPathComponent($0).path } + config.pluginPaths.map { resolve($0, from: directory) }
+            let (plugins, watched) = PluginLoader.load(directories: dirs, disabled: config.pluginsDisabled,
+                                                       overrides: config.pluginSettings, &issues)
             config.plugins = plugins
-            pluginFiles = dirs + manifests
+            pluginFiles = dirs + watched
             var names = Set(config.actions.map(\.name))
             for plugin in plugins {
                 for a in plugin.actions where names.insert(a.name).inserted {

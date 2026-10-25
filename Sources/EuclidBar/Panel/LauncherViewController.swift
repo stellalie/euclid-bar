@@ -30,6 +30,10 @@ final class LauncherViewController: NSViewController {
     var onCopyText: ((String) -> Void)?
     /// Paste text into the previous app (a snippet).
     var onPasteText: ((String) -> Void)?
+    /// ↵ on a plugin's item (open, paste, copy or run it).
+    var onPluginItem: ((PluginService.Entry) -> Void)?
+    /// A plugin's badge was clicked, by plugin id.
+    var onBadgeClick: ((String) -> Void)?
     /// The panel should take this size (it grows with the results, and for the preview).
     var onPreferredSizeChange: ((NSSize) -> Void)?
     /// Browser history (searched only when there's a query).
@@ -46,6 +50,13 @@ final class LauncherViewController: NSViewController {
     var jiraIssue: (Int) -> JiraIssue? = { _ in nil }
     /// Set when Jira is configured: typing an issue key ("ABC-123") opens it.
     var jiraBaseURL: () -> String? = { nil }
+    /// Items from plugin sources; `id` indexes `pluginEntry`.
+    var pluginProvider: () -> [SearchItem] = { [] }
+    var pluginEntry: (Int) -> PluginService.Entry? = { _ in nil }
+    /// Starts plugin answers for the query; results come back through `setPluginAnswers`.
+    var pluginAnswer: ((String) -> Void)?
+    /// Plugin badges on the search bar.
+    var badges: [PluginService.BadgeState] = [] { didSet { if isViewLoaded, badges != oldValue { updateBadges() } } }
     var clip: (Int) -> Clip? = { _ in nil }
     var clipImage: (Clip) -> NSImage? = { _ in nil }
     /// Starts an async file search; results come back through `setFileResults`.
@@ -93,6 +104,7 @@ final class LauncherViewController: NSViewController {
     private var baseRows: [Row] = []
     private var fileHits: (query: String, hits: [FileHit]) = ("", [])
     private var contentHits: (query: String, hits: [ContentHit]) = ("", [])
+    private var pluginAnswers: (query: String, entries: [PluginService.Entry]) = ("", [])
     private var keyMonitor: Any?
     private var previewOpen = false
     /// "12,431 items · 0.6 ms", refreshed on every search.
@@ -104,6 +116,7 @@ final class LauncherViewController: NSViewController {
     private let content = NSView()
     private let searchField = NSTextField()
     private let modeLabel = NSTextField(labelWithString: "")
+    private let badgeStack = NSStackView()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let emptyLabel = NSTextField(labelWithString: "")
@@ -151,6 +164,10 @@ final class LauncherViewController: NSViewController {
         modeLabel.textColor = .secondaryLabelColor
         modeLabel.lineBreakMode = .byTruncatingMiddle
         modeLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        badgeStack.orientation = .horizontal
+        badgeStack.spacing = 6
+        badgeStack.setHuggingPriority(.required, for: .horizontal)
+        badgeStack.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
         let divider = NSBox()
         divider.boxType = .separator
@@ -196,7 +213,7 @@ final class LauncherViewController: NSViewController {
         preview.isHidden = true
         previewDivider.isHidden = true
 
-        for v in [searchField, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer, hints, stats, preview, previewDivider] {
+        for v in [searchField, badgeStack, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer, hints, stats, preview, previewDivider] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
@@ -204,7 +221,9 @@ final class LauncherViewController: NSViewController {
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
             searchField.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            searchField.trailingAnchor.constraint(equalTo: modeLabel.leadingAnchor, constant: -8),
+            searchField.trailingAnchor.constraint(equalTo: badgeStack.leadingAnchor, constant: -8),
+            badgeStack.trailingAnchor.constraint(equalTo: modeLabel.leadingAnchor, constant: -8),
+            badgeStack.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
 
             modeLabel.firstBaselineAnchor.constraint(equalTo: searchField.firstBaselineAnchor),
             modeLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -20),
@@ -247,6 +266,7 @@ final class LauncherViewController: NSViewController {
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
         applyTheme()
+        updateBadges()
         installKeyMonitor()
         enterSearchMode(query: "")
     }
@@ -294,6 +314,36 @@ final class LauncherViewController: NSViewController {
         v.blendingMode = .behindWindow
         v.state = .active
         return v
+    }
+
+    // MARK: - Badges
+
+    /// One small button per plugin badge, left of the mode label.
+    private func updateBadges() {
+        badgeStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for b in badges {
+            let button = NSButton(title: b.text, target: self, action: #selector(badgeClicked(_:)))
+            button.identifier = NSUserInterfaceItemIdentifier(b.pluginID)
+            button.bezelStyle = .inline
+            button.controlSize = .small
+            button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+            button.contentTintColor = .secondaryLabelColor
+            if let icon = b.icon, let image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) {
+                button.image = image
+                button.imagePosition = .imageLeading
+            }
+            button.toolTip = b.hasClick ? "Click to open" : nil
+            button.refusesFirstResponder = true // typing stays in the search field
+            button.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+            badgeStack.addArrangedSubview(button)
+        }
+        badgeStack.isHidden = badges.isEmpty
+    }
+
+    @objc private func badgeClicked(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue, badges.first(where: { $0.pluginID == id })?.hasClick == true else { return }
+        onUse?("plugins")
+        onBadgeClick?(id)
     }
 
     // MARK: - Lifecycle
@@ -397,14 +447,17 @@ final class LauncherViewController: NSViewController {
                     FuzzyMatcher.score(query: text, in: "\($0.title) \($0.snippet)") != nil
                 } : [])
             }
+            if pluginAnswers.query != text { pluginAnswers = (text, []) }
             fileSearch?(text)
             contentSearch?(text)
+            pluginAnswer?(text)
             rows = withAsyncRows(baseRows)
             emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
 
         case .actions(_, let clipID):
             fileSearch?("")
             contentSearch?("")
+            pluginAnswer?("")
             rows = actionRows(filter: text)
             if let project = projectTasks {
                 let matching = project.tasks.filter { text.isEmpty || FuzzyMatcher.score(query: text, in: $0.command) != nil }
@@ -445,6 +498,13 @@ final class LauncherViewController: NSViewController {
     /// Async hits go last, so they never push the instant rows around.
     private func withAsyncRows(_ base: [Row]) -> [Row] {
         var out = base
+        // Answers first: they reply to exactly what was typed.
+        var answered: [String] = [], byPlugin: [String: [Row]] = [:]
+        for e in pluginAnswers.entries {
+            if byPlugin[e.pluginName] == nil { answered.append(e.pluginName) }
+            byPlugin[e.pluginName, default: []].append(.plugin(e))
+        }
+        for name in answered { out += [.header(name)] + byPlugin[name]! }
         let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
         if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
         if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
@@ -472,6 +532,7 @@ final class LauncherViewController: NSViewController {
         add(projectsProvider(), limit: 20, source: 1, boost: 40) { project($0.id).map(Row.project) }
         add(bitbucketProvider(), limit: 15, source: 2, boost: 30) { bitbucketItem($0.id).map(Row.bitbucket) }
         add(jiraProvider(), limit: 15, source: 8, boost: 30) { jiraIssue($0.id).map(Row.jira) }
+        add(pluginProvider(), limit: 15, source: 9, boost: 30) { pluginEntry($0.id).map(Row.plugin) }
         add(snippetItems, limit: 9, source: 3, boost: 20) { item in snippets.indices.contains(item.id) ? .snippet(item, snippets[item.id]) : nil }
         let actionItems = actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }
         add(actionItems, limit: 9, source: 4, boost: -50) { .action(number: $0.id + 1, actions[$0.id]) }
@@ -514,6 +575,13 @@ final class LauncherViewController: NSViewController {
         if !reviews.isEmpty { out += [.header("Waiting on your review")] + reviews.map(Row.bitbucket) }
         let assigned = jiraProvider().compactMap { jiraIssue($0.id) }.filter { $0.kind == .assigned && !keys.contains("u\($0.url)") }.prefix(3)
         if !assigned.isEmpty { out += [.header("Assigned to you")] + assigned.map(Row.jira) }
+        // Plugin items marked "suggest": up to 3 per plugin, under its name.
+        var suggested: [String] = [], byPlugin: [String: [Row]] = [:]
+        for e in pluginProvider().compactMap({ pluginEntry($0.id) }) where e.item.suggest == true {
+            if byPlugin[e.pluginName] == nil { suggested.append(e.pluginName) }
+            if byPlugin[e.pluginName, default: []].count < 3 { byPlugin[e.pluginName, default: []].append(.plugin(e)) }
+        }
+        for name in suggested { out += [.header(name)] + byPlugin[name]! }
         return out
     }
 
@@ -552,6 +620,8 @@ final class LauncherViewController: NSViewController {
             return bitbucketProvider().compactMap { bitbucketItem($0.id) }.first { $0.url == value }.map(Row.bitbucket)
         case "jira":
             return jiraProvider().compactMap { jiraIssue($0.id) }.first { $0.key == value }.map(Row.jira)
+        case "plug":
+            return pluginProvider().compactMap { pluginEntry($0.id) }.first { "\($0.pluginID):\($0.item.key)" == value }.map(Row.plugin)
         default: return nil
         }
     }
@@ -567,6 +637,13 @@ final class LauncherViewController: NSViewController {
     func setContentResults(_ hits: [ContentHit], for text: String) {
         guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
         contentHits = (text, hits)
+        asyncResultsChanged()
+    }
+
+    /// Plugin answers for `text` arrived.
+    func setPluginAnswers(_ entries: [PluginService.Entry], for text: String) {
+        guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
+        pluginAnswers = (text, entries)
         asyncResultsChanged()
     }
 
@@ -674,6 +751,12 @@ final class LauncherViewController: NSViewController {
             let updated = j.updated.map { RelativeAge.short($0) } ?? "—"
             return .text(title: j.title, facts: [("Status", j.subtitle), ("Updated", updated), ("Branch", j.branchName), ("URL", j.url)],
                          body: "", code: false)
+        case .plugin(let e):
+            let i = e.item
+            var facts = [("From", e.pluginName)]
+            if let sub = i.subtitle, !sub.isEmpty { facts.append(("About", sub)) }
+            if let open = i.open { facts.append(("Opens", open)) } else if let run = i.run { facts.append(("Runs", run)) }
+            return .text(title: i.title, facts: facts, body: i.preview ?? i.paste ?? i.copy ?? "", code: i.preview == nil)
         }
     }
 
@@ -702,6 +785,9 @@ final class LauncherViewController: NSViewController {
             case .history(let item)?: list.append(H(key: "↵", label: "Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")"))
             case .app?, .project?, .file?, .bitbucket?, .jira?, .content?: list.append(H(key: "↵", label: "Open"))
             case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
+            case .plugin(let e)?:
+                let i = e.item
+                list.append(H(key: "↵", label: i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
             case .command(let c)? where c.kind == .toggleAutoInstall: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))
@@ -713,6 +799,7 @@ final class LauncherViewController: NSViewController {
             if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
             if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
             if case .bitbucket? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
+            if case .plugin(let e)? = selectedRow, (e.item.copy ?? e.item.open) != nil { list.append(H(key: "⌘C", label: "Copy")) }
             if case .jira? = selectedRow { list += [H(key: "⌘C", label: "Copy key"), H(key: "⇧⌘C", label: "Copy branch")] }
             if selectedRow?.path != nil { list.append(H(key: "⌘C", label: "Copy path")) }
             hints.set(list)
@@ -766,6 +853,7 @@ final class LauncherViewController: NSViewController {
         case .jira(let j): onOpenURL?(j.url)
         case .task(let t, _): onRunTask?(t)
         case .command(let c): onCommand?(c)
+        case .plugin(let e): onPluginItem?(e)
         case .builtin(.paste, let id): onPaste?(id)
         case .builtin(.copy, let id): onCopy?(id)
         case .builtin(.delete, let id):
@@ -829,6 +917,7 @@ final class LauncherViewController: NSViewController {
             case .transform(let t)?: onCopyText?(t.value)
             case .bitbucket(let b)?: onCopyText?(b.url)
             case .jira(let j)?: onCopyText?(j.key)
+            case .plugin(let e)? where (e.item.copy ?? e.item.open) != nil: onCopyText?(e.item.copy ?? e.item.open!)
             case .content(let c)? where c.kind == .page: onCopyText?(c.ref)
             case .snippet(_, let s)?: onCopyText?(s.expanded(clipboard: Self.clipboardText))
             case let row? where row.path != nil: onCopyText?(row.path!)
@@ -965,6 +1054,9 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             show("checklist", j.title, detail: j.subtitle, label)
         case .command(let c):
             show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
+        case .plugin(let e):
+            show(e.item.icon ?? "puzzlepiece.extension", e.item.title, detail: e.item.subtitle ?? "",
+                 tagged(e.item.label ?? e.pluginName, title: e.item.title))
         }
         return cell
     }

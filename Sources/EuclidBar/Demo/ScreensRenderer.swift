@@ -139,6 +139,13 @@ enum ScreensRenderer {
         vc.demoSetQuery("git")
         try step("[appearance] density = \"compact\", accent = \"#ff8a3d\"", hold: 2.0, name: "compact-accent")
 
+        vc.theme = Theme(Appearance())
+        vc.badges = [.init(pluginID: "tokens", text: "1.2M tok · $4.10", icon: "gauge.with.dots.needle.33percent", hasClick: true)]
+        vc.demoSetQuery("")
+        try type("filters", caption: "Plugins: GitHub from a script, today's Claude tokens as a badge")
+        try step("Plugins: GitHub from a script, today's Claude tokens as a badge", hold: 2.0, name: "plugins")
+        vc.badges = []
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")
@@ -185,6 +192,19 @@ enum ScreensRenderer {
         vc.jiraProvider = { jiraItems }
         vc.jiraIssue = { jira[safe: $0] }
         vc.jiraBaseURL = { "https://acme.atlassian.net" }
+        func gh(_ title: String, _ sub: String, _ url: String, _ label: String, icon: String = "arrow.triangle.pull") -> PluginService.Entry {
+            .init(pluginID: "github", pluginName: "GitHub",
+                  item: PluginItem(title: title, subtitle: sub, open: url, icon: icon, label: label))
+        }
+        let github = [
+            gh("Add search filters to the public API", "acme/search · #231", "https://github.com/acme/search/pull/231", "Review"),
+            gh("Filter results by repo in the CLI", "acme/cli · #57", "https://github.com/acme/cli/pull/57", "Your PR"),
+            gh("Saved filters disappear after sign-out", "acme/web · #1204", "https://github.com/acme/web/issues/1204", "Issue",
+               icon: "smallcircle.filled.circle"),
+        ]
+        let githubItems = github.enumerated().map { $0.element.item.searchItem(id: $0.offset) }
+        vc.pluginProvider = { githubItems }
+        vc.pluginEntry = { github[safe: $0] }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
             Action(name: "Claude in herdr", run: #"herdr-run split claude "$1""#),

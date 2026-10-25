@@ -52,6 +52,7 @@ and the list never reshuffles under your cursor.
 | **Jira** | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
 | **Snippets** | Text you paste often, with `{date}` `{time}` `{clipboard}` `{uuid}` placeholders |
 | **Actions** | Your shell commands, run on what you typed |
+| **Plugins** | Anything a script can print: [your own sources, answers and badges](#plugins) |
 
 **Answers as you type.** `↵` copies the answer.
 
@@ -378,6 +379,55 @@ Choose what's shared:
 [agents]
 share = ["clipboard", "pages", "notes", "history"]   # the default; [] shares nothing
 ```
+
+## Plugins
+
+A plugin is a folder in `~/.config/euclid/plugins/` with a `plugin.toml` and a script in any
+language that prints one JSON object per line. No SDK, no build step: save it and it's live.
+
+```toml
+# ~/.config/euclid/plugins/tokens/plugin.toml
+name = "Claude tokens"
+
+[badge]                              # a chip on the search bar
+run   = "./today.sh"                 # prints "1.2M tok · $4.10"
+refresh_minutes = 5
+click = 'ghostty-run tab npx -y ccusage@latest daily'
+```
+
+| Part | What it adds |
+|---|---|
+| `[source]` | Items in search, refreshed in the background (`refresh_minutes`) |
+| `[answer]` | A reply to what you type, on a `prefix` (`tz 3pm`) or a `match` regex |
+| `[badge]` | A short status on the search bar; `click` runs a command |
+| `[[action]]` | Actions in `⌘K`, after your own |
+| `[settings]` | Defaults your config overrides with `[plugin.<id>]`; scripts get `$EUCLID_SETTING_<KEY>` |
+
+A script prints rows like `{"title":"Fix login","subtitle":"acme/web · #412","open":"https://…"}`;
+`↵` opens, pastes, copies or runs whatever the row says.
+
+**Let your AI write them.** Euclid keeps the whole format in `~/.config/euclid/plugins/AGENTS.md`.
+Ask Claude Code or Codex "make me a Euclid plugin that shows my Vercel deploys": it writes the
+folder, checks it with `--try-plugin`, and it shows up in the bar on save.
+
+```sh
+euclid-bar --plugin add github      # your PRs, reviews and issues (needs the gh CLI)
+euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
+euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
+euclid-bar --try-plugin github      # run it once and print what the bar would show
+```
+
+```toml
+[plugins]
+paths    = ["~/work/team/euclid-plugins"]   # a team's shared plugins
+disabled = ["tokens"]
+
+[plugin.github]                             # your values for a plugin's settings
+limit = 50
+```
+
+Plugins run as you, like your actions: read a plugin before you add it. `--check-config` lists
+them, and a failing one shows its first error in the footer.
 
 ## Jira
 

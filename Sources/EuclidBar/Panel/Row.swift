@@ -26,6 +26,8 @@ enum Row {
     /// A project's Makefile target, package.json script…, listed by ⌘K on the project.
     case task(ProjectTask, project: String)
     case command(AppCommand)
+    /// An item a plugin printed (a source's, or an answer to the query).
+    case plugin(PluginService.Entry)
 
     var isHeader: Bool { if case .header = self { true } else { false } }
 
@@ -42,6 +44,7 @@ enum Row {
         case .jira(let j) where j.kind != .typed: "jira:\(j.key)"
         case .content(let c): "content:\(c.ref)"
         case .command(let c): "cmd:\(c.kind.rawValue)"
+        case .plugin(let e): "plug:\(e.pluginID):\(e.item.key)"
         case .header, .clip, .history, .builtin, .calc, .transform, .jira, .task: nil
         }
     }
@@ -61,6 +64,7 @@ enum Row {
         case .jira: "issues"
         case .task: "tasks"
         case .calc, .transform: "answers"
+        case .plugin: "plugins"
         case .header, .command: nil
         }
     }
@@ -96,6 +100,7 @@ enum Row {
         case .jira(let j): "u\(j.url)"
         case .task(let t, _): "k\(t.commandLine)"
         case .command(let c): "x\(c.kind.rawValue)"
+        case .plugin(let e): "g\(e.pluginID)\u{0}\(e.item.key)"
         }
     }
 
@@ -116,6 +121,7 @@ enum Row {
         case .jira: "Jira"
         case .task(_, let project): "Tasks · \(project)"
         case .command: "euclid-bar"
+        case .plugin(let e): e.pluginName
         }
     }
 

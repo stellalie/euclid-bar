@@ -151,6 +151,14 @@ run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 # name = "pi in herdr"
 # run  = 'herdr-run tab pi "$1"'            # or: split, split-down
 
+# Plugins: folders in ~/.config/euclid/plugins; AGENTS.md there is the whole format.
+# `euclid-bar --plugin add github` adds an example.
+# [plugins]
+# paths    = ["~/work/team/euclid-plugins"]   # a team's shared plugins
+# disabled = ["github"]
+# [plugin.github]                             # your values for a plugin's settings
+# limit = 50
+
 # Snippets: text you paste often. Find them by name or keyword; ↵ pastes.
 # Placeholders: {date} {time} {datetime} {clipboard} {uuid}
 # [[snippet]]

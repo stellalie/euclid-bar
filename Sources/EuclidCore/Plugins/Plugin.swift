@@ -26,6 +26,8 @@ public struct Plugin: Equatable, Sendable {
     public var actions: [Action] = []
     /// Defaults from plugin.toml, with config.toml's `[plugin.<id>]` on top.
     public var settings: [String: String] = [:]
+    /// Changes when any file in the folder does, so an edited script reruns.
+    public var revision = ""
 
     public struct Source: Equatable, Sendable {
         public let run: String
@@ -83,18 +85,23 @@ public enum PluginLoader {
     public static let manifestName = "plugin.toml"
 
     /// Every `<dir>/<id>/plugin.toml` under `directories`, in order; the first plugin with an id wins.
-    /// Returns the manifests read (to watch them) along with the plugins.
+    /// Also returns what to watch so a plugin reloads on save: the plugin folders and the files in them.
     public static func load(directories: [String], disabled: Set<String>, overrides: [String: [String: String]],
-                            _ issues: inout [ConfigIssue]) -> (plugins: [Plugin], manifests: [String]) {
+                            _ issues: inout [ConfigIssue]) -> (plugins: [Plugin], watched: [String]) {
         let fm = FileManager.default
-        var plugins: [Plugin] = [], manifests: [String] = [], seen = Set<String>()
+        var plugins: [Plugin] = [], watched: [String] = [], seen = Set<String>()
         for dir in directories {
             guard let names = try? fm.contentsOfDirectory(atPath: dir) else { continue }
             for id in names.sorted() where !id.hasPrefix(".") {
                 let folder = (dir as NSString).appendingPathComponent(id)
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: folder, isDirectory: &isDir), isDir.boolValue else { continue }
+                watched.append(folder) // a plugin.toml written here later loads it
                 let manifest = (folder as NSString).appendingPathComponent(manifestName)
                 guard fm.fileExists(atPath: manifest), seen.insert(id).inserted else { continue }
-                manifests.append(manifest)
+                let files = ((try? fm.contentsOfDirectory(atPath: folder)) ?? []).sorted().filter { !$0.hasPrefix(".") }.prefix(50)
+                    .map { (folder as NSString).appendingPathComponent($0) }
+                watched += files
                 guard !disabled.contains(id) else { continue }
                 guard let text = try? String(contentsOfFile: manifest, encoding: .utf8) else {
                     issues.append(.warning("plugin \(id): can't read plugin.toml")); continue
@@ -102,6 +109,11 @@ public enum PluginLoader {
                 var own: [ConfigIssue] = []
                 if var plugin = parse(text, id: id, directory: folder, &own) {
                     for (key, value) in overrides[id] ?? [:] { plugin.settings[key] = value }
+                    plugin.revision = files.map { path in
+                        let a = try? fm.attributesOfItem(atPath: path)
+                        let mtime = (a?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+                        return "\((path as NSString).lastPathComponent):\(mtime):\(a?[.size] ?? 0)"
+                    }.joined(separator: "|")
                     plugins.append(plugin)
                 }
                 issues += own.map { .init(severity: $0.severity, message: "plugin \(id): \($0.message)") }
@@ -110,7 +122,7 @@ public enum PluginLoader {
         for id in overrides.keys.sorted() where !seen.contains(id) {
             issues.append(.warning("[plugin.\(id)]: no plugin named '\(id)' is installed"))
         }
-        return (plugins, manifests)
+        return (plugins, watched)
     }
 
     /// One plugin.toml. Nil when it can't be used at all; smaller problems become issues.
