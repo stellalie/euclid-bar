@@ -99,7 +99,7 @@ import Testing
             "[answer] needs a prefix or a match, so it doesn't run on every search; skipped",
             "badge.refresh_minutes must be a number from 1 to 1440",
             "badge.run must be a command, e.g. './items.sh'",
-            "has no [source], [answer], [badge] or [[action]], so it does nothing",
+            "has no [source], [answer], [badge], [[action]], [[on]] or [[key]], so it does nothing",
         ])
         var bad: [ConfigIssue] = []
         #expect(PluginLoader.parse("name = ", id: "x", directory: "/x", &bad) == nil)

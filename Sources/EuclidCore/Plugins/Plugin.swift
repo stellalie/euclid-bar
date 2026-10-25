@@ -24,6 +24,10 @@ public struct Plugin: Equatable, Sendable {
     public var badge: Badge?
     /// Added to your actions, after config.toml's and included ones.
     public var actions: [Action] = []
+    /// `[[on]]`: commands Euclid runs when something happens (a copy, the panel opening…).
+    public var hooks: [Hook] = []
+    /// `[[key]]`: shortcuts in the panel that act on the selected result.
+    public var keys: [Key] = []
     /// Defaults from plugin.toml, with config.toml's `[plugin.<id>]` on top.
     public var settings: [String: String] = [:]
     /// Changes when any file in the folder does, so an edited script reruns.
@@ -70,6 +74,48 @@ public struct Plugin: Equatable, Sendable {
             }
             if let match, !q.isEmpty, q.range(of: match, options: .regularExpression) != nil { return q }
             return nil
+        }
+    }
+
+    /// What a hook reacts to. `$1` is in brackets.
+    public enum Event: String, CaseIterable, Sendable {
+        /// You copied text (the text).
+        case clipboard
+        /// The panel opened (the app you were in).
+        case open
+        /// You picked a result with ↵ (its URL, path or text; `$EUCLID_ITEM_*` has the rest).
+        case choose
+        /// You switched to another app (its name).
+        case app
+    }
+
+    public struct Hook: Equatable, Sendable {
+        public let event: Event
+        public let run: String
+
+        public init(event: Event, run: String) {
+            self.event = event
+            self.run = run
+        }
+    }
+
+    public struct Key: Equatable, Sendable {
+        public let key: HotkeySpec
+        /// Shown in the footer when the key applies.
+        public let name: String
+        public let run: String
+        /// Kinds of result it applies to ("file", "pr", or a plugin's id); empty = any.
+        public let when: [String]
+
+        public init(key: HotkeySpec, name: String, run: String, when: [String] = []) {
+            self.key = key
+            self.name = name
+            self.run = run
+            self.when = when
+        }
+
+        public func applies(to item: ModItem) -> Bool {
+            when.isEmpty || when.contains(item.kind) || item.pluginID.map(when.contains) == true
         }
     }
 
@@ -131,7 +177,7 @@ public enum PluginLoader {
         do { root = try TOMLTable(source: text) } catch {
             issues.append(.warning("plugin.toml isn't valid TOML: \(error)")); return nil
         }
-        ConfigLoader.warnUnknownKeys(root, known: ["name", "description", "source", "answer", "badge", "action", "settings"], in: "plugin.toml", &issues)
+        ConfigLoader.warnUnknownKeys(root, known: ["name", "description", "source", "answer", "badge", "action", "on", "key", "settings"], in: "plugin.toml", &issues)
         let name = (try? root.string(forKey: "name")).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? id
         let description = (try? root.string(forKey: "description")) ?? ""
         var plugin = Plugin(id: id, name: name, description: description, directory: directory)
@@ -206,8 +252,40 @@ public enum PluginLoader {
             } else { issues.append(.warning("actions must be [[action]] blocks")) }
         }
 
-        if plugin.source == nil, plugin.answer == nil, plugin.badge == nil, plugin.actions.isEmpty {
-            issues.append(.warning("has no [source], [answer], [badge] or [[action]], so it does nothing"))
+        for (i, t) in tables(root, "on", &issues).enumerated() {
+            let label = "on #\(i + 1)"
+            ConfigLoader.warnUnknownKeys(t, known: ["event", "run"], in: label, &issues)
+            let name = (try? t.string(forKey: "event")) ?? ""
+            guard let event = Plugin.Event(rawValue: name.lowercased()) else {
+                issues.append(.warning("\(label): event must be one of \(Plugin.Event.allCases.map(\.rawValue).joined(separator: ", "))")); continue
+            }
+            if let run = command(t, label, &issues) { plugin.hooks.append(.init(event: event, run: run)) }
+        }
+
+        for (i, t) in tables(root, "key", &issues).enumerated() {
+            let label = "key #\(i + 1)"
+            ConfigLoader.warnUnknownKeys(t, known: ["key", "name", "run", "when"], in: label, &issues)
+            let text = (try? t.string(forKey: "key")) ?? ""
+            let spec: HotkeySpec
+            switch HotkeySpec.parse(text) {
+            case .success(let s): spec = s
+            case .failure(let e): issues.append(.warning("\(label): key: \(e.message)")); continue
+            }
+            if let taken = reservedKeys[spec] {
+                issues.append(.warning("\(label): \(spec.symbols) is Euclid's \(taken); pick another key")); continue
+            }
+            var when: [String] = []
+            if t.contains(key: "when") {
+                if let s = try? t.string(forKey: "when") { when = [s] }
+                else if let a = try? t.array(forKey: "when") { when = (0..<a.count).compactMap { try? a.string(atIndex: $0) } }
+                else { issues.append(.warning("\(label): when must be a kind or a list, e.g. [\"file\", \"project\"]")) }
+            }
+            let name = (try? t.string(forKey: "name")).flatMap { $0.isEmpty ? nil : $0 } ?? plugin.name
+            if let run = command(t, label, &issues) { plugin.keys.append(.init(key: spec, name: name, run: run, when: when.map { $0.lowercased() })) }
+        }
+
+        if plugin.source == nil, plugin.answer == nil, plugin.badge == nil, plugin.actions.isEmpty, plugin.hooks.isEmpty, plugin.keys.isEmpty {
+            issues.append(.warning("has no [source], [answer], [badge], [[action]], [[on]] or [[key]], so it does nothing"))
         }
         return plugin
     }
@@ -226,6 +304,25 @@ public enum PluginLoader {
         }
         return out
     }
+
+    /// `[[name]]` blocks (a single `[name]` table counts as one).
+    private static func tables(_ root: TOMLTable, _ name: String, _ issues: inout [ConfigIssue]) -> [TOMLTable] {
+        guard root.contains(key: name) else { return [] }
+        if let list = try? root.array(forKey: name) { return (0..<list.count).compactMap { try? list.table(atIndex: $0) } }
+        if let t = try? root.table(forKey: name) { return [t] }
+        issues.append(.warning("\(name) must be [[\(name)]] blocks")); return []
+    }
+
+    /// Keys the panel already uses; a plugin can't take them.
+    static let reservedKeys: [HotkeySpec: String] = {
+        var keys: [HotkeySpec: String] = [:]
+        func add(_ text: String, _ what: String) { if case .success(let s) = HotkeySpec.parse(text) { keys[s] = what } }
+        add("cmd+k", "actions"); add("cmd+y", "preview"); add("cmd+c", "copy"); add("cmd+shift+c", "copy branch")
+        add("cmd+return", "first action"); add("cmd+a", "select all"); add("cmd+x", "cut"); add("cmd+v", "paste")
+        add("cmd+z", "undo"); add("cmd+q", "quit"); add("cmd+w", "close"); add("cmd+h", "hide")
+        for n in 0...9 { add("cmd+\(n)", "action \(n)") }
+        return keys
+    }()
 
     private static func command(_ t: TOMLTable, _ place: String, _ issues: inout [ConfigIssue]) -> String? {
         if let s = try? t.string(forKey: "run"), !s.trimmingCharacters(in: .whitespaces).isEmpty { return s }

@@ -26,6 +26,8 @@ public enum PluginGuide {
         "currency": [("plugin.toml", currencyManifest, false), ("convert.sh", currencyScript, true)],
         "contacts": [("plugin.toml", contactsManifest, false), ("people.js", contactsScript, false)],
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
+        "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
+        "reveal": [("plugin.toml", revealManifest, false)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -282,11 +284,52 @@ shortcuts list | jq -Rc 'select(length > 0)
   | {title: ., subtitle: "Shortcut", run: "shortcuts run \(@sh)", id: ., icon: "square.2.layers.3d"}'
 """#
 
+    static let cleanlinksManifest = #"""
+name = "Clean links"
+description = "A mod: copy a link with tracking junk (utm_*, fbclid, gclid…) and the clipboard gets the clean one."
+
+[[on]]
+event = "clipboard"
+run   = "./clean.sh"
+"""#
+
+    static let cleanlinksScript = #"""
+#!/bin/sh
+# Gets the copied text as $1. Prints {"copy": …} only when there was something to remove.
+set -eu
+case "$1" in http://*|https://*) ;; *) exit 0 ;; esac
+case "$1" in *"
+"*) exit 0 ;; esac  # one line only
+clean=$(printf '%s\n' "$1" | awk '{
+  n = index($0, "#"); frag = n ? substr($0, n) : ""; url = n ? substr($0, 1, n - 1) : $0
+  q = index(url, "?"); if (!q) { print $0; exit }
+  k = split(substr(url, q + 1), parts, "&"); out = ""
+  for (i = 1; i <= k; i++)
+    if (parts[i] != "" && parts[i] !~ /^(utm_[a-z_]+|fbclid|gclid|dclid|mc_eid|igshid|_hsenc|_hsmi)=/)
+      out = out (out == "" ? "" : "&") parts[i]
+  print substr(url, 1, q - 1) (out == "" ? "" : "?" out) frag }')
+[ "$clean" = "$1" ] && exit 0
+esc=$(printf '%s' "$clean" | sed 's/\\/\\\\/g; s/"/\\"/g')
+printf '{"copy":"%s","notice":"Cleaned a tracking link"}\n' "$esc"
+"""#
+
+    static let revealManifest = #"""
+name = "Reveal in Finder"
+description = "A mod: ⇧⌘R on a file, project or app shows it in Finder."
+
+[[key]]
+key  = "cmd+shift+r"
+name = "Reveal in Finder"
+when = ["file", "project", "app"]
+run  = 'open -R "$1"'
+"""#
+
     public static let guide = marker + "\n" + #"""
 # Euclid plugins
 
-A plugin is a folder here with a `plugin.toml` and the scripts it runs. Euclid reloads it when
-you save, so write it, try it, and it's live. This file is the whole format.
+A plugin is a folder here with a `plugin.toml` and the scripts it runs. It can add things
+to the bar (search items, answers, badges, actions) or change how Euclid behaves (hooks and
+keys: a "mod"). Euclid reloads it when you save, so write it, try it, and it's live. This file is the whole format.
 
 ## Make one (people and coding agents)
 
@@ -366,6 +409,46 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 The text you type is only ever passed as `$1` and environment variables, never pasted into a
 command, so quote it: `"$1"`.
 
+## Mods: hooks and keys
+
+A plugin can also change how Euclid behaves. Same folder, same scripts.
+
+```toml
+[[on]]                             # run when something happens
+event = "clipboard"                # clipboard: you copied text ($1 = the text)
+run   = "./clean.sh"               # open: the panel opened ($1 = the app you were in)
+                                   # choose: you picked a result with ↵ ($1 = its URL, path or text)
+                                   # app: you switched apps ($1 = the app's name)
+
+[[key]]                            # a shortcut in the panel, on the selected result
+key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘1…) are taken
+name = "Open in GitHub Desktop"    # shown in the footer when it applies
+when = ["pr", "project"]           # optional: kinds it applies to, or a plugin's id
+run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
+```
+
+Kinds: `app` `project` `file` `clip` `snippet` `page` `note` `history` `pr` `issue` `action` `answer`
+`command` `plugin` (a plugin's own items also match their plugin's id). Keys and `choose` hooks
+also get `$EUCLID_ITEM_KIND`, `_TITLE`, `_SUBTITLE`, `_URL`, `_PATH`, `_TEXT` and `_PLUGIN`.
+
+A hook or key script can ask Euclid to do something by printing JSON lines (anything else it
+prints is ignored):
+
+```json
+{"notice":"Cleaned a tracking link"}   shown in the panel's footer
+{"copy":"https://example.com/x"}       put on the clipboard (a clipboard hook doesn't see its own copy)
+{"open":"https://example.com"}         open a URL or file
+{"query":"jira "}                      open hooks only: start the search with this text
+```
+
+Hooks run in the background with a 10 s limit and never slow the panel down. Try one with
+sample text: `euclid-bar --try-plugin <id> "https://example.com/?utm_source=x"`. Keys aren't run
+by `--try-plugin`; it checks them and lists them.
+
+**From the bar:** typing `mod: <what you want>` opens your coding agent (`[mods] agent`, default
+`claude`) in this folder with the request. `mod: undo` puts this folder back as it was before
+the last request (it's a git repository; `git log` shows every mod).
+
 ## Rules of thumb
 
 - Keep sources fast and quiet: they run in the background with a 30 s limit, answers with 2 s.
@@ -388,5 +471,7 @@ change them:
 - `currency`: `100 usd to eur` with daily rates, cached (an answer with a `match`).
 - `contacts`: people in Contacts, through JavaScript for Automation (a source).
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
+- `cleanlinks`: strips tracking parameters from links you copy (a mod: a `clipboard` hook).
+- `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a mod: a `[[key]]`).
 """#
 }

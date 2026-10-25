@@ -29,6 +29,12 @@ final class PluginService {
     var onChange: (() -> Void)?
     /// Answers for `query` arrived (possibly none).
     var onAnswers: ((_ query: String, [Entry]) -> Void)?
+    /// A hook or key printed effects (or failed: a notice saying so).
+    var onEffects: ((_ pluginName: String, [PluginEffect]) -> Void)?
+    /// Every `[[key]]`, in plugin order.
+    var keys: [(pluginID: String, key: Plugin.Key)] { plugins.flatMap { p in p.keys.map { (p.id, $0) } } }
+    /// Whether anything listens for `event`, so callers can skip building its input.
+    func hasHooks(for event: Plugin.Event) -> Bool { plugins.contains { $0.hooks.contains { $0.event == event } } }
 
     private(set) var plugins: [Plugin] = []
     private var shell = "/bin/zsh"
@@ -41,6 +47,8 @@ final class PluginService {
     private var running: Set<String> = []
     private var generation = 0
     private var answerTask: Task<Void, Never>?
+    /// Hooks still running; one run of each at a time.
+    private var hooksRunning: Set<String> = []
     private let log = Logger(subsystem: "dev.euclid", category: "plugins")
 
     init(binDirectory: String) {
@@ -59,6 +67,7 @@ final class PluginService {
         self.environment = environment
         generation += 1
         running = []
+        hooksRunning = []
         let ids = Set(plugins.map(\.id))
         sourceItems = sourceItems.filter { ids.contains($0.key) }
         badgeText = badgeText.filter { ids.contains($0.key) }
@@ -166,6 +175,51 @@ final class PluginService {
     func cancelAnswers() {
         answerTask?.cancel()
         answerTask = nil
+    }
+
+    /// Run the hooks for `event` in the background, with `input` as `$1`.
+    func fire(_ event: Plugin.Event, input: String, environment extra: [String: String] = [:]) {
+        for p in plugins {
+            for (i, hook) in p.hooks.enumerated() where hook.event == event {
+                let key = "\(p.id)#\(i)"
+                guard hooksRunning.insert(key).inserted else { continue } // the last one is still going
+                execute(hook.run, plugin: p, input: input, environment: extra, label: "\(p.name) (on \(event.rawValue))") { [weak self] in
+                    self?.hooksRunning.remove(key)
+                }
+            }
+        }
+    }
+
+    /// A `[[key]]` on the selected result: `$1` is its URL, path or text.
+    func runKey(_ key: Plugin.Key, pluginID: String, item: ModItem, query: String) {
+        guard let p = plugin(id: pluginID) else { return }
+        execute(key.run, plugin: p, input: item.value, environment: item.environment.merging(["EUCLID_SEARCH": query]) { $1 },
+                label: key.name, done: nil)
+    }
+
+    private func execute(_ command: String, plugin p: Plugin, input: String, environment extra: [String: String],
+                         label: String, done: (@MainActor @Sendable () -> Void)?) {
+        let shell = shell, env = mergedEnvironment.merging(extra) { $1 }, bin = binDirectory, log = log
+        Task.detached(priority: .userInitiated) {
+            let result: Result<Data, Error>
+            do {
+                result = .success(try await PluginRunner.output(of: command, plugin: p, query: input, shell: shell, pathPrefix: bin,
+                                                                environment: env, timeout: PluginTiming.hook))
+            } catch {
+                result = .failure(error)
+            }
+            await MainActor.run {
+                done?()
+                switch result {
+                case .success(let data):
+                    let effects = PluginEffect.parse(data)
+                    if !effects.isEmpty { self.onEffects?(p.name, effects) }
+                case .failure(let error):
+                    log.error("\(label, privacy: .public): \(String(describing: error), privacy: .public)")
+                    self.onEffects?(p.name, [PluginEffect(notice: "⚠︎ \(label): \(error)")])
+                }
+            }
+        }
     }
 
     /// `run` on an item, `click` on a badge, both in the plugin's folder.

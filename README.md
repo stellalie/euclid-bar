@@ -67,6 +67,8 @@ with `euclid-bar --plugin add <name>`:
 | `define` *(plugin)* | `define serendipity` from the macOS Dictionary |
 | `currency` *(plugin)* | `100 usd to eur` with daily rates (no key) |
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
+| `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
+| `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -469,6 +471,37 @@ limit = 50
 
 Plugins run as you, like your actions: read a plugin before you add it. `--check-config` lists
 them, and a failing one shows its first error in the footer.
+
+### Mods: change how Euclid behaves
+
+A plugin can also hook into what happens and add keys. Type what you want in the bar and your
+coding agent builds it:
+
+```
+mod: make ⌘G open the selected PR in GitHub Desktop
+mod: when I copy a Jira link, put just the issue key on the clipboard
+mod: undo
+```
+
+`mod:` opens your agent (`[mods] agent = "claude"`, or `"codex"`) in a terminal, in the plugins
+folder, with the request. It writes the mod, checks it with `--try-plugin`, and Euclid loads it on
+save. `mod: undo` puts the folder back as it was before the last request (it's a git repo).
+
+```toml
+[[on]]                      # clipboard · open · choose · app
+event = "clipboard"
+run   = "./clean.sh"        # $1 = the copied text; print {"copy":"…"} to replace it
+
+[[key]]
+key  = "cmd+g"
+name = "GitHub Desktop"     # shown in the footer when it applies
+when = ["pr", "github"]     # kinds of result, or a plugin's id
+run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
+```
+
+Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}` or, on `open`, `{"query":…}`.
+Examples: `euclid-bar --plugin add cleanlinks` (strips tracking parameters from copied links) and
+`euclid-bar --plugin add reveal` (⇧⌘R shows a file in Finder).
 
 ## Jira
 

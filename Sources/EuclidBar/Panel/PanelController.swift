@@ -48,6 +48,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     var extraProblem: () -> String? = { nil }
     /// Where the panel's top edge sits while it's open: it grows and shrinks downwards from here.
     private var anchor: NSPoint?
+    /// The last text a hook put on the clipboard, so clipboard hooks don't react to their own copy.
+    private var hookCopy: String?
+    private var appObserver: NSObjectProtocol?
+    /// The app you're in, for `open` hooks (`frontmostApplication` goes stale in an accessory app).
+    private var frontApp = (name: "", id: "")
 
     init(clipboard: ClipboardService, config: ConfigService, history: HistoryService) {
         self.clipboard = clipboard
@@ -115,6 +120,39 @@ final class PanelController: NSObject, NSWindowDelegate {
             self.content.badges = self.plugins.badges
             remoteChanged()
         }
+        // Mods: hooks and keys.
+        let front = NSWorkspace.shared.frontmostApplication
+        frontApp = (front?.localizedName ?? "", front?.bundleIdentifier ?? "")
+        plugins.onEffects = { [weak self] name, effects in self?.apply(effects, from: name) }
+        content.onModKey = { [weak self] pluginID, key, item in
+            guard let self else { return }
+            let query = self.content.query
+            self.hide()
+            self.plugins.runKey(key, pluginID: pluginID, item: item, query: query)
+        }
+        content.onChoose = { [unowned plugins] item in
+            guard plugins.hasHooks(for: .choose) else { return }
+            plugins.fire(.choose, input: item.value, environment: item.environment)
+        }
+        clipboard.onText = { [weak self] text, app in
+            guard let self, self.plugins.hasHooks(for: .clipboard) else { return }
+            if text == self.hookCopy { self.hookCopy = nil; return }
+            guard text.utf8.count <= 100_000 else { return } // too big to pass as an argument
+            self.plugins.fire(.clipboard, input: text, environment: ["EUCLID_APP": app ?? ""])
+        }
+        appObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let name = app?.localizedName ?? "", id = app?.bundleIdentifier ?? ""
+            guard id != Bundle.main.bundleIdentifier else { return }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.frontApp = (name, id)
+                guard self.plugins.hasHooks(for: .app) else { return }
+                self.plugins.fire(.app, input: name, environment: ["EUCLID_APP_ID": id])
+            }
+        }
         content.onOpenHistory = { [weak self] id in self?.openHistory(id: id) }
         content.onCopyHistory = { [weak self] id in
             guard let self, let entry = self.history.entry(id: id) else { return }
@@ -168,6 +206,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         jira.configure(settings.jira, shell: settings.shellPath, environment: settings.environment)
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
         content.badges = plugins.badges
+        content.modKeys = plugins.keys
+        content.modAgent = settings.modAgent
         files.enabled = settings.filesEnabled
         files.limit = settings.filesLimit
         let folders = settings.appFolders
@@ -284,6 +324,62 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// What a hook or key script asked for.
+    private func apply(_ effects: [PluginEffect], from pluginName: String) {
+        for e in effects {
+            if let text = e.copy {
+                hookCopy = text
+                Paster.copy(text)
+            }
+            if let open = e.open {
+                let expanded = (open as NSString).expandingTildeInPath
+                if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
+                else if let url = URL(string: open) { NSWorkspace.shared.open(url) }
+            }
+            if let query = e.query, panel.isVisible { content.suggestQuery(query) }
+            if let notice = e.notice {
+                // Shown now if the panel is open, else the next time it opens.
+                content.notice = notice.hasPrefix("⚠︎") ? notice : "\(pluginName): \(notice)"
+            }
+        }
+    }
+
+    /// `mod: <request>`: commit the plugins folder (so `mod: undo` can go back), then open the
+    /// coding agent in a terminal there with the request.
+    func makeMod(_ request: String) {
+        hide()
+        let settings = config.current.config
+        let dir = config.paths.pluginsDirectory
+        let prompt = ModRequest.prompt(request, executable: Bundle.main.executablePath ?? "euclid-bar")
+        let line = ModRequest.commandLine(agent: settings.modAgent, prompt: prompt, directory: dir.path)
+        let task = settings.projectTask
+        DispatchQueue.global(qos: .userInitiated).async {
+            var problem: String?
+            do {
+                try PluginGuide.install(in: dir)
+                try ModHistory.snapshot(dir, message: "before mod: \(request)")
+            } catch {
+                problem = "⚠︎ “mod: undo” won't work for this one (\(error))"
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if let problem { self.content.notice = problem }
+                    self.run(Action(name: "Make a mod", run: task), query: line)
+                }
+            }
+        }
+    }
+
+    /// `mod: undo`: put the plugins folder back as it was before the last `mod:`.
+    func undoMod() {
+        do {
+            content.notice = try ModHistory.undo(config.paths.pluginsDirectory)
+        } catch {
+            content.notice = "⚠︎ \(error)"
+        }
+        content.clearQuery()
+    }
+
     private func clickBadge(pluginID: String) {
         guard let click = plugins.plugin(id: pluginID)?.badge?.click else { return }
         runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID)
@@ -345,6 +441,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results
         if let message = reminder?() { content.notice = message }
+        if plugins.hasHooks(for: .open) { plugins.fire(.open, input: frontApp.name, environment: ["EUCLID_APP_ID": frontApp.id]) }
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
         // End on the next run-loop turn, after the frame has been committed.

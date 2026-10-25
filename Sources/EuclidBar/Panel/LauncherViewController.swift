@@ -34,6 +34,13 @@ final class LauncherViewController: NSViewController {
     var onPluginItem: ((PluginService.Entry) -> Void)?
     /// A plugin's badge was clicked, by plugin id.
     var onBadgeClick: ((String) -> Void)?
+    /// Every plugin `[[key]]`, checked on keys the panel doesn't use itself.
+    var modKeys: [(pluginID: String, key: Plugin.Key)] = [] { didSet { if isViewLoaded { updateFooter() } } }
+    var onModKey: ((_ pluginID: String, Plugin.Key, ModItem) -> Void)?
+    /// You picked a result with ↵ (for `choose` hooks).
+    var onChoose: ((ModItem) -> Void)?
+    /// `[mods] agent`, named on the `mod:` row.
+    var modAgent = "claude"
     /// The panel should take this size (it grows with the results, and for the preview).
     var onPreferredSizeChange: ((NSSize) -> Void)?
     /// Browser history (searched only when there's a query).
@@ -104,6 +111,8 @@ final class LauncherViewController: NSViewController {
     private var rows: [Row] = []
     /// Rows from the instant sources; async hits (pages, notes, files) are appended below them.
     private var baseRows: [Row] = []
+    /// The instant rows are only the “Use … with” fallback, so an answer can go above them.
+    private var baseIsFallback = false
     private var fileHits: (query: String, hits: [FileHit]) = ("", [])
     private var contentHits: (query: String, hits: [ContentHit]) = ("", [])
     private var pluginAnswers: (query: String, entries: [PluginService.Entry]) = ("", [])
@@ -373,6 +382,14 @@ final class LauncherViewController: NSViewController {
     // MARK: - Demo (driven by `euclid-bar --render-demo`)
 
     func demoSetQuery(_ text: String) { searchField.stringValue = text; runSearch() }
+
+    func clearQuery() { enterSearchMode(query: "") }
+
+    /// An `open` hook's `{"query":…}`: start the search with it, unless you already typed.
+    func suggestQuery(_ text: String) {
+        guard case .search = mode, searchField.stringValue.isEmpty else { return }
+        enterSearchMode(query: text)
+    }
     func demoToggleActions() { if case .actions = mode { enterSearchMode(query: query) } else { enterActionsMode() } }
     /// Select the nth result, not counting section headers.
     func demoSelect(row: Int) {
@@ -410,7 +427,7 @@ final class LauncherViewController: NSViewController {
     }
 
     /// The text actions run on: the typed query (remembered while in ⌘K).
-    private var query: String {
+    var query: String {
         if case .actions(let q, _) = mode { return q }
         return searchField.stringValue
     }
@@ -429,10 +446,12 @@ final class LauncherViewController: NSViewController {
             if text.isEmpty {
                 let clips = FuzzyMatcher.search(text, in: all).map(Row.clip)
                 baseRows = suggestions() + (clips.isEmpty ? [] : [.header("Clipboard")] + clips)
+                baseIsFallback = false
                 searched = all.count
             } else {
                 let ranked = rankedRows(for: text, clips: all)
                 searched = ranked.searched
+                baseIsFallback = ranked.rows.isEmpty && !actions.isEmpty
                 // Nothing matched: offer the actions instead, Raycast-style.
                 if !ranked.rows.isEmpty { baseRows = ranked.rows.sectioned() }
                 else if actions.isEmpty { baseRows = [] }
@@ -497,16 +516,17 @@ final class LauncherViewController: NSViewController {
         return "\(items.formatted()) items · \(time)"
     }
 
-    /// Async hits go last, so they never push the instant rows around.
+    /// Async hits go last, so they never push the instant rows around. The one exception:
+    /// when nothing matched, plugin answers go above the “Use … with” fallback, so ↵ takes the answer.
     private func withAsyncRows(_ base: [Row]) -> [Row] {
-        var out = base
         // Answers first: they reply to exactly what was typed.
-        var answered: [String] = [], byPlugin: [String: [Row]] = [:]
+        var answers: [Row] = [], answered: [String] = [], byPlugin: [String: [Row]] = [:]
         for e in pluginAnswers.entries {
             if byPlugin[e.pluginName] == nil { answered.append(e.pluginName) }
             byPlugin[e.pluginName, default: []].append(.plugin(e))
         }
-        for name in answered { out += [.header(name)] + byPlugin[name]! }
+        for name in answered { answers += [.header(name)] + byPlugin[name]! }
+        var out = baseIsFallback ? answers + base : base + answers
         let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
         if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
         if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
@@ -551,6 +571,7 @@ final class LauncherViewController: NSViewController {
         if let result = Calculator.evaluate(text) { pinned.append(.calc(result, expression: text)) }
         pinned += DevTransforms.evaluate(text).map(Row.transform)
         var top: [Row] = []
+        if let mod = ModRequest.parse(text) { top.append(.command(.mod(mod, agent: modAgent))) }
         if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) { top.append(row) }
         if let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
             top.append(.snippet(snippetItems[i], snippets[i]))
@@ -653,10 +674,12 @@ final class LauncherViewController: NSViewController {
         let previous = selectedRow.map(\.key)
         let newRows = withAsyncRows(baseRows)
         guard newRows.map(\.key) != rows.map(\.key) else { return }
+        // Still on the first fallback action: the user hasn't picked it, so let an answer above it take ↵.
+        let untouched = baseIsFallback && tableView.selectedRow == rows.firstIndex { !$0.isHeader }
         rows = newRows
         tableView.reloadData()
         emptyLabel.isHidden = !rows.isEmpty
-        select(row: previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
+        select(row: untouched ? 0 : previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
         notifySize()
     }
 
@@ -798,6 +821,9 @@ final class LauncherViewController: NSViewController {
             if let first = actions.first { list.append(H(key: "⌘↵", label: first.name)) }
             if case .project? = selectedRow { list.append(H(key: "⌘K", label: "Tasks & actions")) }
             else { list.append(H(key: "⌘K", label: "Actions")) }
+            if let item = selectedRow.flatMap(modItem(for:)), let k = modKeys.first(where: { $0.key.applies(to: item) }) {
+                list.append(H(key: k.key.key.symbols, label: k.key.name))
+            }
             if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
             if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
             if case .bitbucket? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
@@ -837,7 +863,9 @@ final class LauncherViewController: NSViewController {
     @objc private func activateSelection() {
         guard let row = selectedRow else { return }
         if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
+        let item = modItem(for: row)
         activate(row, query: query)
+        if let item { onChoose?(item) }
     }
 
     /// What a `[hotkeys]` entry opens, if it exists right now.
@@ -948,7 +976,53 @@ final class LauncherViewController: NSViewController {
             select(row: row) // keep the cursor in place
             return true
         default:
-            return false
+            // A plugin's [[key]] on the selected result.
+            guard !inActions, !mods.isEmpty, let item = selectedRow.flatMap(modItem(for:)),
+                  let hit = modKeys.first(where: { Self.matches($0.key.key, keyCode: keyCode, mods: mods) && $0.key.applies(to: item) })
+            else { return false }
+            onModKey?(hit.pluginID, hit.key, item)
+            return true
+        }
+    }
+
+    private static func matches(_ spec: HotkeySpec, keyCode: Int, mods: NSEvent.ModifierFlags) -> Bool {
+        guard HotkeyBinding.keyCode(spec.key) == keyCode else { return false }
+        var flags: NSEvent.ModifierFlags = []
+        if spec.modifiers.contains(.command) { flags.insert(.command) }
+        if spec.modifiers.contains(.option) { flags.insert(.option) }
+        if spec.modifiers.contains(.control) { flags.insert(.control) }
+        if spec.modifiers.contains(.shift) { flags.insert(.shift) }
+        return flags == mods
+    }
+
+    /// A row as mod scripts see it: its kind, and its URL, path or text as `$1`.
+    func modItem(for row: Row) -> ModItem? {
+        switch row {
+        case .header: return nil
+        case .clip(let item):
+            let c = clip(item.id)
+            return ModItem(kind: "clip", title: item.title, subtitle: c?.sourceName ?? "",
+                           path: c?.kind == .files ? c?.paths.first : nil, text: c?.kind == .text ? c?.content : nil)
+        case .history(let item): return ModItem(kind: "history", title: item.title, url: historyURL(item.id))
+        case .action(_, let a), .aliasAction(let a, _): return ModItem(kind: "action", title: a.name, text: a.run)
+        case .builtin(let b, let id): return ModItem(kind: "clip", title: b.rawValue, text: clip(id)?.content)
+        case .app(let item): return ModItem(kind: "app", title: item.title, path: item.subtitle)
+        case .project(let p): return ModItem(kind: "project", title: p.name, path: p.path)
+        case .file(let f): return ModItem(kind: "file", title: f.name, subtitle: f.folder, path: f.path)
+        case .calc(let r, let expression): return ModItem(kind: "answer", title: r.text, subtitle: expression, text: r.text)
+        case .transform(let t): return ModItem(kind: "answer", title: t.display, subtitle: t.label, text: t.value)
+        case .snippet(_, let s): return ModItem(kind: "snippet", title: s.name, text: s.text)
+        case .content(let c):
+            return c.kind == .note ? ModItem(kind: "note", title: c.title, path: c.ref) : ModItem(kind: "page", title: c.title, url: c.ref)
+        case .bitbucket(let b): return ModItem(kind: "pr", title: b.title, subtitle: b.subtitle, url: b.url)
+        case .jira(let j): return ModItem(kind: "issue", title: "\(j.key) \(j.summary)", url: j.url, text: j.key)
+        case .task(let t, let project): return ModItem(kind: "task", title: t.command, subtitle: project, text: t.commandLine)
+        case .command(let c): return ModItem(kind: "command", title: c.title, subtitle: c.detail)
+        case .plugin(let e):
+            let i = e.item
+            let path = i.open.map { ($0 as NSString).expandingTildeInPath }.flatMap { $0.hasPrefix("/") ? $0 : nil }
+            return ModItem(kind: "plugin", title: i.title, subtitle: i.subtitle ?? "", url: path == nil ? i.open : nil, path: path,
+                           text: i.copy ?? i.paste, pluginID: e.pluginID)
         }
     }
 

@@ -186,6 +186,16 @@ enum ScreensRenderer {
                 title: "86.12 EUR", subtitle: "100 USD · 1 USD = 0.8612 EUR · sample rate", copy: "86.12",
                 icon: "dollarsign.arrow.circlepath", label: "Currency")),
         ])
+        if case .success(let g) = HotkeySpec.parse("cmd+g") {
+            vc.modKeys = [("github", Plugin.Key(key: g, name: "GitHub Desktop", run: "open -a 'GitHub Desktop' \"$1\"", when: ["github"]))]
+        }
+        vc.demoSetQuery("filters")
+        try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
+        vc.modKeys = []
+        vc.demoSetQuery("")
+        try type("mod: make", caption: "Mods: describe a behaviour, your agent builds it")
+        vc.demoSetQuery("mod: make ⌘G open the selected PR in GitHub Desktop")
+        try step("Mods: describe a behaviour, your agent builds it", hold: 2.0, name: "mod")
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
