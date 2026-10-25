@@ -30,7 +30,7 @@ enum ScreensRenderer {
         // Host it in a window (never shown), like the real panel: the layout engine lives there.
         let window = offscreenWindow(for: vc)
         let view = vc.view
-        view.appearance = NSAppearance(named: .darkAqua)
+        vc.defaultAppearance = NSAppearance(named: .darkAqua)
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
@@ -196,6 +196,17 @@ enum ScreensRenderer {
         try type("mod: make", caption: "Mods: describe a behaviour, your agent builds it")
         vc.demoSetQuery("mod: make ⌘G open the selected PR in GitHub Desktop")
         try step("Mods: describe a behaviour, your agent builds it", hold: 2.0, name: "mod")
+
+        // Every built-in theme, last so the numbers of the shots above stay put.
+        for name in Themes.names.dropFirst() {
+            var look = Appearance()
+            look.theme = name
+            look.palette = Themes.builtIn[name]
+            vc.theme = Theme(look)
+            vc.demoSetQuery("git")
+            try step("[appearance] theme = \"\(name)\"", hold: 1.2, name: "theme-\(name)")
+        }
+        vc.theme = Theme(Appearance())
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }

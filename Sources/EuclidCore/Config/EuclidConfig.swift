@@ -94,6 +94,10 @@ public struct UpdateSettings: Equatable, Sendable {
 /// `[appearance]`.
 public struct Appearance: Equatable, Sendable {
     public enum Density: String, Sendable, CaseIterable { case comfortable, compact }
+    /// A built-in theme or `<config>/themes/<name>.toml`; "default" is the system look.
+    public var theme = Themes.defaultName
+    /// The theme's colours, nil for the system look. `accent` below still wins over the theme's.
+    public var palette: ThemePalette?
     /// sRGB hex like "#7c5cff"; nil = the system accent colour.
     public var accent: String?
     public var density = Density.comfortable
@@ -170,12 +174,15 @@ public struct LoadedConfig: Equatable, Sendable {
     public let includedFiles: [String]
     /// Plugin folders and the files in them, watched so a plugin reloads on save.
     public let pluginFiles: [String]
+    /// The themes folder and the chosen theme's file (which may not exist yet), watched the same way.
+    public let themeFiles: [String]
 
-    public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = [], pluginFiles: [String] = []) {
+    public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = [], pluginFiles: [String] = [], themeFiles: [String] = []) {
         self.config = config
         self.issues = issues
         self.includedFiles = includedFiles
         self.pluginFiles = pluginFiles
+        self.themeFiles = themeFiles
     }
 }
 
@@ -286,7 +293,11 @@ public enum ConfigLoader {
             }
         }
 
-        return LoadedConfig(config: config, issues: issues, includedFiles: included, pluginFiles: pluginFiles)
+        let (palette, themeFile) = Themes.resolve(config.appearance.theme, directory: directory, readFile: readFile, &issues)
+        config.appearance.palette = palette
+        let themeFiles = themeFile.map { [($0 as NSString).deletingLastPathComponent, $0] } ?? []
+
+        return LoadedConfig(config: config, issues: issues, includedFiles: included, pluginFiles: pluginFiles, themeFiles: themeFiles)
     }
 
     /// `include`: a path or a list of paths.
@@ -489,7 +500,11 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "appearance", &issues) {
-            warnUnknownKeys(t, known: ["accent", "density", "glass", "show_speed"], in: "[appearance]", &issues)
+            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed"], in: "[appearance]", &issues)
+            if t.contains(key: "theme") {
+                if let s = try? t.string(forKey: "theme"), !s.isEmpty, !s.contains("/") { config.appearance.theme = s }
+                else { issues.append(.warning("appearance.theme must be a theme name like \"nord\"")) }
+            }
             if t.contains(key: "accent") {
                 if let s = try? t.string(forKey: "accent"), Appearance.parseHex(s) != nil { config.appearance.accent = s }
                 else { issues.append(.warning("appearance.accent must be a hex colour like \"#7c5cff\"")) }

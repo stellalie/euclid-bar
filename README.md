@@ -98,6 +98,8 @@ own hotkey in `[hotkeys]`; its row shows it.
   Euclid knows](#your-agents-can-search-it-too) over MCP.
 - 🎨 **Sharp and light.** Liquid Glass on macOS 26, a panel that grows with its results, your own
   accent colour, `comfortable` or `compact` density.
+- 🧛 **[Themes](#themes)** from the editor schemes you already use: Dracula, Nord, Tokyo Night,
+  Catppuccin, Gruvbox, Solarized, Monokai, or your own in one small TOML file.
 
 ## A closer look
 
@@ -240,7 +242,8 @@ favorites = ["Ghostty", "euclid-bar"]         # shown first when the box is empt
 code = "Visual Studio Code"                   # type `code` ↵
 
 [appearance]
-accent     = "#7c5cff"                        # selection + match highlight (default: system accent)
+theme      = "default"                        # or a built-in / your own: see Themes below
+accent     = "#7c5cff"                        # match highlight, over the theme's (default: system accent)
 density    = "comfortable"                    # or "compact"
 glass      = true                             # Liquid Glass on macOS 26+
 show_speed = true                             # "12,431 items · 0.6 ms" in the footer
@@ -309,6 +312,47 @@ Validate it from a terminal (great in dotfiles CI):
 ```sh
 /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
 ```
+
+### Themes
+
+```toml
+[appearance]
+theme = "tokyo-night"
+```
+
+| Theme | Look |
+|---|---|
+| `default` | The system look: glass, your accent colour, light or dark with macOS |
+| `dracula` · `nord` · `tokyo-night` · `catppuccin-mocha` · `gruvbox-dark` · `solarized-dark` · `monokai` | Dark |
+| `catppuccin-latte` · `gruvbox-light` · `solarized-light` | Light |
+
+`accent`, `density`, `glass` and `show_speed` still apply on top of any theme.
+
+Make your own as `~/.config/euclid/themes/<name>.toml`; it reloads when you save. Start from a
+built-in with `base` and change only what you want, or set everything:
+
+```toml
+# ~/.config/euclid/themes/mine.toml
+# base     = "gruvbox-dark" # optional: start from a built-in, set only what changes
+background = "#1d2021"     # required without a base, with text and accent
+text       = "#ebdbb2"
+accent     = "#fabd2f"     # match highlight and selection
+subtext    = "#d5c4a1"     # details and hints (default: text, dimmer)
+muted      = "#928374"     # section titles, faintest text (default: text, dimmer still)
+selection  = "#504945"     # selected row (default: accent, faint)
+border     = "#3c3836"     # panel outline (default: text, faint)
+opacity    = 0.92          # how much the background covers the glass behind it
+mode       = "dark"        # light or dark controls (default: from the background)
+# Symbol tints: red, orange, yellow, green, cyan, blue, purple, pink
+green      = "#b8bb26"
+```
+
+A file with a built-in's name (`themes/nord.toml`) replaces that built-in.
+
+Palettes come from [Dracula](https://draculatheme.com) (MIT), [Nord](https://www.nordtheme.com) (MIT),
+[Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (MIT, enkia),
+[Catppuccin](https://catppuccin.com) (MIT), [Gruvbox](https://github.com/morhetz/gruvbox) (MIT, Pavel Pertsev),
+[Solarized](https://ethanschoonover.com/solarized/) (MIT, Ethan Schoonover) and Monokai (Wimer Hazenberg). Thank you.
 
 ### Coming from Raycast or Alfred
 
