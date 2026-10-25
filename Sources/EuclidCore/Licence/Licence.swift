@@ -64,25 +64,31 @@ public struct Licence: Codable, Equatable, Sendable {
 /// The 30-day evaluation. It never locks anything: once it's over, Euclid shows that it's
 /// unregistered and reminds you now and then.
 public enum Evaluation {
+    /// Personal use is free while this is nil. Set it at launch: anyone who first ran Euclid
+    /// before then keeps Personal free for good, and later installs get the trial.
+    public static let betaEnds: Date? = nil
     public static let days = 30
     /// The gap between reminders once the trial is over.
     public static let reminderInterval: TimeInterval = 3 * 86_400
 
     public enum Status: Equatable, Sendable {
         case licensed(Licence)
+        /// Free Personal use: installed during the beta.
+        case beta
         case trial(daysLeft: Int)
         case unregistered
     }
 
-    public static func status(_ state: LicenceState, publicKey: Data, now: Date = Date()) -> Status {
+    public static func status(_ state: LicenceState, publicKey: Data, betaEnds: Date? = betaEnds, now: Date = Date()) -> Status {
         if let key = state.key, let licence = try? Licence.verify(key, publicKey: publicKey) { return .licensed(licence) }
+        if betaEnds.map({ state.firstRun < $0 }) ?? true { return .beta }
         let used = Int(now.timeIntervalSince(state.firstRun) / 86_400)
         return used < days ? .trial(daysLeft: days - max(used, 0)) : .unregistered
     }
 
     /// Whether to remind now: unregistered, and none shown in the last few days.
-    public static func shouldRemind(_ state: LicenceState, publicKey: Data, now: Date = Date()) -> Bool {
-        guard status(state, publicKey: publicKey, now: now) == .unregistered else { return false }
+    public static func shouldRemind(_ state: LicenceState, publicKey: Data, betaEnds: Date? = betaEnds, now: Date = Date()) -> Bool {
+        guard status(state, publicKey: publicKey, betaEnds: betaEnds, now: now) == .unregistered else { return false }
         guard let last = state.lastReminder else { return true }
         return now.timeIntervalSince(last) >= reminderInterval
     }

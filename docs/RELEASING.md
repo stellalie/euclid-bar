@@ -94,6 +94,9 @@ Without the env vars you get a locally signed, un-notarized build for testing.
 
 ## Licence keys
 
+**Beta:** Personal use is free while `Evaluation.betaEnds` is `nil`. At launch, set it to the
+launch date: anyone who first ran Euclid before then keeps Personal free, and new installs get the trial.
+
 Euclid is fully unlocked during and after its 30-day trial. Once the trial is over it shows
 "Unregistered" in the panel footer and a reminder every 3 days. A key turns both off.
 
