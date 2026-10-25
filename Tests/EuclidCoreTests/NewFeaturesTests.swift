@@ -56,6 +56,30 @@ import Testing
         #expect(DevTransforms.evaluate("abcdefghijklmnop").isEmpty)
     }
 
+    @Test func base64LeavesLookalikesAlone() {
+        let lookalikes = [
+            "3f786850e387550fdab836ed7e6dc881de23001b",       // git SHA
+            "d41d8cd98f00b204e9800998ecf8427e",               // md5
+            "9b2f3c4e5a6d7e8f9a0b1c2d3e4f5a6b",               // uuid without dashes
+            "/opt/homebrew/bin/python3",                      // path
+            "ThisIsAVeryLongCamelCaseName",                   // identifier
+            "node_modules_cache_v2",                          // identifier
+            "release-2026-10-25-build",                       // branch name
+            "useEffectCleanup2024",                           // identifier
+            "AbCdEfGhIjKlMnOpQrStUvWx",                       // decodes to gibberish
+        ]
+        for s in lookalikes {
+            #expect(DevTransforms.autoBase64(s).isEmpty, "\(s) decoded to \(DevTransforms.autoBase64(s).first?.value ?? "")")
+        }
+        // Real payloads still decode: padded, unpadded, URL-safe, JSON.
+        let token = Data(#"{"user":"stella","id":42}"#.utf8).base64EncodedString()
+        #expect(DevTransforms.autoBase64(token).first?.value == #"{"user":"stella","id":42}"#)
+        let urlSafe = Data("subjects?/a>b".utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        #expect(DevTransforms.autoBase64(urlSafe).first?.value == "subjects?/a>b")
+        #expect(DevTransforms.autoBase64("dXNlcm5hbWU6cGFzc3dvcmQ=").first?.value == "username:password")
+    }
+
     @Test func json() {
         let r = DevTransforms.evaluate(#"{"b":1,"a":[1,2]}"#)
         #expect(r.count == 2)

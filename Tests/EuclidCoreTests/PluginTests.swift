@@ -174,6 +174,26 @@ import Testing
         #expect(ContinuousClock.now - start < .seconds(3))
     }
 
+    @Test func missingCommandIsNamed() async throws {
+        #expect(PluginRunner.missingCommand(in: "zsh:1: command not found: gh") == "gh")
+        #expect(PluginRunner.missingCommand(in: "./items.sh: line 3: jq: command not found") == "jq")
+        #expect(PluginRunner.missingCommand(in: "./items.sh: 3: linear: not found") == "linear")
+        #expect(PluginRunner.missingCommand(in: "error: repo not found") == nil)
+
+        let p = try plugin([
+            "plugin.toml": "[source]\nrun = './items.sh'\n",
+            "items.sh": "#!/bin/sh\nno-such-cli-euclid list\n",
+        ])
+        let failure = await #expect(throws: PluginRunner.Failure.self) {
+            try await PluginRunner.output(of: "./items.sh", plugin: p, shell: "/bin/zsh", pathPrefix: nil, timeout: .seconds(10))
+        }
+        #expect(failure?.missingCommand == "no-such-cli-euclid")
+        let row = PluginItem.failed(p, try #require(failure))
+        #expect(row.title == "p: `no-such-cli-euclid` isn't installed")
+        #expect(row.open == p.directory)
+        #expect(PluginItem.failed(p, PluginRunner.Failure("exit 1: bad token")).title == "p couldn't load")
+    }
+
     @Test func trialReportsWhatTheBarWouldShow() async throws {
         let p = try plugin([
             "plugin.toml": "name = \"Demo\"\n[source]\nrun = './items.sh'\n[answer]\nrun = './say.sh'\nprefix = \"say\"\n[badge]\nrun = 'echo 42 tok'\nclick = 'open x'\n",

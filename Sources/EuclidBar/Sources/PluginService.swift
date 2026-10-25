@@ -116,8 +116,11 @@ final class PluginService {
                     self.problems[key] = bad.first.map { "\(plugin.name): \($0)" }
                     log.notice("\(plugin.id, privacy: .public): \(found.count) items in \(String(describing: elapsed), privacy: .public)")
                 case .failure(let error):
-                    // Keep the last good items; say what went wrong.
+                    // Keep the last good items; say what went wrong (in search too, if there's nothing to show).
                     self.problems[key] = "\(plugin.name): \(error)"
+                    if part == "source", self.sourceItems[plugin.id]?.contains(where: { $0.id != "problem:\(plugin.id)" }) != true {
+                        self.sourceItems[plugin.id] = [.failed(plugin, error)]
+                    }
                     log.error("\(key, privacy: .public): \(String(describing: error), privacy: .public)")
                 }
                 self.rebuild()

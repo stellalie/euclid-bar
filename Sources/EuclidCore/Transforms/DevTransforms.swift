@@ -181,13 +181,22 @@ public enum DevTransforms {
         return [Result(display: firstLine(d), value: d, label: "URL decode")]
     }
 
-    /// Only for strings that look deliberately encoded: 16+ base64 characters
-    /// that decode to readable text.
+    /// Only for strings that look deliberately encoded: 16+ base64 characters, one alphabet
+    /// (standard or URL-safe), padding only at the end, and not a hash, path or identifier,
+    /// that decode to mostly plain text. `b64d …` decodes anything.
     static func autoBase64(_ s: String) -> [Result] {
         guard s.count >= 16, !s.contains(" "),
               s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+/=-_".contains($0)) }),
               s.contains(where: \.isNumber) || s.hasSuffix("=") || s.contains(where: \.isUppercase) && s.contains(where: \.isLowercase),
-              let d = base64Decode(s) else { return [] }
+              !s.allSatisfy(\.isHexDigit),                                   // git SHAs, digests
+              !(s.contains(where: { "+/".contains($0) }) && s.contains(where: { "-_".contains($0) })),
+              !s.hasPrefix("/"), !s.contains("//"),                           // paths
+              !s.dropLast(2).contains("="), s.filter({ $0 == "=" }).count <= 2,
+              let d = base64Decode(s), d.count >= 4 else { return [] }
+        // Random bytes are often valid UTF-8 (accented or CJK runs); real payloads are mostly ASCII.
+        let scalars = d.unicodeScalars
+        let plain = scalars.filter { $0.isASCII }.count
+        guard plain * 10 >= scalars.count * 9, d.contains(where: \.isLetter) else { return [] }
         return [Result(display: firstLine(d), value: d, label: "Base64 decode")]
     }
 

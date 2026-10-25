@@ -8,14 +8,8 @@ import EuclidCore
 /// Needs Accessibility access, the same permission pasting from the panel uses.
 @MainActor
 final class TextExpansion {
-    /// Changed when the footer message should change (waiting for access, or got it).
+    /// Changed when access is granted or expansion turns on or off (the Permissions row changes).
     var onChange: (() -> Void)?
-    /// For the footer while expansion is on but macOS hasn't allowed it yet.
-    var problem: String? {
-        enabled && !Paster.isTrusted
-            ? "⚠︎ Text expansion needs Accessibility: System Settings › Privacy & Security › Accessibility"
-            : nil
-    }
 
     private var enabled = false
     private var expander = TextExpander(snippets: [])

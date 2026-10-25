@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
@@ -15,6 +15,12 @@ struct AppCommand: Equatable {
 
     static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
                                           detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
+
+    /// Every permission Euclid uses, in one row: ↵ opens the pane for the first one missing.
+    static func permissions(_ needs: [Permissions.Need]) -> AppCommand {
+        AppCommand(kind: .permissions, title: "Permissions", detail: Permissions.summary(needs), symbol: "lock.shield",
+                   accessory: needs.isEmpty ? "OK" : "\(needs.count) missing")
+    }
 
     /// Snippet keywords expanding in any app (`[expansion] enabled`).
     static func expansion(enabled: Bool) -> AppCommand {
