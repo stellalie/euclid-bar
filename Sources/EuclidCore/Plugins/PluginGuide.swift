@@ -371,6 +371,8 @@ command, so quote it: `"$1"`.
 - Keep sources fast and quiet: they run in the background with a 30 s limit, answers with 2 s.
 - Put secrets in the Keychain and read them in the script:
   `security find-generic-password -s my-service -w`. Never in plugin.toml.
+- Write caches to `${TMPDIR:-/tmp}`, never the plugin folder: `~/.config/euclid` goes in git,
+  and writing there reloads the plugin.
 - At most 2,000 items per source.
 - A team can share plugins from a repo: `[plugins] paths = ["~/work/team/euclid-plugins"]`.
 - Turn one off without deleting it: `[plugins] disabled = ["<id>"]`.

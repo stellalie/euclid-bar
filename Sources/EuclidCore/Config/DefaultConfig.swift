@@ -9,7 +9,11 @@ public enum DefaultConfig {
 # Settings here win; your own actions stay first. Relative paths are next to this file.
 # include = ["~/work/team-dotfiles/euclid.toml"]
 
-# Global hotkey that opens the panel. When set here, it wins over the app.
+# This folder is your whole setup: put it in git (Euclid wrote a .gitignore).
+# Settings for one Mac only (work projects, a different hotkey) go in config.local.toml
+# next to this file: it wins over this one and stays out of git.
+
+# Global hotkey that opens the panel. Unset = opt+space.
 # Modifiers: cmd, opt, ctrl, shift. Keys: a–z, 0–9, space, return, tab, f1–f12.
 hotkey = "opt+space"
 

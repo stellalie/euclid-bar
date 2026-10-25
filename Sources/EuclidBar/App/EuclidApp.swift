@@ -62,7 +62,7 @@ enum EuclidApp {
             let loaded = try ConfigLoader.loadOrCreate(at: paths.configFile)
             let c = loaded.config
             for file in loaded.includedFiles { print("include: \(file)") }
-            print("hotkey: \(c.hotkey.map { ($0.modifiers.map(\.rawValue).sorted() + [$0.key]).joined(separator: "+") } ?? "(app setting)")")
+            print("hotkey: \((c.hotkey.modifiers.map(\.rawValue).sorted() + [c.hotkey.key]).joined(separator: "+"))")
             for (i, a) in c.actions.enumerated() {
                 print("  \(i < 9 ? "⌘\(i + 1)" : "  ") \(a.name)  [\(a.output.rawValue)]")
             }

@@ -68,7 +68,8 @@ final class ConfigService {
     /// config.toml plus every included file and plugin file, to tell a real change from an event echo.
     private func snapshot() -> String? {
         guard let main = try? String(contentsOf: paths.configFile, encoding: .utf8) else { return nil }
-        let included = current.includedFiles.map { (try? String(contentsOfFile: $0, encoding: .utf8)) ?? "" }
+        // config.local.toml by path too, so creating it counts as a change.
+        let included = ([paths.localConfigFile.path] + current.includedFiles).map { (try? String(contentsOfFile: $0, encoding: .utf8)) ?? "" }
         // Plugin folders by their listing, plugin files by size and date (scripts can be big).
         let fm = FileManager.default
         let plugins = current.pluginFiles.map { path -> String in

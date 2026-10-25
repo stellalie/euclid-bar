@@ -8,6 +8,9 @@ public struct EuclidPaths: Sendable {
     public let dataDirectory: URL
 
     public var configFile: URL { configDirectory.appendingPathComponent("config.toml") }
+    /// Settings for this Mac only, on top of config.toml; gitignored.
+    public var localConfigFile: URL { configDirectory.appendingPathComponent(Self.localConfigName) }
+    static let localConfigName = "config.local.toml"
     /// Helper scripts; on PATH for every action.
     public var binDirectory: URL { configDirectory.appendingPathComponent("bin") }
     /// One folder per plugin, plus AGENTS.md (the plugin guide).

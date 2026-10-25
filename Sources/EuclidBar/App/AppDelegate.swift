@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
         }
+        do { try ConfigLoader.installGitignore(in: config.paths.configDirectory) } catch {
+            perfLog.error("can't write .gitignore: \(error.localizedDescription, privacy: .public)")
+        }
         do { try PluginGuide.install(in: config.paths.pluginsDirectory) } catch {
             perfLog.error("can't write the plugin guide: \(error.localizedDescription, privacy: .public)")
         }
@@ -63,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Apply everything that can change live. (clipboard.limit applies on next launch.)
     private func applyConfig() {
         let settings = config.current.config
-        if let hotkey = settings.hotkey { HotkeyBinding.apply(hotkey) }
+        HotkeyBinding.apply(settings.hotkey)
         hotkeys.apply(settings.commandHotkeys)
         expansion.configure(enabled: settings.expansionEnabled, snippets: settings.snippets)
         expansionItem.state = settings.expansionEnabled ? .on : .off

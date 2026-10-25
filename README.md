@@ -190,7 +190,8 @@ run  = 'printf %s "$1" | jq . | pbcopy'
 
 `~/.config/euclid/config.toml` is created with comments on first launch and **applies on save**. A
 typo never breaks the app: the last good config stays active and the error shows in the panel footer.
-Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-your-team).
+Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-your-team), and your
+whole setup is [one folder you can put in git](#your-setup-is-one-folder-put-it-in-git).
 
 <details open>
 <summary><b>Full reference</b></summary>
@@ -337,8 +338,24 @@ include = ["~/work/team-dotfiles/euclid.toml"]   # a path or a list; relative = 
 Type `usage` to see your last 30 days: how often you opened Euclid and what you picked (apps, clips,
 actions…). Only counts are kept, on your Mac, never what you typed.
 
-Clipboard history, the page index and learned ranking live in `~/Library/Application Support/Euclid`,
-separate from the config, so they never end up in your dotfiles repo.
+### Your setup is one folder: put it in git
+
+Everything you set up lives in `~/.config/euclid`: `config.toml` (actions, snippets, hotkeys,
+aliases, integrations), `bin/` scripts and `plugins/`. Commit it, and a new Mac is one clone away:
+
+```sh
+cd ~/.config/euclid && git init && git add . && git commit -m "My Euclid"   # Euclid wrote a .gitignore
+# New Mac: clone it back (or symlink it from your dotfiles repo), then open Euclid
+git clone git@github.com:you/euclid-config.git ~/.config/euclid
+```
+
+- **Not in the folder, on purpose:** clipboard history, the page index, learned ranking, usage counts
+  and your licence live in `~/Library/Application Support/Euclid`. That's this Mac's state, not setup.
+- **Secrets never go in it.** Tokens stay in the Keychain and `token_command` reads them. On a new Mac,
+  run the same `security add-generic-password …` line once per token.
+- **One Mac only:** put work projects, a work Bitbucket or a different hotkey in
+  `config.local.toml` next to `config.toml`. It wins over `config.toml` and is gitignored.
+- Symlinks are fine: Euclid edits `config.toml` in place, so a stowed file stays a link.
 
 ## Bitbucket
 

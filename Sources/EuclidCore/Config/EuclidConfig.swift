@@ -4,7 +4,8 @@ import TOMLDecoder
 
 /// Everything `config.toml` can set. Every field has a default, so an empty file is valid.
 public struct EuclidConfig: Equatable, Sendable {
-    public var hotkey: HotkeySpec?          // nil = keep whatever is set in the app
+    /// The panel's global hotkey. Always from the file, so a new Mac gets the same one.
+    public var hotkey = HotkeySpec(modifiers: [.option], key: "space")
     public var clipboardLimit = 5_000
     public var ignoredApps: Set<String> = []
     public var shellPath = "/bin/zsh"
@@ -194,9 +195,11 @@ public enum ConfigLoader {
     /// `include = ["~/work/team/euclid.toml"]` pulls in shared files (a team's actions,
     /// snippets and integrations) underneath this one: settings here win, and this file's
     /// actions and snippets come first, so ⌘1 stays yours. Relative paths are from `directory`.
+    /// `local` is config.local.toml's text: this Mac's settings, on top of everything.
     public static func parse(
         _ text: String,
         directory: URL? = nil,
+        local localText: String? = nil,
         fileExists: (String) -> Bool = FileManager.default.isExecutableFile(atPath:),
         readFile: (String) -> String? = { try? String(contentsOfFile: $0, encoding: .utf8) }
     ) throws(ConfigError) -> LoadedConfig {
@@ -230,6 +233,27 @@ public enum ConfigLoader {
         config.snippets = []
         config.commandHotkeys = []
         apply(root, to: &config, isInclude: false, fileExists: fileExists, &issues)
+
+        // config.local.toml: this Mac only (gitignored). It wins over config.toml, and its actions come first.
+        if let localText {
+            if let table = try? TOMLTable(source: localText) {
+                included.append(directory?.appendingPathComponent(EuclidPaths.localConfigName).path ?? EuclidPaths.localConfigName)
+                let mineActions = config.actions, mineSnippets = config.snippets, mineHotkeys = config.commandHotkeys
+                config.actions = []
+                config.snippets = []
+                config.commandHotkeys = []
+                var own: [ConfigIssue] = []
+                apply(table, to: &config, isInclude: true, fileExists: fileExists, &own)
+                issues += own.map { .init(severity: $0.severity, message: "\(EuclidPaths.localConfigName): \($0.message)") }
+                let localActions = Set(config.actions.map(\.name)), localSnippets = Set(config.snippets.map(\.name))
+                config.actions += mineActions.filter { !localActions.contains($0.name) }
+                config.snippets += mineSnippets.filter { !localSnippets.contains($0.name) }
+                let local = config.commandHotkeys
+                config.commandHotkeys = local + mineHotkeys.filter { m in !local.contains { $0.target == m.target && $0.kind == m.kind } }
+            } else {
+                issues.append(.warning("\(EuclidPaths.localConfigName) isn't valid TOML, skipped"))
+            }
+        }
         let ownActions = Set(config.actions.map(\.name)), ownSnippets = Set(config.snippets.map(\.name))
         config.actions += sharedActions.filter { !ownActions.contains($0.name) }
         config.snippets += sharedSnippets.filter { !ownSnippets.contains($0.name) }
@@ -748,6 +772,28 @@ public enum ConfigLoader {
         }
     }
 
+    /// Write a `.gitignore` into the config folder if there isn't one, so the folder can go
+    /// straight into a dotfiles repo. Written once; yours from then on.
+    public static func installGitignore(in configDirectory: URL) throws {
+        let url = configDirectory.appendingPathComponent(".gitignore")
+        guard !FileManager.default.fileExists(atPath: url.path) else { return }
+        try FileManager.default.createDirectory(at: configDirectory, withIntermediateDirectories: true)
+        try gitignore.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static let gitignore = """
+        # Written once by Euclid; edit freely. This folder is your whole setup: commit it.
+        # History, indexes and your licence live in ~/Library/Application Support/Euclid,
+        # and tokens in the Keychain, so neither lands here.
+
+        # Settings for this Mac only
+        \(EuclidPaths.localConfigName)
+        # Euclid rewrites the plugin guide on update
+        plugins/AGENTS.md
+        .DS_Store
+
+        """
+
     /// Read the config file, creating a commented default on first run.
     public static func loadOrCreate(at url: URL) throws(ConfigError) -> LoadedConfig {
         let fm = FileManager.default
@@ -763,6 +809,8 @@ public enum ConfigLoader {
         do { text = try String(contentsOf: url, encoding: .utf8) } catch {
             throw .unreadable("can't read \(url.path): \(error.localizedDescription)")
         }
-        return try parse(text, directory: url.deletingLastPathComponent())
+        let directory = url.deletingLastPathComponent()
+        let local = try? String(contentsOf: directory.appendingPathComponent(EuclidPaths.localConfigName), encoding: .utf8)
+        return try parse(text, directory: directory, local: local)
     }
 }

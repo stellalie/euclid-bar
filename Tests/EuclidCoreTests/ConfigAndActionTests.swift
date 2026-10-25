@@ -72,7 +72,7 @@ import Testing
         """
         let loaded = try ConfigLoader.parse(toml)
         #expect(loaded.config.actions.map(\.name) == ["Good"])
-        #expect(loaded.config.hotkey == nil)
+        #expect(loaded.config.hotkey == HotkeySpec(modifiers: [.option], key: "space")) // bad value: the default
         #expect(loaded.config.clipboardLimit == 5_000)
         let messages = loaded.issues.map(\.message).joined(separator: "\n")
         #expect(messages.contains("needs a modifier"))
@@ -118,7 +118,7 @@ import Testing
         _ = try ConfigLoader.loadOrCreate(at: file)
         #expect(try String(contentsOf: file, encoding: .utf8) == DefaultConfig.text)
         try "hotkey = \"cmd+k\"".write(to: file, atomically: true, encoding: .utf8)
-        #expect(try ConfigLoader.loadOrCreate(at: file).config.hotkey?.key == "k") // not overwritten
+        #expect(try ConfigLoader.loadOrCreate(at: file).config.hotkey.key == "k") // not overwritten
     }
 
     @Test func pathsRespectOverridesAndXDG() {
