@@ -136,6 +136,48 @@ import Testing
         #expect(errors.count == 1)
     }
 
+    /// A new Mac: the browser has profile folders whose History files it hasn't written yet.
+    @Test func freshProfilesAreEmptyNotErrors() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let dia = home.appendingPathComponent("Library/Application Support/Dia/User Data")
+        for profile in ["Default"] + (1...30).map({ "Profile \($0)" }) {
+            let dir = dia.appendingPathComponent(profile)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: dir.appendingPathComponent("History").path, contents: Data())
+        }
+        let sources = BrowserHistory.discoverSources(home: home)
+        #expect(sources.count == 31)
+        let (entries, errors) = BrowserHistory.load(sources, limit: 10)
+        #expect(entries.isEmpty)
+        #expect(errors.isEmpty)
+        #expect(BrowserHistory.problem(errors, explicit: false) == nil)
+    }
+
+    @Test func problemNamesEachBrowserOnceWithReason() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let junk = dir.appendingPathComponent("History")
+        try Data("not a database, just junk bytes ".utf8).write(to: junk)
+        let dia = (0..<50).map { _ in BrowserHistory.Source(browser: "Dia", key: "dia", kind: .chromium, database: junk) }
+        let arc = BrowserHistory.Source(browser: "Arc", key: "arc", kind: .chromium, database: junk)
+        let (_, errors) = BrowserHistory.load(dia + [arc], limit: 10)
+        #expect(errors.count == 51)
+        let line = try #require(BrowserHistory.problem(errors, explicit: false))
+        #expect(line.hasPrefix("⚠︎ couldn't read Dia, Arc history: "))
+        #expect(line.components(separatedBy: "Dia").count == 2)
+        #expect(!line.contains("while executing"))   // short reason, not the full SQLite dump
+    }
+
+    @Test func safariProblemOnlyWhenAskedFor() {
+        let safari = BrowserHistory.Source(browser: "Safari", key: "safari", kind: .safari,
+                                           database: URL(fileURLWithPath: "/nonexistent/History.db"))
+        let (_, errors) = BrowserHistory.load([safari], limit: 10)
+        #expect(BrowserHistory.problem(errors, explicit: false) == nil)
+        #expect(BrowserHistory.problem(errors, explicit: true)?.contains("Full Disk Access") == true)
+    }
+
     @Test func historyConfig() throws {
         let loaded = try ConfigLoader.parse("""
             [history]
