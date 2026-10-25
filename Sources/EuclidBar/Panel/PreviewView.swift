@@ -16,6 +16,7 @@ final class PreviewView: NSView {
     private let textView = NSTextView()
     private let imageView = NSImageView()
     private var quickLook: QLPreviewView?
+    var theme = Theme()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -51,7 +52,7 @@ final class PreviewView: NSView {
         quickLook?.isHidden = true
         switch content {
         case .text(let title, let facts, let body, let code):
-            textView.textStorage?.setAttributedString(Self.render(title: title, facts: facts, body: body, code: code))
+            textView.textStorage?.setAttributedString(render(title: title, facts: facts, body: body, code: code))
             textView.scroll(.zero)
             textScroll.isHidden = false
         case .image(let image, _):
@@ -88,21 +89,21 @@ final class PreviewView: NSView {
         return ql
     }
 
-    private static func render(title: String, facts: [(String, String)], body: String, code: Bool) -> NSAttributedString {
+    private func render(title: String, facts: [(String, String)], body: String, code: Bool) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let para = NSMutableParagraphStyle()
         para.paragraphSpacing = 4
         if !title.isEmpty {
             out.append(NSAttributedString(string: title + "\n", attributes: [
-                .font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.labelColor, .paragraphStyle: para,
+                .font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: theme.text, .paragraphStyle: para,
             ]))
         }
         for (label, value) in facts {
             out.append(NSAttributedString(string: label + "  ", attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.tertiaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: theme.muted,
             ]))
             out.append(NSAttributedString(string: value + "\n", attributes: [
-                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor,
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.subtext,
             ]))
         }
         if !body.isEmpty {
@@ -111,7 +112,7 @@ final class PreviewView: NSView {
             let shown = body.count > 100_000 ? String(body.prefix(100_000)) + "\n…" : body
             out.append(NSAttributedString(string: shown, attributes: [
                 .font: code ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular) : NSFont.systemFont(ofSize: 13),
-                .foregroundColor: NSColor.labelColor,
+                .foregroundColor: theme.text,
             ]))
         }
         return out

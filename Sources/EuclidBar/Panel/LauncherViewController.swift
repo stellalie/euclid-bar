@@ -83,6 +83,9 @@ final class LauncherViewController: NSViewController {
         }
     }
     var theme = Theme() { didSet { if isViewLoaded { applyTheme() } } }
+    /// Light or dark when the theme doesn't force one; nil follows the system (renderers pin dark).
+    var defaultAppearance: NSAppearance? { didSet { if isViewLoaded { applyTheme() } } }
+    private var placeholder = ""
 
     /// Enabled actions from config, in order.
     var actions: [Action] = [] { didSet { if isViewLoaded { refreshAfterExternalChange() } } }
@@ -280,14 +283,38 @@ final class LauncherViewController: NSViewController {
         enterSearchMode(query: "")
     }
 
-    /// Background (Liquid Glass or blur), sizes and fonts from `[appearance]`.
+    /// Background (Liquid Glass or blur), colours, sizes and fonts from `[appearance]`.
     private func applyTheme() {
         searchField.font = .systemFont(ofSize: theme.querySize, weight: .regular)
         if installedGlass != theme.glass { installBackground(glass: theme.glass) }
+        view.appearance = theme.appearance ?? defaultAppearance
+        setPlaceholder(placeholder)
+        view.layer?.borderColor = theme.border.cgColor
+        content.wantsLayer = true
+        content.layer?.backgroundColor = theme.background?.cgColor
+        searchField.textColor = theme.text
+        modeLabel.textColor = theme.subtext
+        footer.textColor = theme.warning
+        stats.textColor = theme.muted
+        emptyLabel.textColor = theme.muted
+        hints.theme = theme
+        preview.theme = theme
+        updatePreview()
         tableView.reloadData()
         if !rows.isEmpty { select(row: max(tableView.selectedRow, 0)) }
         updateFooter()
         notifySize()
+    }
+
+    /// In the theme's faintest colour; the system look keeps the stock placeholder.
+    private func setPlaceholder(_ text: String) {
+        placeholder = text
+        searchField.placeholderAttributedString = nil
+        searchField.placeholderString = text
+        guard theme.background != nil else { return }
+        searchField.placeholderAttributedString = NSAttributedString(string: text, attributes: [
+            .foregroundColor: theme.muted, .font: NSFont.systemFont(ofSize: theme.querySize, weight: .regular),
+        ])
     }
 
     private func installBackground(glass: Bool) {
@@ -400,7 +427,7 @@ final class LauncherViewController: NSViewController {
     private func enterSearchMode(query: String) {
         mode = .search
         searchField.stringValue = query
-        searchField.placeholderString = "Search apps, projects, files, clipboard, history…"
+        setPlaceholder("Search apps, projects, files, clipboard, history…")
         modeLabel.stringValue = ""
         runSearch()
         searchField.currentEditor()?.moveToEndOfDocument(nil)
@@ -417,7 +444,7 @@ final class LauncherViewController: NSViewController {
         let query = searchField.stringValue
         mode = .actions(query: query, clipID: clipID)
         searchField.stringValue = ""
-        searchField.placeholderString = "Filter actions…"
+        setPlaceholder("Filter actions…")
         modeLabel.stringValue = query.isEmpty ? "Actions" : "Actions · “\(query)”"
         runSearch()
     }
@@ -1064,6 +1091,7 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let view = ResultRowView()
         view.accent = theme.accent
+        view.fill = theme.selection
         view.isHeader = rows[row].isHeader
         return view
     }
@@ -1072,13 +1100,13 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         let r = rows[row]
         if case .header(let title) = r {
             let cell = tableView.makeView(withIdentifier: SectionHeaderCell.id, owner: nil) as? SectionHeaderCell ?? SectionHeaderCell()
-            cell.configure(title)
+            cell.configure(title, theme: theme)
             return cell
         }
         let cell = tableView.makeView(withIdentifier: ResultCell.id, owner: nil) as? ResultCell ?? ResultCell()
         let inActions = if case .actions = mode { true } else { false }
         let highlight: String? = inActions ? searchField.stringValue : searchField.stringValue.isEmpty ? nil : searchField.stringValue
-        let tint = Theme.tint(for: r)
+        let tint = theme.tint(for: r)
         func show(_ symbol: String, image: NSImage? = nil, _ title: String, detail: String = "", _ accessory: String, plain: Bool = false) {
             cell.configure(icon: symbol, image: image, tint: tint, title: title, detail: detail, accessory: accessory,
                            highlight: plain ? nil : highlight, theme: theme)

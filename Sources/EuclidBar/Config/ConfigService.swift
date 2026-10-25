@@ -17,7 +17,7 @@ final class ConfigService {
 
     private var dirSource: DispatchSourceFileSystemObject?
     private var fileSource: DispatchSourceFileSystemObject?
-    /// Files pulled in by `include`, watched like config.toml itself.
+    /// Files pulled in by `include`, plugins and the theme, watched like config.toml itself.
     private var includeSources: [DispatchSourceFileSystemObject] = []
     private var pendingReload: DispatchWorkItem?
     private var lastText: String?
@@ -50,11 +50,11 @@ final class ConfigService {
         let text = snapshot()
         if text != nil, text == lastText { return } // unchanged (e.g. touch, or our own event echo)
         do {
-            let previousIncludes = current.includedFiles + current.pluginFiles
+            let previousIncludes = watchedFiles
             current = try ConfigLoader.loadOrCreate(at: file)
             loadError = nil
             lastText = snapshot()
-            if fileSource != nil, current.includedFiles + current.pluginFiles != previousIncludes { rewatchIncludes() }
+            if fileSource != nil, watchedFiles != previousIncludes { rewatchIncludes() }
             for issue in current.issues { log.warning("\(issue.description, privacy: .public)") }
             log.notice("config loaded: \(self.current.config.actions.count) actions, \(self.current.issues.count) issues")
         } catch {
@@ -65,13 +65,16 @@ final class ConfigService {
         onChange?()
     }
 
-    /// config.toml plus every included file and plugin file, to tell a real change from an event echo.
+    /// Everything besides config.toml that a reload reads.
+    private var watchedFiles: [String] { current.includedFiles + current.pluginFiles + current.themeFiles }
+
+    /// config.toml plus every included, plugin and theme file, to tell a real change from an event echo.
     private func snapshot() -> String? {
         guard let main = try? String(contentsOf: paths.configFile, encoding: .utf8) else { return nil }
         let included = current.includedFiles.map { (try? String(contentsOfFile: $0, encoding: .utf8)) ?? "" }
         // Plugin folders by their listing, plugin files by size and date (scripts can be big).
         let fm = FileManager.default
-        let plugins = current.pluginFiles.map { path -> String in
+        let plugins = (current.pluginFiles + current.themeFiles).map { path -> String in
             if let names = try? fm.contentsOfDirectory(atPath: path) { return names.sorted().joined(separator: "/") }
             let a = try? fm.attributesOfItem(atPath: path)
             return "\(a?[.size] ?? "-"):\((a?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
@@ -128,7 +131,7 @@ final class ConfigService {
 
     private func rewatchIncludes() {
         includeSources.forEach { $0.cancel() }
-        includeSources = (current.includedFiles + current.pluginFiles).compactMap { watch($0, mask: [.write, .delete, .rename, .extend]) }
+        includeSources = watchedFiles.compactMap { watch($0, mask: [.write, .delete, .rename, .extend]) }
     }
 
     private func watch(_ path: String, mask: DispatchSource.FileSystemEvent) -> DispatchSourceFileSystemObject? {
