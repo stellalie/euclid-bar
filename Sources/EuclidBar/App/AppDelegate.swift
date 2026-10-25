@@ -268,12 +268,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
-    /// Opens config.toml in the default text editor (`open -t`).
+    /// Opens config.toml with `editor` (an app or a command), or the default text editor.
+    /// Runs like an action (login shell), so `subl`/`code` on your PATH work.
     @objc private func editConfig() {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        p.arguments = ["-t", config.paths.configFile.path]
-        try? p.run()
+        let settings = config.current.config
+        let editor = settings.editor
+        let command = EditorCommand.command(for: editor) { EditorCommand.isApp($0, folders: settings.appFolders) }
+        let file = config.paths.configFile.path
+        let env = ProcessInfo.processInfo.environment.merging(settings.environment) { $1 }
+        CommandRunner.runInBackground(shell: settings.shellPath, command: command, query: file,
+                                      pathPrefix: config.paths.binDirectory.path, baseEnvironment: env) { result in
+            guard case .failure(let failure) = result, let editor else { return }
+            DispatchQueue.main.async {
+                // Still get the file open, then say why the editor didn't work.
+                let p = Process()
+                p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                p.arguments = ["-t", file]
+                try? p.run()
+                let alert = NSAlert()
+                alert.messageText = "Couldn't open config.toml with “\(editor)”"
+                alert.informativeText = "\(failure.description)\n\nSet editor in config.toml to an app name (\"Sublime Text\") or a command on your PATH (\"subl\", \"code\")."
+                NSApp.activate()
+                alert.runModal()
+            }
+        }
     }
 
     @objc private func clearHistory() {

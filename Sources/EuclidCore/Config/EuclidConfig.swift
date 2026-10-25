@@ -8,6 +8,9 @@ public struct EuclidConfig: Equatable, Sendable {
     public var clipboardLimit = 5_000
     public var ignoredApps: Set<String> = []
     public var shellPath = "/bin/zsh"
+    /// What Edit Config… opens config.toml with (`editor`): an app name, or a command.
+    /// Nil = the macOS default text editor.
+    public var editor: String?
     /// Extra environment for every action (`[env]`). For variables your shell only
     /// sets in interactive mode (~/.zshrc), which background actions don't load.
     public var environment: [String: String] = [:]
@@ -302,7 +305,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -315,6 +318,15 @@ public enum ConfigLoader {
                 }
             } else {
                 issues.append(.warning("hotkey must be a string like \"opt+space\""))
+            }
+        }
+
+        if root.contains(key: "editor") {
+            if let s = try? root.string(forKey: "editor") {
+                let trimmed = s.trimmingCharacters(in: .whitespaces)
+                config.editor = trimmed.isEmpty ? nil : trimmed
+            } else {
+                issues.append(.warning("editor must be a string: an app like \"Sublime Text\" or a command like \"code\""))
             }
         }
 
