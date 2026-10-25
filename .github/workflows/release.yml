@@ -60,5 +60,5 @@ jobs:
             sleep "$wait"
           done
           [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY before publishing" >&2; exit 1; }
-          gh release create "$VERSION" --repo stellalie/euclid-bar-releases --title "euclid-bar ${VERSION#v}" --notes "euclid-bar ${VERSION#v} for macOS 14+ (Apple Silicon + Intel)." \
+          gh release create "$VERSION" --repo stellalie/euclid-bar-releases --title "Euclid ${VERSION#v}" --notes "Euclid ${VERSION#v} for macOS 14+ (Apple Silicon + Intel)." \
             build/release/*.dmg build/release/*.zip build/release/appcast.xml

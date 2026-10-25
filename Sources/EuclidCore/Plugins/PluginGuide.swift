@@ -292,7 +292,7 @@ you save, so write it, try it, and it's live. This file is the whole format.
 
 1. Make a folder: `~/.config/euclid/plugins/<id>/` (lowercase, no spaces; the id is the folder name).
 2. Write `plugin.toml` and a script (any language; make it executable with `chmod +x`).
-3. Try it: `/Applications/euclid-bar.app/Contents/MacOS/euclid-bar --try-plugin <id> [query]`.
+3. Try it: `/Applications/Euclid.app/Contents/MacOS/euclid-bar --try-plugin <id> [query]`.
    It runs every part once and prints the rows, the badge text or the exact error. Fix and repeat.
 4. It's already live: open Euclid (⌥Space). Problems show in the footer and in `--check-config`.
 

@@ -21,10 +21,10 @@ jobs:
           scripts/bundle.sh release
           export EUCLID_CONFIG_DIR="$RUNNER_TEMP/config" EUCLID_DATA_DIR="$RUNNER_TEMP/data"
           # Through Launch Services, so euclid:// reaches this copy.
-          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f build/euclid-bar.app
-          open --env EUCLID_CONFIG_DIR="$EUCLID_CONFIG_DIR" --env EUCLID_DATA_DIR="$EUCLID_DATA_DIR" build/euclid-bar.app
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f build/Euclid.app
+          open --env EUCLID_CONFIG_DIR="$EUCLID_CONFIG_DIR" --env EUCLID_DATA_DIR="$EUCLID_DATA_DIR" build/Euclid.app
           sleep 2
-          PID=$(pgrep -n -f euclid-bar.app/Contents/MacOS/euclid-bar)
+          PID=$(pgrep -n -f Euclid.app/Contents/MacOS/euclid-bar)
           sleep 15 # let indexing settle
           for i in 1 2 3 4 5 6; do
             open "euclid://toggle"; sleep 1; open "euclid://toggle"; sleep 1

@@ -19,6 +19,6 @@ jobs:
       - name: Bundle app
         run: |
           scripts/bundle.sh debug
-          codesign --verify --strict --deep build/euclid-bar.app
+          codesign --verify --strict --deep build/Euclid.app
           # Proves dyld finds Sparkle.framework inside the bundle (exits after rendering).
-          build/euclid-bar.app/Contents/MacOS/euclid-bar --render-icon "$RUNNER_TEMP/icon.icns"
+          build/Euclid.app/Contents/MacOS/euclid-bar --render-icon "$RUNNER_TEMP/icon.icns"

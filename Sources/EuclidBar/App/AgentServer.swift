@@ -7,7 +7,7 @@ import EuclidCore
 enum AgentServer {
     /// What to paste in a terminal to connect Claude Code.
     static var claudeSetupCommand: String {
-        let binary = Bundle.main.executablePath ?? "/Applications/euclid-bar.app/Contents/MacOS/euclid-bar"
+        let binary = Bundle.main.executablePath ?? "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
         return "claude mcp add euclid -- '\(binary.replacingOccurrences(of: "'", with: #"'\''"#))' --mcp"
     }
 

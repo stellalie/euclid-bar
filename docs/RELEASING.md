@@ -12,9 +12,13 @@ is private, and private repos' release files can't be downloaded anonymously):
 
 | File | For |
 | --- | --- |
-| `euclid-bar-<v>.dmg` | First install (website / Releases download) |
-| `euclid-bar-<v>.zip` | Sparkle update archive |
+| `Euclid-<v>.dmg` | First install (website / Releases download) |
+| `Euclid-<v>.zip` | Sparkle update archive |
 | `appcast.xml` | Sparkle feed; the app reads `releases/latest/download/appcast.xml` |
+
+The bundle is `Euclid.app`; the binary inside stays `euclid-bar` (the CLI name). Never change
+`CFBundleIdentifier` (`dev.euclid.Euclid`): Sparkle finds the new app in the update zip by it, and
+installs it at the old path, so copies installed as `euclid-bar.app` keep that folder name.
 
 The tag sets the app version (`CFBundleVersion`), and Sparkle only offers versions newer than the
 installed one, so tags must keep going up.

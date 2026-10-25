@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build euclid-bar.app from the SwiftPM executable.
+# Build Euclid.app from the SwiftPM executable (the binary inside stays `euclid-bar`, the CLI name).
 # Usage: scripts/bundle.sh [release|debug]
 #   UNIVERSAL=1  build for Apple Silicon + Intel
 #   VERSION=x.y  stamp the bundle version (default: Resources/Info.plist)
@@ -16,7 +16,7 @@ ARCH=()
 swift build -c "$CONFIG" ${ARCH[@]+"${ARCH[@]}"}
 BIN="$(swift build -c "$CONFIG" ${ARCH[@]+"${ARCH[@]}"} --show-bin-path)"
 
-APP="build/euclid-bar.app"
+APP="build/Euclid.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN/euclid-bar" "$APP/Contents/MacOS/euclid-bar"
