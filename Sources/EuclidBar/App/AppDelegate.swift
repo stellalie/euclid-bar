@@ -10,9 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var clipboard: ClipboardService!
     private let history = HistoryService()
     private let updater = Updater()
+    private let hotkeys = CommandHotkeys()
+    private let expansion = TextExpansion()
     private var licensing: Licensing!
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
+    private var expansionItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
     private var licenceItems: [NSMenuItem] = []
 
@@ -34,6 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updateLicence() // the trial's day count moves on while the app runs
             return licensing.takeReminder(receipt: panel.usageReceipt)
         }
+        hotkeys.onPress = { [weak self] hotkey in self?.panel.run(hotkey) }
+        panel.extraProblem = { [weak self] in self?.hotkeys.problem ?? self?.expansion.problem }
+        expansion.onChange = { [weak self] in self?.panel.updateProblem() }
         setUpStatusItem()
         applyConfig()
         config.onChange = { [weak self] in self?.applyConfig() }
@@ -55,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyConfig() {
         let settings = config.current.config
         if let hotkey = settings.hotkey { HotkeyBinding.apply(hotkey) }
+        hotkeys.apply(settings.commandHotkeys)
+        expansion.configure(enabled: settings.expansionEnabled, snippets: settings.snippets)
+        expansionItem.state = settings.expansionEnabled ? .on : .off
         clipboard.ignoredBundleIDs = settings.ignoredApps
         history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         updater.apply(settings.updates)
@@ -68,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.importLauncher, .connectAgents] + AppCommand.usage(receipt: panel.usageReceipt)
+            + [.expansion(enabled: settings.expansionEnabled), .importLauncher, .connectAgents] + AppCommand.usage(receipt: panel.usageReceipt)
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -91,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Import from Raycast or Alfred…", action: #selector(importLauncher), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
+        expansionItem = menu.addItem(withTitle: "Expand Snippet Keywords", action: #selector(toggleExpansion), keyEquivalent: "")
+        expansionItem.target = self
+        expansionItem.toolTip = "Type a snippet's keyword in any app: [expansion] enabled in config.toml"
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: updater.isEnabled ? "Updates · \(Updater.version)" : "Updates · local build"))
@@ -157,6 +169,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    /// Flips `[expansion] enabled`. Turning it on asks macOS for Accessibility if needed.
+    @objc private func toggleExpansion() {
+        let on = !config.current.config.expansionEnabled
+        guard let problem = config.set("enabled", to: on, in: "expansion") else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change text expansion"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
     private func run(_ command: AppCommand) {
         switch command.kind {
         case .checkForUpdates:
@@ -165,6 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             checkForUpdates()
         case .toggleAutoInstall:
             toggleAutoInstall()
+        case .toggleExpansion:
+            toggleExpansion()
         case .buyLicence:
             panel.hide()
             buyLicence()

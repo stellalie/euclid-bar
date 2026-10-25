@@ -139,6 +139,14 @@ enum ScreensRenderer {
         vc.demoSetQuery("git")
         try step("[appearance] density = \"compact\", accent = \"#ff8a3d\"", hold: 2.0, name: "compact-accent")
 
+        vc.theme = Theme(Appearance())
+        vc.commands += [.expansion(enabled: false)]
+        vc.demoSetQuery("")
+        try type("expansion", caption: "Text expansion: type a snippet's keyword in any app")
+        try step("Text expansion: type a snippet's keyword in any app", hold: 1.8, name: "expansion")
+        vc.demoSetQuery("term")
+        try step("[hotkeys] Terminal = \"ctrl+opt+t\" opens it from anywhere", hold: 1.8, name: "hotkeys")
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")
@@ -193,6 +201,10 @@ enum ScreensRenderer {
         ]
         vc.snippets = [Snippet(name: "Standup template", keyword: "standup", text: "Yesterday:\nToday:\nBlockers: none ({date})")]
         vc.favorites = ["Terminal", "euclid-bar", "pi in Ghostty"]
+        let hotkeys: [(String, CommandHotkey.Kind?, String)] = [("Terminal", nil, "ctrl+opt+t"), ("Standup template", .snippet, "ctrl+opt+s")]
+        vc.hotkeys = hotkeys.compactMap { name, kind, key in
+            (try? HotkeySpec.parse(key).get()).map { CommandHotkey(hotkey: $0, target: name, kind: kind) }
+        }
     }
 
     static func offscreenWindow(for vc: NSViewController) -> NSWindow {
