@@ -41,7 +41,7 @@ public enum CommandRunner {
     }
 
     public static func makeProcess(shell: String, command: String, query: String, clip: String? = nil,
-                                   pathPrefix: String? = nil,
+                                   pathPrefix: String? = nil, directory: String? = nil,
                                    baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> Process {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: shell)
@@ -55,7 +55,7 @@ public enum CommandRunner {
         }
         p.arguments = ["-l", "-c", script, "euclid", query] // $0 = euclid, $1 = query
         p.environment = env
-        p.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        p.currentDirectoryURL = directory.map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser
         p.standardInput = FileHandle.nullDevice
         p.standardOutput = FileHandle.nullDevice
         return p
@@ -63,11 +63,11 @@ public enum CommandRunner {
 
     /// Fire-and-forget. `completion` runs on an arbitrary thread when the command exits.
     public static func runInBackground(shell: String, command: String, query: String, clip: String? = nil,
-                                       pathPrefix: String? = nil,
+                                       pathPrefix: String? = nil, directory: String? = nil,
                                        baseEnvironment: [String: String] = ProcessInfo.processInfo.environment,
                                        completion: @escaping @Sendable (Result<Void, Failure>) -> Void) {
         let p = makeProcess(shell: shell, command: command, query: query, clip: clip, pathPrefix: pathPrefix,
-                            baseEnvironment: baseEnvironment)
+                            directory: directory, baseEnvironment: baseEnvironment)
         run(p, completion: completion)
     }
 
@@ -109,6 +109,11 @@ final class CappedBuffer: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let room = limit - data.count
         if room > 0, !d.isEmpty { data.append(d.prefix(room)) }
+    }
+
+    var bytes: Data {
+        lock.lock(); defer { lock.unlock() }
+        return data
     }
 
     var string: String {

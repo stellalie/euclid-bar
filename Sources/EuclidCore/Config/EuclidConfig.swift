@@ -53,6 +53,13 @@ public struct EuclidConfig: Equatable, Sendable {
     public var agentShare = Set(AgentTools.Source.allCases)
     /// Sparkle auto-update (`[updates]`).
     public var updates = UpdateSettings()
+    /// Installed plugins, from `<config>/plugins` and `[plugins] paths`, minus `disabled`.
+    public var plugins: [Plugin] = []
+    /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
+    public var pluginPaths: [String] = []
+    public var pluginsDisabled: Set<String> = []
+    /// `[plugin.<id>]`: your values for a plugin's settings.
+    public var pluginSettings: [String: [String: String]] = [:]
 
     public init() {}
 }
@@ -148,11 +155,14 @@ public struct LoadedConfig: Equatable, Sendable {
     public let issues: [ConfigIssue]
     /// Absolute paths of the files `include` pulled in, in order (watched for changes too).
     public let includedFiles: [String]
+    /// Plugin folders and every plugin.toml in them, watched so a plugin loads on save.
+    public let pluginFiles: [String]
 
-    public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = []) {
+    public init(config: EuclidConfig, issues: [ConfigIssue], includedFiles: [String] = [], pluginFiles: [String] = []) {
         self.config = config
         self.issues = issues
         self.includedFiles = includedFiles
+        self.pluginFiles = pluginFiles
     }
 }
 
@@ -226,7 +236,24 @@ public enum ConfigLoader {
             config.jira = nil
         }
 
-        return LoadedConfig(config: config, issues: issues, includedFiles: included)
+        // Plugins: <config>/plugins first, then [plugins] paths. Their actions come after everyone else's.
+        var pluginFiles: [String] = []
+        if let directory {
+            let dirs = [directory.appendingPathComponent("plugins").path] + config.pluginPaths.map { resolve($0, from: directory) }
+            let (plugins, manifests) = PluginLoader.load(directories: dirs, disabled: config.pluginsDisabled,
+                                                         overrides: config.pluginSettings, &issues)
+            config.plugins = plugins
+            pluginFiles = dirs + manifests
+            var names = Set(config.actions.map(\.name))
+            for plugin in plugins {
+                for a in plugin.actions where names.insert(a.name).inserted {
+                    config.actions.append(Action(name: a.name, run: a.run, output: a.output,
+                                                 directory: plugin.directory, environment: plugin.environment))
+                }
+            }
+        }
+
+        return LoadedConfig(config: config, issues: issues, includedFiles: included, pluginFiles: pluginFiles)
     }
 
     /// `include`: a path or a list of paths.
@@ -248,7 +275,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -542,6 +569,22 @@ public enum ConfigLoader {
             }
         }
 
+        if let t = table(root, "plugins", &issues) {
+            warnUnknownKeys(t, known: ["paths", "disabled"], in: "[plugins]", &issues)
+            if let a = strings(t, "paths", in: "plugins", &issues) { config.pluginPaths += a }
+            if let a = strings(t, "disabled", in: "plugins", &issues) { config.pluginsDisabled.formUnion(a) }
+        }
+
+        if let t = table(root, "plugin", &issues) {
+            for id in t.keys.sorted() {
+                guard let sub = try? t.table(forKey: id) else {
+                    issues.append(.warning("plugin.\(id) must be a table: [plugin.\(id)]")); continue
+                }
+                let values = PluginLoader.settings(sub, in: "[plugin.\(id)]", &issues)
+                config.pluginSettings[id, default: [:]].merge(values) { $1 }
+            }
+        }
+
         if let t = table(root, "updates", &issues) {
             warnUnknownKeys(t, known: ["check", "auto_install", "channel"], in: "[updates]", &issues)
             if let b = bool(t, "check", in: "updates", &issues) { config.updates.check = b }
@@ -557,7 +600,7 @@ public enum ConfigLoader {
         }
     }
 
-    private static func parseAction(_ t: TOMLTable, label: String, _ issues: inout [ConfigIssue]) -> Action? {
+    static func parseAction(_ t: TOMLTable, label: String, _ issues: inout [ConfigIssue]) -> Action? {
         warnUnknownKeys(t, known: ["name", "run", "output", "alias"], in: label, &issues)
         guard let name = try? t.string(forKey: "name"), !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             issues.append(.warning("\(label): missing name, skipped")); return nil
@@ -609,7 +652,7 @@ public enum ConfigLoader {
         return (0..<a.count).compactMap { try? a.string(atIndex: $0) }
     }
 
-    private static func warnUnknownKeys(_ t: TOMLTable, known: Set<String>, in place: String, _ issues: inout [ConfigIssue]) {
+    static func warnUnknownKeys(_ t: TOMLTable, known: Set<String>, in place: String, _ issues: inout [ConfigIssue]) {
         for key in t.keys.sorted() where !known.contains(key) {
             issues.append(.warning("\(place): unknown key '\(key)'"))
         }
