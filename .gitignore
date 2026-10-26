@@ -4,3 +4,6 @@ build/
 *.xcodeproj/
 DerivedData/
 .DS_Store
+!XcodeCloud/EuclidCI.xcodeproj/
+XcodeCloud/EuclidCI.xcodeproj/xcuserdata/
+XcodeCloud/EuclidCI.xcodeproj/project.xcworkspace/xcuserdata/
