@@ -38,4 +38,4 @@ jobs:
           LICENCE_PUBLIC_KEY: ${{ vars.LICENCE_PUBLIC_KEY }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: scripts/dev-release.sh
+        run: scripts/publish-release.sh

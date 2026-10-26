@@ -1,13 +1,9 @@
 name: Release
 
-# Push a tag like v1.2.0 → signed, notarized DMG + Sparkle update on a GitHub release
-# in the public stellalie/euclid-bar-releases repo (this source repo is private).
-# One-time setup (secrets, keys): docs/RELEASING.md.
-# Manual run = dry run: builds and signs with whatever secrets exist, uploads the files
-# as a run artifact, publishes nothing.
+# Dry run only: Xcode Cloud publishes releases when a v* tag is pushed (docs/RELEASING.md).
+# Builds and signs with whatever secrets exist, uploads the files as a run artifact,
+# publishes nothing.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       version:
@@ -21,7 +17,7 @@ jobs:
   release:
     runs-on: macos-15
     env:
-      VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,18 +43,3 @@ jobs:
         with:
           name: release
           path: build/release
-
-      - name: Publish GitHub release
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }} # fine-grained PAT: Contents read/write on euclid-bar-releases
-        run: |
-          # Never publish an un-notarized build. Apple's ticket lookup drops connections now and then, so retry.
-          for wait in 10 20 40 0; do
-            xcrun stapler validate build/release/*.dmg && break
-            [[ $wait == 0 ]] && exit 1
-            sleep "$wait"
-          done
-          [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY before publishing" >&2; exit 1; }
-          gh release create "$VERSION" --repo stellalie/euclid-bar-releases --title "Euclid ${VERSION#v}" --notes "Euclid ${VERSION#v} for macOS 14+ (Apple Silicon + Intel)." \
-            build/release/*.dmg build/release/*.zip build/release/appcast.xml
