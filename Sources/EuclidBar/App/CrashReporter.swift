@@ -108,9 +108,9 @@ final class CrashReporter {
 
     private static var arch: String {
         #if arch(arm64)
-        "arm64"
+        return "arm64"
         #else
-        "x86_64"
+        return "x86_64"
         #endif
     }
 }
