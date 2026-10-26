@@ -200,7 +200,8 @@ import Testing
             "say.sh": "#!/bin/sh\nprintf '{\"title\":\"%s!\",\"copy\":\"%s\"}\\n' \"$1\" \"$EUCLID_QUERY\"\n",
             "items.sh": "#!/bin/sh\necho '{\"title\":\"One\",\"open\":\"https://one\"}'\necho oops\n",
         ])
-        let (report, ok) = await PluginTrial.run(p, query: "say hello", shell: "/bin/zsh", pathPrefix: nil)
+        let (report, ok) = await PluginTrial.run(p, query: "say hello", shell: "/bin/zsh", pathPrefix: nil,
+                                                 answerTimeout: .seconds(30)) // a cold first run can pass the 2 s typing limit
         #expect(!ok) // "oops" isn't JSON
         #expect(report.contains("source: 1 item(s)"))
         #expect(report.contains("One  ↵ open https://one"))

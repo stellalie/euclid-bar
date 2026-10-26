@@ -5,7 +5,8 @@ import Foundation
 /// or a coding agent writing a plugin.
 public enum PluginTrial {
     public static func run(_ plugin: Plugin, query: String, shell: String, pathPrefix: String?,
-                           environment: [String: String] = ProcessInfo.processInfo.environment) async -> (report: String, ok: Bool) {
+                           environment: [String: String] = ProcessInfo.processInfo.environment,
+                           answerTimeout: Duration = PluginTiming.answer) async -> (report: String, ok: Bool) {
         var lines = ["plugin: \(plugin.name) (\(plugin.id))", "folder: \(plugin.directory)"]
         var ok = true
         func attempt(_ label: String, _ command: String, query: String, environment extra: [String: String] = [:],
@@ -33,7 +34,7 @@ public enum PluginTrial {
         }
         if let answer = plugin.answer {
             if let input = answer.input(for: query) {
-                if let data = await attempt("answer", answer.run, query: input, timeout: PluginTiming.answer) { show("answer for “\(input)”", data) }
+                if let data = await attempt("answer", answer.run, query: input, timeout: answerTimeout) { show("answer for “\(input)”", data) }
             } else {
                 let trigger = answer.prefix.map { "start with “\($0) ”" } ?? "match /\(answer.match ?? "")/"
                 lines.append("answer: not run; the query must \(trigger) (pass one after the plugin name)")

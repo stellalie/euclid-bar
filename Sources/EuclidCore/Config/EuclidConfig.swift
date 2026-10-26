@@ -232,7 +232,7 @@ public enum ConfigLoader {
             issues.removeAll { $0.message == "[plugin.\(name)]: no plugin named '\(name)' is installed" }
             issues.append(.warning(config.plugins.contains { $0.id == name }
                 ? "[\(name)] is now [plugin.\(name)]: rename the table"
-                : "[\(name)] is now a plugin: run `euclid-bar --plugin add \(name)` (your settings carry over), then rename the table to [plugin.\(name)]"))
+                : "[\(name)] is now a plugin: run `euclid-bar --plugin add \(name)` then rename the table to [plugin.\(name)] (your values stay as they are)"))
         }
 
         return LoadedConfig(config: config, issues: issues, includedFiles: included, pluginFiles: pluginFiles)

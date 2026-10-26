@@ -72,8 +72,8 @@ import Testing
         #expect(loaded.config.pluginSettings["bitbucket"] == ["email": "me@example.com", "repos": "team/app team/api"])
         #expect(loaded.config.pluginSettings["jira"] == ["base_url": "https://new.atlassian.net"]) // [plugin.jira] wins
         #expect(loaded.issues.map(\.message) == [
-            "[bitbucket] is now a plugin: run `euclid-bar --plugin add bitbucket` (your settings carry over), then rename the table to [plugin.bitbucket]",
-            "[jira] is now a plugin: run `euclid-bar --plugin add jira` (your settings carry over), then rename the table to [plugin.jira]",
+            "[bitbucket] is now a plugin: run `euclid-bar --plugin add bitbucket` then rename the table to [plugin.bitbucket] (your values stay as they are)",
+            "[jira] is now a plugin: run `euclid-bar --plugin add jira` then rename the table to [plugin.jira] (your values stay as they are)",
         ])
     }
 
