@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# CI only: put the Developer ID certificate and notary key from Actions secrets where
+# CI only: put the Developer ID certificate and notary key from CI secrets where
 # scripts/release.sh finds them. Missing secrets mean an unsigned or un-notarized build.
 #   env P12, P12_PASSWORD, NOTARY_KEY_P8  → SIGN_IDENTITY, NOTARY_KEY_PATH in $GITHUB_ENV
+# Outside GitHub Actions, set GITHUB_ENV to a file and read the variables back from it.
 set -euo pipefail
+RUNNER_TEMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 if [[ -z "${P12:-}" ]]; then
   echo "No certificate secret: building unsigned."

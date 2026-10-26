@@ -28,9 +28,11 @@ in the run's artifacts).
 
 ## Dev builds
 
-Every push to `main` that passes CI also ships: `.github/workflows/dev-release.yml` builds, signs
-and notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
-(version like `1.1.0-dev.214`). It uses the same secrets as stable releases.
+Every push to `main` that passes CI also ships, on Xcode Cloud: after the checks,
+`XcodeCloud/ci_scripts/ci_post_clone.sh` runs `scripts/dev-release.sh`, which builds, signs and
+notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
+(version like `1.1.0-dev.214`). A build never replaces a newer one. It uses the same secrets as
+stable releases, set as Xcode Cloud workflow variables (`XcodeCloud/README.md`).
 
 To get them, set this in `config.toml`; the next update check switches feeds:
 
@@ -82,7 +84,8 @@ Stable releases stay tag-only.
    - Keep `LICENCE_PRIVATE_KEY` in your password manager only. It is not a CI secret: the app
      never signs anything. Losing it means you can't issue keys that existing builds accept.
 
-Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
+Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo (stable
+releases), and to the Xcode Cloud workflow's environment variables (dev builds, `XcodeCloud/README.md`).
 
 ## Local release
 
