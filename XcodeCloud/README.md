@@ -8,8 +8,9 @@ Xcode Cloud can't build a standalone Swift package, so:
 
 - `EuclidCI.xcodeproj` builds a placeholder app (`EuclidCI/main.swift`) that the workflow needs.
 - `ci_scripts/ci_post_clone.sh` runs before that build and does the real work:
-  `swift build`, `swift test`, bundle + verify `Euclid.app`, and on PRs that touch
-  `Sources/EuclidBar` the UI screens (`--render-screens`, `--render-demo`). On pushes to `main`
+  `swift build`, `swift test`, bundle + verify `Euclid.app`; on PRs that touch search code, the
+  speed budget (`--speed-budget`: every keystroke over 10k+ items under 8 ms, release build); and on
+  PRs that touch `Sources/EuclidBar`, the UI screens (`--render-screens`, `--render-demo`). On pushes to `main`
   and `v*` tags it then runs `scripts/publish-release.sh`: signed, notarized, uploaded to the
   `dev` pre-release or the tag's release (see `docs/RELEASING.md`).
 

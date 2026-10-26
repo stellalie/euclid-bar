@@ -53,18 +53,27 @@ if (( ${+release} )); then
   exit 0
 fi
 
-# UI screens: PRs that touch the app's UI code (or this setup) only, like screens.yml.
+# PRs only from here: the speed budget when search code changes, UI screens when the app's UI does.
 [[ -n "${CI_PULL_REQUEST_NUMBER:-}" ]] || exit 0
 base="${CI_PULL_REQUEST_TARGET_COMMIT:-}"
-if [[ -n "$base" ]] && git cat-file -e "$base^{commit}" 2>/dev/null &&
-   git diff --quiet "$base"...HEAD -- Sources/EuclidBar XcodeCloud; then
-  echo "== UI screens: skipped, no UI changes"
-  exit 0
-fi
+changed() { # true when the PR touches any of these paths (or the base is unknown)
+  [[ -z "$base" ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null || ! git diff --quiet "$base"...HEAD -- "$@"
+}
+ui=0 search=0
+changed Sources/EuclidBar XcodeCloud && ui=1
+changed Sources/EuclidCore/FuzzyMatcher.swift Sources/EuclidCore/Ranking Sources/EuclidCore/Transforms \
+  Sources/EuclidCore/Calculator Sources/EuclidBar/Panel XcodeCloud && search=1
+(( ui || search )) || { echo "== Speed budget and UI screens: skipped, no search or UI changes"; exit 0; }
 
-echo "== UI screens"
 swift build -c release
 bin="$(swift build -c release --show-bin-path)"
+if (( search )); then
+  echo "== Speed budget"
+  "$bin/euclid-bar" --speed-budget # every keystroke over 10k+ items under 8 ms
+fi
+(( ui )) || exit 0
+
+echo "== UI screens"
 "$bin/euclid-bar" --render-screens screens
 "$bin/euclid-bar" --render-demo screens/demo
 du -sh screens/clips screens/demo
@@ -73,7 +82,7 @@ du -sh screens/clips screens/demo
 branch="screens/pr-$CI_PULL_REQUEST_NUMBER"
 cd screens
 git init -q -b "$branch"
-git -c user.name="Xcode Cloud" -c user.email=noreply@euclid.lgtmworks.com add .
-git -c user.name="Xcode Cloud" -c user.email=noreply@euclid.lgtmworks.com commit -qm "UI screens for ${CI_PULL_REQUEST_SOURCE_COMMIT:-$CI_COMMIT}"
+git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja add .
+git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "UI screens for ${CI_PULL_REQUEST_SOURCE_COMMIT:-$CI_COMMIT}"
 git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" "$branch"
 echo "Published to $branch"
