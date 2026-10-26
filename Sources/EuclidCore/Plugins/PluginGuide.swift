@@ -31,6 +31,7 @@ public enum PluginGuide {
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
+        "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -506,6 +507,81 @@ when = ["file", "project", "app"]
 run  = 'open -R "$1"'
 """#
 
+    static let aiManifest = #"""
+name = "AI"
+description = "Fix, translate or explain text, and `ai <question>`, with the AI CLI you're logged into (claude, codex or gemini). No API key."
+
+# Copy some text, open Euclid: the clip is on top. These keys act on it.
+[[key]]
+key  = "cmd+shift+f"
+name = "Fix writing"
+when = ["clip", "snippet"]
+run  = './ai.sh paste "Fix the spelling and grammar of the text below. Keep its meaning, tone, language and formatting. Reply with only the corrected text." "$1"'
+
+[[key]]
+key  = "cmd+shift+t"
+name = "Translate"
+when = ["clip", "snippet"]
+run  = './ai.sh paste "Translate the text below into $EUCLID_SETTING_LANGUAGE. Keep its formatting. Reply with only the translation." "$1"'
+
+[[key]]
+key  = "cmd+shift+e"
+name = "Explain"
+when = ["clip", "snippet"]
+run  = './ai.sh show "Explain the text below briefly and plainly. If it is code or an error, say what it does or what went wrong." "$1"'
+
+[[action]]
+name  = "Ask AI"
+alias = "ai"
+run   = './ai.sh show "Answer briefly." "$1"'
+
+[settings]
+cli      = ""          # empty: the first of claude, codex, gemini on your PATH. Or a command that
+                       # takes the prompt as its last argument, e.g. "ollama run llama3.2"
+language = "English"   # what Translate translates into
+"""#
+
+    static let aiScript = #"""
+#!/bin/sh
+# ./ai.sh paste|show "<instruction>" "<text>"
+# Asks the AI CLI you're already logged into. paste: prints {"paste": …} so Euclid types the
+# answer into the app you were in. show: opens the answer in your text editor and copies it.
+set -eu
+mode=$1 prompt="$2
+
+$3"
+cli=${EUCLID_SETTING_CLI:-}
+if [ -z "$cli" ]; then
+  for c in claude codex gemini; do
+    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+  done
+fi
+[ -n "$cli" ] || { echo "no AI CLI found: install claude, codex or gemini, or set [plugin.ai] cli" >&2; exit 1; }
+
+case "$cli" in
+  claude) answer=$(claude -p "$prompt" </dev/null) ;;
+  gemini) answer=$(gemini -p "$prompt" </dev/null) ;;
+  codex)
+    last=$(mktemp)
+    codex exec --skip-git-repo-check --output-last-message "$last" "$prompt" </dev/null >/dev/null
+    answer=$(cat "$last"); rm -f "$last" ;;
+  *) answer=$(eval "$cli \"\$prompt\"" </dev/null) ;;
+esac
+[ -n "$answer" ] || { echo "$cli gave no answer" >&2; exit 1; }
+
+case "$mode" in
+  paste)
+    osascript -l JavaScript -e 'function run(argv) { return JSON.stringify({ paste: argv[0] }) }' "$answer" ;;
+  show)
+    # Outside this folder: writing here would reload the plugin.
+    file="${TMPDIR:-/tmp}/euclid-ai.txt"
+    printf '%s\n' "$answer" > "$file"
+    printf '%s' "$answer" | pbcopy
+    open -t "$file" ;;
+  *) echo "usage: ai.sh paste|show <instruction> <text>" >&2; exit 64 ;;
+esac
+"""#
+
     public static let guide = marker + "\n" + #"""
 # Euclid plugins
 
@@ -619,11 +695,13 @@ prints is ignored):
 ```json
 {"notice":"Cleaned a tracking link"}   shown in the panel's footer
 {"copy":"https://example.com/x"}       put on the clipboard (a clipboard hook doesn't see its own copy)
+{"paste":"Fixed text"}                 keys only: paste into the app you were in
 {"open":"https://example.com"}         open a URL or file
 {"query":"jira "}                      open hooks only: start the search with this text
 ```
 
-Hooks run in the background with a 10 s limit and never slow the panel down. Try one with
+Hooks run in the background with a 10 s limit and never slow the panel down; keys get 60 s
+(enough for an AI CLI). Try one with
 sample text: `euclid-bar --try-plugin <id> "https://example.com/?utm_source=x"`. Keys aren't run
 by `--try-plugin`; it checks them and lists them.
 
@@ -654,5 +732,7 @@ change them:
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
+- `ai`: ⇧⌘F fixes a clip's writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains, `ai <question>`
+  answers, through the `claude`, `codex` or `gemini` CLI you're logged into (`[[key]]`s and an action).
 """#
 }

@@ -72,8 +72,10 @@ import Testing
             {"nothing":"here"}
             {broken
             {"query":"jira "}
+            {"paste":"Fixed\\ntext"}
             """.utf8)
-        #expect(PluginEffect.parse(out) == [.init(notice: "Cleaned", copy: "https://x"), .init(open: "/tmp"), .init(query: "jira ")])
+        #expect(PluginEffect.parse(out) == [.init(notice: "Cleaned", copy: "https://x"), .init(open: "/tmp"), .init(query: "jira "),
+                                            .init(paste: "Fixed\ntext")])
     }
 
     @Test func itemEnvironment() {

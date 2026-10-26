@@ -186,7 +186,8 @@ final class PluginService {
             for (i, hook) in p.hooks.enumerated() where hook.event == event {
                 let key = "\(p.id)#\(i)"
                 guard hooksRunning.insert(key).inserted else { continue } // the last one is still going
-                execute(hook.run, plugin: p, input: input, environment: extra, label: "\(p.name) (on \(event.rawValue))") { [weak self] in
+                execute(hook.run, plugin: p, input: input, environment: extra, label: "\(p.name) (on \(event.rawValue))",
+                        timeout: PluginTiming.hook, mayPaste: false) { [weak self] in
                     self?.hooksRunning.remove(key)
                 }
             }
@@ -197,17 +198,17 @@ final class PluginService {
     func runKey(_ key: Plugin.Key, pluginID: String, item: ModItem, query: String) {
         guard let p = plugin(id: pluginID) else { return }
         execute(key.run, plugin: p, input: item.value, environment: item.environment.merging(["EUCLID_SEARCH": query]) { $1 },
-                label: key.name, done: nil)
+                label: key.name, timeout: PluginTiming.key, mayPaste: true, done: nil)
     }
 
     private func execute(_ command: String, plugin p: Plugin, input: String, environment extra: [String: String],
-                         label: String, done: (@MainActor @Sendable () -> Void)?) {
+                         label: String, timeout: Duration, mayPaste: Bool, done: (@MainActor @Sendable () -> Void)?) {
         let shell = shell, env = mergedEnvironment.merging(extra) { $1 }, bin = binDirectory, log = log
         Task.detached(priority: .userInitiated) {
             let result: Result<Data, Error>
             do {
                 result = .success(try await PluginRunner.output(of: command, plugin: p, query: input, shell: shell, pathPrefix: bin,
-                                                                environment: env, timeout: PluginTiming.hook))
+                                                                environment: env, timeout: timeout))
             } catch {
                 result = .failure(error)
             }
@@ -215,7 +216,9 @@ final class PluginService {
                 done?()
                 switch result {
                 case .success(let data):
-                    let effects = PluginEffect.parse(data)
+                    var effects = PluginEffect.parse(data)
+                    // Only a key you pressed may type into your app; a hook fires on its own.
+                    if !mayPaste { effects = effects.map { var e = $0; e.paste = nil; return e } }
                     if !effects.isEmpty { self.onEffects?(p.name, effects) }
                 case .failure(let error):
                     log.error("\(label, privacy: .public): \(String(describing: error), privacy: .public)")

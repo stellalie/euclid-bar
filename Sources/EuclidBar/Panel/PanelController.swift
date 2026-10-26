@@ -298,6 +298,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                 hookCopy = text
                 Paster.copy(text)
             }
+            if let text = e.paste {
+                hookCopy = text
+                pasteText(text)
+            }
             if let open = e.open {
                 let expanded = (open as NSString).expandingTildeInPath
                 if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
