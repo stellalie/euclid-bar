@@ -509,7 +509,13 @@ run  = 'open -R "$1"'
 
     static let aiManifest = #"""
 name = "AI"
-description = "Fix, translate or explain text, and `ai <question>`, with the AI CLI you're logged into (claude, codex or gemini). No API key."
+description = "`ai <question>` answers in the bar; on a clip, fix, translate or explain it. Apple's on-device model by default (free, private), or the claude, codex or gemini CLI you're logged into. No API key."
+
+# `ai what is a monad` then ↵: the answer shows in the bar (→ reads it all, ↵ copies).
+[answer]
+prefix   = "ai"
+on_enter = true
+run      = './ai.sh answer "Answer briefly and plainly." "$1"'
 
 # Copy some text, open Euclid: the clip is on top. These keys act on it.
 [[key]]
@@ -530,35 +536,40 @@ name = "Explain"
 when = ["clip", "snippet"]
 run  = './ai.sh show "Explain the text below briefly and plainly. If it is code or an error, say what it does or what went wrong." "$1"'
 
-[[action]]
-name  = "Ask AI"
-alias = "ai"
-run   = './ai.sh show "Answer briefly." "$1"'
-
 [settings]
-cli      = ""          # empty: the first of claude, codex, gemini on your PATH. Or a command that
-                       # takes the prompt as its last argument, e.g. "ollama run llama3.2"
+cli      = ""          # empty: Apple's on-device model (macOS 26, Apple Intelligence on), else the first
+                       # of claude, codex, gemini on your PATH. Or any command that takes the prompt as
+                       # its last argument, e.g. "ollama run llama3.2"
 language = "English"   # what Translate translates into
 """#
 
     static let aiScript = #"""
 #!/bin/sh
-# ./ai.sh paste|show "<instruction>" "<text>"
-# Asks the AI CLI you're already logged into. paste: prints {"paste": …} so Euclid types the
-# answer into the app you were in. show: opens the answer in your text editor and copies it.
+# ./ai.sh answer|paste|show "<instruction>" "<text>"
+# Asks an AI model and prints what Euclid should do with the reply (one JSON line):
+#   answer  an answer row in the bar     paste  type it into the app you were in
+#   show    open the bar with it to read
 set -eu
 mode=$1 prompt="$2
 
 $3"
 cli=${EUCLID_SETTING_CLI:-}
 if [ -z "$cli" ]; then
-  for c in claude codex gemini; do
-    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
-  done
+  if [ -n "${EUCLID_BAR:-}" ] && "$EUCLID_BAR" --ai --check 2>/dev/null; then
+    cli=apple
+  else
+    for c in claude codex gemini; do
+      if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+    done
+  fi
 fi
-[ -n "$cli" ] || { echo "no AI CLI found: install claude, codex or gemini, or set [plugin.ai] cli" >&2; exit 1; }
+[ -n "$cli" ] || {
+  echo "no AI model: turn on Apple Intelligence (macOS 26), install claude, codex or gemini, or set [plugin.ai] cli" >&2
+  exit 1
+}
 
 case "$cli" in
+  apple)  answer=$("$EUCLID_BAR" --ai "$prompt" </dev/null) ;;
   claude) answer=$(claude -p "$prompt" </dev/null) ;;
   gemini) answer=$(gemini -p "$prompt" </dev/null) ;;
   codex)
@@ -569,17 +580,19 @@ case "$cli" in
 esac
 [ -n "$answer" ] || { echo "$cli gave no answer" >&2; exit 1; }
 
-case "$mode" in
-  paste)
-    osascript -l JavaScript -e 'function run(argv) { return JSON.stringify({ paste: argv[0] }) }' "$answer" ;;
-  show)
-    # Outside this folder: writing here would reload the plugin.
-    file="${TMPDIR:-/tmp}/euclid-ai.txt"
-    printf '%s\n' "$answer" > "$file"
-    printf '%s' "$answer" | pbcopy
-    open -t "$file" ;;
-  *) echo "usage: ai.sh paste|show <instruction> <text>" >&2; exit 64 ;;
-esac
+# JSON-encode with JavaScript for Automation (always on macOS).
+osascript -l JavaScript -e '
+function run(argv) {
+  const [mode, cli, answer] = argv
+  if (mode === "paste") return JSON.stringify({ paste: answer })
+  if (mode === "show") return JSON.stringify({ show: answer })
+  const first = answer.split("\n").find(l => l.trim()) || answer
+  return JSON.stringify({
+    title: first.length > 140 ? first.slice(0, 139) + "…" : first,
+    subtitle: (cli === "apple" ? "Apple on-device" : cli) + " · → reads it all · ↵ copies",
+    copy: answer, preview: answer, icon: "sparkles", id: "ai-answer",
+  })
+}' "$mode" "$cli" "$answer"
 """#
 
     public static let guide = marker + "\n" + #"""
@@ -612,6 +625,7 @@ run    = "./tz.sh"                 # gets the text as $1 (and $EUCLID_QUERY)
 prefix = "tz"                      # `tz 3pm` runs it with "3pm"
 match  = '^\d+(am|pm)$'            # and/or: runs on the whole query when it matches
                                    # one of the two is required; 2 s limit
+on_enter = true                    # optional: show “Ask”, run on ↵ with up to 60 s (an AI model)
 
 [badge]                            # a short status chip on the search bar
 run   = "./today.sh"               # first line of output, up to 40 characters; empty = hidden
@@ -696,6 +710,7 @@ prints is ignored):
 {"notice":"Cleaned a tracking link"}   shown in the panel's footer
 {"copy":"https://example.com/x"}       put on the clipboard (a clipboard hook doesn't see its own copy)
 {"paste":"Fixed text"}                 keys only: paste into the app you were in
+{"show":"A long answer…"}              keys only: open the panel with this text to read
 {"open":"https://example.com"}         open a URL or file
 {"query":"jira "}                      open hooks only: start the search with this text
 ```
@@ -732,7 +747,8 @@ change them:
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
-- `ai`: ⇧⌘F fixes a clip's writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains, `ai <question>`
-  answers, through the `claude`, `codex` or `gemini` CLI you're logged into (`[[key]]`s and an action).
+- `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
+  ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default, or the `claude`, `codex` or
+  `gemini` CLI you're logged into (an `on_enter` answer and `[[key]]`s).
 """#
 }

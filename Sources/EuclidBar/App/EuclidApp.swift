@@ -10,6 +10,7 @@ enum EuclidApp {
     static func main() {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
         if CommandLine.arguments.contains("--mcp") { exit(AgentServer.run()) }
+        if let i = CommandLine.arguments.firstIndex(of: "--ai") { exit(AppleAI.run(Array(CommandLine.arguments.dropFirst(i + 1)))) }
         if let i = CommandLine.arguments.firstIndex(of: "--try-plugin") {
             exit(PluginCommands.tryPlugin(Array(CommandLine.arguments.dropFirst(i + 1))))
         }

@@ -659,11 +659,14 @@ final class LauncherViewController: NSViewController {
         asyncResultsChanged()
     }
 
-    /// Plugin answers for `text` arrived.
-    func setPluginAnswers(_ entries: [PluginService.Entry], for text: String) {
+    /// Plugin answers for `text` arrived. `reveal`: select the first and open the preview (an AI reply to read).
+    func setPluginAnswers(_ entries: [PluginService.Entry], for text: String, reveal: Bool = false) {
         guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
         pluginAnswers = (text, entries)
         asyncResultsChanged()
+        guard reveal, let first = entries.first, let i = rows.firstIndex(where: { $0.key == Row.plugin(first).key }) else { return }
+        select(row: i)
+        if first.item.preview != nil { setPreview(open: true) }
     }
 
     private func asyncResultsChanged() {
@@ -800,7 +803,7 @@ final class LauncherViewController: NSViewController {
             case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
             case .plugin(let e)?:
                 let i = e.item
-                list.append(H(key: "↵", label: i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
+                list.append(H(key: "↵", label: e.ask != nil ? "Ask" : i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
             case .command(let c)? where c.kind == .toggleAutoInstall || c.kind == .toggleExpansion: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))

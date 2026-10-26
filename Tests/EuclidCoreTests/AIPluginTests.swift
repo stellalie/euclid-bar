@@ -29,7 +29,9 @@ struct AIPluginTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         #expect(plugin.keys.map(\.key.symbols) == ["⇧⌘F", "⇧⌘T", "⇧⌘E"])
         #expect(plugin.keys.allSatisfy { $0.when == ["clip", "snippet"] })
-        #expect(plugin.actions.map(\.name) == ["Ask AI"])
+        #expect(plugin.answer?.onEnter == true)
+        #expect(plugin.answer?.input(for: "ai what is a monad") == "what is a monad")
+        #expect(plugin.actions.isEmpty)
         #expect(plugin.settings["language"] == "English")
     }
 
@@ -41,9 +43,29 @@ struct AIPluginTests {
         let clip = #"teh "quoted" \ text $(whoami)"#
         let fix = try #require(plugin.keys.first { $0.name == "Fix writing" })
         let out = try await PluginRunner.output(of: fix.run, plugin: plugin, query: clip, shell: "/bin/zsh", pathPrefix: bin.path,
-                                                environment: ProcessInfo.processInfo.environment, timeout: .seconds(20))
+                                                environment: environment, timeout: .seconds(20))
         let paste = try #require(PluginEffect.parse(out).first?.paste)
         #expect(paste.hasPrefix("ANSWER\nFix the spelling and grammar"))
         #expect(paste.hasSuffix("\n\n" + clip)) // passed through as text, never run
+    }
+
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/osascript")))
+    func askAnswersInTheBar() async throws {
+        let (plugin, dir) = try install()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bin = try fakeCLI(in: dir)
+        let answer = try #require(plugin.answer)
+        let out = try await PluginRunner.output(of: answer.run, plugin: plugin, query: "what is a monad", shell: "/bin/zsh",
+                                                pathPrefix: bin.path, environment: environment, timeout: .seconds(20))
+        let item = try #require(PluginOutput.parse(out).items.first)
+        #expect(item.title == "ANSWER")
+        #expect(item.subtitle?.hasPrefix("claude · ") == true)
+        #expect(item.preview?.hasSuffix("\n\nwhat is a monad") == true)
+        #expect(item.copy == item.preview)
+    }
+
+    /// No `$EUCLID_BAR`, so the fake `claude` is picked rather than Apple's model.
+    private var environment: [String: String] {
+        ProcessInfo.processInfo.environment.filter { $0.key != "EUCLID_BAR" && $0.key != "EUCLID_SETTING_CLI" }
     }
 }
