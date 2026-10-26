@@ -51,13 +51,11 @@ final class Licensing {
 
     /// The panel's footer nudge, at most every few days once the trial is over. Never modal:
     /// it can't steal a keystroke, and Euclid keeps working.
-    /// `receipt` is what the last 30 days looked like, so the value is right there when you decide.
-    func takeReminder(receipt: String?) -> String? {
+    func takeReminder() -> String? {
         guard let publicKey, Evaluation.shouldRemind(state, publicKey: publicKey) else { return nil }
         state.lastReminder = Date()
         _ = save()
-        guard let receipt else { return "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register." }
-        return "Trial over: search “licence” to buy. Your 30 days: \(receipt)"
+        return "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register."
     }
 
     private func save() -> String? {

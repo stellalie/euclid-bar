@@ -84,11 +84,11 @@ enum ScreensRenderer {
             }
         }
 
-        try step("Empty box: suggestions, PRs waiting on your review, clipboard", hold: 1.8, name: "empty")
+        try step("Empty box: suggestions, plugin picks, clipboard", hold: 1.8, name: "empty")
         vc.demoSetQuery("")
         try type("rebase", caption: "Sections, matched letters highlighted, search speed in the footer")
         vc.setContentResults([
-            ContentHit(kind: .note, ref: "/Users/me/Notes/Git tips.md", title: "Git tips", snippet: "…interactive rebase: squash, fixup, reword…"),
+            ContentHit(ref: "/Users/me/Notes/Git tips.md", title: "Git tips", snippet: "…interactive rebase: squash, fixup, reword…"),
         ], for: "rebase")
         try step("Sections, matched letters highlighted, search speed in the footer", hold: 2.0, name: "search-sections")
 
@@ -108,10 +108,6 @@ enum ScreensRenderer {
         vc.demoTogglePreview()
         try step("esc closes it", hold: 0.8)
 
-        vc.demoSetQuery("cache")
-        try step("Bitbucket: PRs and repos", hold: 1.8, name: "bitbucket")
-        vc.demoSetQuery("login")
-        try step("Jira: your issues; ⌘C copies the key, ⇧⌘C a branch name", hold: 1.8, name: "jira")
         vc.demoSetQuery("standup")
         try step("Snippets: the keyword pins it first", hold: 1.6, name: "snippet")
 
@@ -128,10 +124,9 @@ enum ScreensRenderer {
         vc.demoSelect(row: 1)
         try step("Updates: check now, or let them install automatically", hold: 1.8, name: "updates")
 
-        let receipt = "412 opens on 21 days · 120 apps, 80 clips, 38 actions, 12 snippets"
-        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false) + AppCommand.usage(receipt: receipt)
+        vc.commands += AppCommand.licence(summary: "Unregistered", licensed: false)
         vc.licenceNote = "Unregistered"
-        vc.notice = "Trial over: search “licence” to buy. Your 30 days: \(receipt)"
+        vc.notice = "Your 30-day trial is over. Euclid keeps working; search “licence” to buy or register."
         vc.demoSetQuery("")
         try type("licence", caption: "After the trial: still works, says Unregistered, reminds every 3 days")
         try step("After the trial: still works, says Unregistered, reminds every 3 days", hold: 2.0, name: "licence")
@@ -227,29 +222,6 @@ enum ScreensRenderer {
         let projectItems = projects.enumerated().map { $0.element.searchItem(id: $0.offset) }
         vc.projectsProvider = { projectItems }
         vc.project = { projects[safe: $0] }
-        let now = Date()
-        let bitbucket = [
-            BitbucketItem(kind: .reviewPR, title: "Add response cache to search API", subtitle: "team/search · #412 · Sam Lee",
-                          url: "https://bitbucket.org/team/search/pull-requests/412", updated: now.addingTimeInterval(-3600)),
-            BitbucketItem(kind: .myPR, title: "Fix cache invalidation on deploy", subtitle: "team/platform · #88 · Stella",
-                          url: "https://bitbucket.org/team/platform/pull-requests/88", updated: now.addingTimeInterval(-7200)),
-            BitbucketItem(kind: .repo, title: "team/cache-service", subtitle: "Shared Redis cache client",
-                          url: "https://bitbucket.org/team/cache-service", updated: nil),
-        ]
-        let bitbucketItems = bitbucket.enumerated().map { $0.element.searchItem(id: $0.offset) }
-        vc.bitbucketProvider = { bitbucketItems }
-        vc.bitbucketItem = { bitbucket[safe: $0] }
-        let jira = [
-            JiraIssue(kind: .assigned, key: "SRCH-412", summary: "Login fails on Safari after SSO redirect",
-                      subtitle: "In Progress · Bug · Search", url: "https://acme.atlassian.net/browse/SRCH-412",
-                      updated: now.addingTimeInterval(-1800)),
-            JiraIssue(kind: .recent, key: "PLAT-88", summary: "Rotate login service certificates",
-                      subtitle: "To Do · Task · Platform", url: "https://acme.atlassian.net/browse/PLAT-88", updated: nil),
-        ]
-        let jiraItems = jira.enumerated().map { $0.element.searchItem(id: $0.offset) }
-        vc.jiraProvider = { jiraItems }
-        vc.jiraIssue = { jira[safe: $0] }
-        vc.jiraBaseURL = { "https://acme.atlassian.net" }
         func gh(_ title: String, _ sub: String, _ url: String, _ label: String, icon: String = "arrow.triangle.pull") -> PluginService.Entry {
             .init(pluginID: "github", pluginName: "GitHub",
                   item: PluginItem(title: title, subtitle: sub, open: url, icon: icon, label: label))
@@ -265,9 +237,9 @@ enum ScreensRenderer {
         vc.pluginEntry = { github[safe: $0] }
         vc.actions = [
             Action(name: "pi in Ghostty", run: #"ghostty-run tab pi "$1""#),
-            Action(name: "Claude in herdr", run: #"herdr-run split claude "$1""#),
+            Action(name: "Claude in a split", run: #"ghostty-run split claude "$1""#),
             Action(name: "Search web", run: #"open "https://www.google.com/search?q=$EUCLID_QUERY_URL""#),
-            Action(name: "Search Bitbucket", run: #"open "https://bitbucket.org/search?q=$EUCLID_QUERY_URL""#),
+            Action(name: "Search GitHub", run: #"open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL""#),
         ]
         vc.snippets = [Snippet(name: "Standup template", keyword: "standup", text: "Yesterday:\nToday:\nBlockers: none ({date})")]
         vc.favorites = ["Terminal", "euclid-bar", "pi in Ghostty"]

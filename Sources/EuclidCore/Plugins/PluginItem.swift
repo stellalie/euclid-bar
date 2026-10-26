@@ -79,3 +79,18 @@ public enum PluginOutput {
         return (Array(items.prefix(maxItems)), problems)
     }
 }
+
+extension PluginItem {
+    /// The row a plugin shows in search while its list can't load (and it has nothing older to show),
+    /// so typing its name says why instead of finding nothing. ↵ opens the plugin's folder.
+    public static func failed(_ plugin: Plugin, _ error: Error) -> PluginItem {
+        let missing = (error as? PluginRunner.Failure)?.missingCommand
+        let title = missing.map { "\(plugin.name): `\($0)` isn't installed" } ?? "\(plugin.name) couldn't load"
+        let subtitle = missing != nil
+            ? "Install it, or add its folder to PATH under [env] in config.toml"
+            : String(describing: error)
+        return PluginItem(title: title, subtitle: subtitle, open: plugin.directory,
+                          icon: "exclamationmark.triangle", label: "Problem", preview: String(describing: error),
+                          id: "problem:\(plugin.id)")
+    }
+}

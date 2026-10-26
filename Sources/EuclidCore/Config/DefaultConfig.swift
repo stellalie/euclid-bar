@@ -5,7 +5,7 @@ public enum DefaultConfig {
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
 
-# Shared files (your team's actions, snippets, Bitbucket server) read underneath this one.
+# Shared files (your team's actions, snippets, plugin settings) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.
 # include = ["~/work/team-dotfiles/euclid.toml"]
 
@@ -50,7 +50,7 @@ depth = 3                        # how deep to look for repos under each root
 open  = 'open "$1"'              # e.g. 'code "$1"', 'zed "$1"', 'ghostty-run tab nvim "$1"'
 # ⌘K on a project lists its Makefile targets, package.json scripts, just recipes and
 # swift/cargo/go build + test. This runs the one you pick ($1 = "cd '<repo>' && make test"):
-task  = 'ghostty-run tab eval "$1"'   # or 'herdr-run tab eval "$1"'
+task  = 'ghostty-run tab eval "$1"'
 
 # Files by name, via Spotlight. Shown below everything else, after 3+ letters.
 [files]
@@ -70,39 +70,13 @@ density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
 
-# Full-text search of the pages in your browser history. Off by default: when on,
-# Euclid downloads recent pages (no cookies, so only what's public) and indexes
-# their text locally. Links that look like logins, resets or have query strings are skipped.
-[pages]
-enabled = false
-limit   = 500                    # most recent pages to index
-exclude_hosts = []               # e.g. ["mail.google.com", "internal.example.com"]
-
 # Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
 [obsidian]
 # vault = "~/Notes"
 
-# Bitbucket: your open PRs, PRs waiting on your review, and your repos (↵ opens in the browser).
-# Cloud: email + an API token (id.atlassian.com › Security › API tokens), stored in the Keychain:
-#   security add-generic-password -s euclid-bitbucket -a "$USER" -w <token>
-# Data Center: set base_url to your server and use an HTTP access token (no email).
-# [bitbucket]
-# email         = "you@example.com"
-# base_url      = "https://api.bitbucket.org/2.0"     # or "https://bitbucket.example.com"
-# token_command = "security find-generic-password -s euclid-bitbucket -w"
-# repos         = ["workspace/repo"]   # Cloud: where to look for review requests (default: your 10 latest repos)
-# refresh_minutes = 5
-
-# Jira: issues assigned to you and ones you viewed lately; type a key (ABC-123) to open it.
-# ⌘C copies the key, ⇧⌘C a branch name. Token in the Keychain, like Bitbucket's:
-#   security add-generic-password -s euclid-jira -a "$USER" -w <token>
-# [jira]
-# base_url = "https://your-site.atlassian.net"   # or your Data Center server
-# email    = "you@example.com"                   # Cloud only
-
 # What `euclid-bar --mcp` lets your coding agents (Claude Code, Codex) search. Read-only, local.
 [agents]
-share = ["clipboard", "pages", "notes", "history"]
+share = ["clipboard", "notes", "history"]
 
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
@@ -129,9 +103,7 @@ channel      = "stable"          # "dev": a build of every change merged to main
 #
 # Commands run in the background. Anything goes: open URLs, call CLIs, scripts.
 # Scripts in ~/.config/euclid/bin are on PATH. Euclid installs one you can edit:
-#   ghostty-run tab|split|window <command...>     run a command in Ghostty
-#   herdr-run   tab|split|split-down <command...> run a command in herdr
-# Coming next: output = "panel" streams a command's output into Euclid.
+#   ghostty-run tab|split|window <command...>   run a command in Ghostty
 # ---------------------------------------------------------------------------
 
 [[action]]
@@ -145,20 +117,11 @@ alias = "gh"
 run   = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
 
 # [[action]]
-# name   = "Ask pi"
-# run    = 'pi --print "$1"'
-# output = "panel"
-
-# [[action]]
 # name = "pi in Ghostty"
 # run  = 'ghostty-run tab pi "$1"'          # or: split, window
 
-# [[action]]
-# name = "pi in herdr"
-# run  = 'herdr-run tab pi "$1"'            # or: split, split-down
-
 # Plugins: folders in ~/.config/euclid/plugins; AGENTS.md there is the whole format.
-# `euclid-bar --plugin add github` adds an example.
+# `euclid-bar --plugin add github` adds an example (also: bitbucket, jira, linear, slack…).
 # [plugins]
 # paths    = ["~/work/team/euclid-plugins"]   # a team's shared plugins
 # disabled = ["github"]

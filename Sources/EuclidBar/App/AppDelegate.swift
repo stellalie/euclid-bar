@@ -38,11 +38,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.reminder = { [weak self] in
             guard let self else { return nil }
             updateLicence() // the trial's day count moves on while the app runs
-            return licensing.takeReminder(receipt: panel.usageReceipt)
+            return licensing.takeReminder()
         }
         hotkeys.onPress = { [weak self] hotkey in self?.panel.run(hotkey) }
-        panel.extraProblem = { [weak self] in self?.hotkeys.problem ?? self?.expansion.problem }
-        expansion.onChange = { [weak self] in self?.panel.updateProblem() }
+        panel.extraProblem = { [weak self] in
+            guard let self else { return nil }
+            return hotkeys.problem ?? Permissions.footer(missingPermissions())
+        }
+        expansion.onChange = { [weak self] in self?.updateLicence(); self?.panel.updateProblem() }
         setUpStatusItem()
         applyConfig()
         config.onChange = { [weak self] in self?.applyConfig() }
@@ -80,11 +83,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.expansion(enabled: settings.expansionEnabled), .importLauncher, .connectAgents] + AppCommand.usage(receipt: panel.usageReceipt)
+            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .importLauncher, .connectAgents]
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
         for item in licenceItems { item.isHidden = !licensing.isEnabled || licensing.isLicensed }
+    }
+
+    private func missingPermissions() -> [Permissions.Need] {
+        Permissions.missing(.init(accessibility: Paster.isTrusted, expansionEnabled: config.current.config.expansionEnabled,
+                                  safariBlocked: history.safariBlocked, safariRequested: history.safariRequested))
+    }
+
+    /// Open System Settings at the first missing permission (and add Euclid to the Accessibility list).
+    private func openPermissions() {
+        guard let need = missingPermissions().first else { return }
+        if need.kind == .accessibility { Paster.requestPermission() }
+        NSWorkspace.shared.open(need.pane)
     }
 
     @objc private func handleURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
@@ -205,14 +220,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .connectAgents:
             panel.hide()
             connectAgents()
-        case .showUsage:
+        case .permissions:
+            guard !missingPermissions().isEmpty else { NSSound.beep(); return }
             panel.hide()
-            let alert = NSAlert()
-            alert.messageText = "Your last 30 days in Euclid"
-            alert.informativeText = (panel.usageReceipt ?? "Nothing yet.")
-                .replacingOccurrences(of: " · ", with: "\n") + "\n\nCounted on your Mac only; never what you typed."
-            NSApp.activate()
-            alert.runModal()
+            openPermissions()
         }
     }
 

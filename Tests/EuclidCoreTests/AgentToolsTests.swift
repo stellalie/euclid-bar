@@ -13,14 +13,11 @@ import Testing
             Clip(id: 1, content: "/Users/me/shot.png", kind: .files, createdAt: now, lastUsedAt: now, useCount: 1),
             Clip(id: 3, content: "SELECT * FROM deploys", kind: .text, createdAt: now.addingTimeInterval(-60), lastUsedAt: now.addingTimeInterval(-60), useCount: 1),
         ]
-        let hits = [
-            ContentHit(kind: .page, ref: "https://k8s.io/docs/logs", title: "Logging", snippet: "…kubectl logs…"),
-            ContentHit(kind: .note, ref: "/Users/me/Notes/Deploy.md", title: "Deploy", snippet: "…logs live in…"),
-        ]
+        let hits = [ContentHit(ref: "/Users/me/Notes/Deploy.md", title: "Deploy", snippet: "…logs live in…")]
         return AgentTools.Store(
             clips: { clips },
             search: { _, _ in hits },
-            body: { ["https://k8s.io/docs/logs": "Full page", "/Users/me/Notes/Deploy.md": "Full note"][$0] },
+            body: { ["/Users/me/Notes/Deploy.md": "Full note"][$0] },
             history: { [HistoryEntry(url: "https://grafana.example.com/d/search", title: "Search latency", browser: "Dia",
                                      lastVisit: now.addingTimeInterval(-300), visitCount: 3)] })
     }
@@ -47,7 +44,7 @@ import Testing
         #expect(s.handle(#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#) == nil)
         #expect(s.handle(#"{"jsonrpc":"2.0","id":2,"method":"ping"}"#) == #"{"id":2,"jsonrpc":"2.0","result":{}}"#)
         let list = try #require(s.handle(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))
-        for name in ["search_clipboard", "recent_clipboard", "search_pages_and_notes", "read_page_or_note", "search_browser_history"] {
+        for name in ["search_clipboard", "recent_clipboard", "search_notes", "read_note", "search_browser_history"] {
             #expect(list.contains(#""name":"\#(name)""#), "\(name)")
         }
         #expect(s.handle(#"{"jsonrpc":"2.0","id":4,"method":"nope"}"#)?.contains("-32601") == true)
@@ -62,20 +59,37 @@ import Testing
         #expect(try call(server(), "search_clipboard", ["query": "  "]).isError)
     }
 
-    @Test func pagesNotesAndHistory() throws {
-        let both = try call(server(), "search_pages_and_notes", ["query": "logs"]).text
-        #expect(both == "Logging\nhttps://k8s.io/docs/logs\n…kubectl logs…\n\nDeploy\n/Users/me/Notes/Deploy.md\n…logs live in…")
-        #expect(try call(server(), "read_page_or_note", ["ref": "/Users/me/Notes/Deploy.md"]).text == "Full note")
+    @Test func notesAndHistory() throws {
+        #expect(try call(server(), "search_notes", ["query": "logs"]).text == "Deploy\n/Users/me/Notes/Deploy.md\n…logs live in…")
+        #expect(try call(server(), "read_note", ["ref": "/Users/me/Notes/Deploy.md"]).text == "Full note")
+        #expect(try call(server(), "read_note", ["ref": "/nope.md"]).text == "Not in the index: /nope.md")
         #expect(try call(server(), "search_browser_history", ["query": "latency"]).text
                 == "Search latency — https://grafana.example.com/d/search (Dia, 5m ago)")
+    }
+
+    @Test func protocolVersionIsNegotiated() throws {
+        func version(_ asked: String) throws -> String {
+            let reply = try #require(server().handle(#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"\#(asked)"}}"#))
+            let obj = try #require(try JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
+            return try #require((obj["result"] as? [String: Any])?["protocolVersion"] as? String)
+        }
+        #expect(try version("2024-11-05") == "2024-11-05")
+        #expect(try version("2099-01-01") == MCPServer.supportedProtocols[0]) // unknown: offer our newest
+    }
+
+    @Test func historyToolSaysWhatItCouldNotRead() throws {
+        var store = store
+        store.historyNote = { "couldn't read Safari history." }
+        let s = MCPServer(tools: AgentTools.make(store, share: [.history], now: { self.now }), name: "euclid", version: "1.0")
+        #expect(try call(s, "search_browser_history", ["query": "nothing-like-this"]).text == "No matches.\n\nNote: couldn't read Safari history.")
+        #expect(try call(s, "search_browser_history", ["query": "latency"]).text.hasSuffix("\n\nNote: couldn't read Safari history."))
     }
 
     @Test func onlySharedSourcesAreExposed() throws {
         let s = server([.notes])
         let list = try #require(s.handle(#"{"jsonrpc":"2.0","id":3,"method":"tools/list"}"#))
         #expect(!list.contains("clipboard") && !list.contains("search_browser_history"))
-        #expect(try call(s, "search_pages_and_notes", ["query": "logs"]).text == "Deploy\n/Users/me/Notes/Deploy.md\n…logs live in…")
-        #expect(try call(s, "read_page_or_note", ["ref": "https://k8s.io/docs/logs"]).text == "Not in the index: https://k8s.io/docs/logs")
+        #expect(try call(s, "search_notes", ["query": "logs"]).text == "Deploy\n/Users/me/Notes/Deploy.md\n…logs live in…")
         #expect(s.handle(#"{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"search_clipboard","arguments":{"query":"x"}}}"#)?.contains("Unknown tool") == true)
     }
 
@@ -94,8 +108,8 @@ import Testing
 
     @Test func configShare() throws {
         let c = try ConfigLoader.parse("[agents]\nshare = [\"notes\", \"Pages\", \"email\"]")
-        #expect(c.config.agentShare == [.notes, .pages])
-        #expect(c.issues.map(\.message) == ["agents.share: unknown source 'email' (use clipboard, pages, notes, history)"])
+        #expect(c.config.agentShare == [.notes]) // "pages" (removed) is dropped quietly
+        #expect(c.issues.map(\.message) == ["agents.share: unknown source 'email' (use clipboard, notes, history)"])
         #expect(try ConfigLoader.parse("").config.agentShare == Set(AgentTools.Source.allCases))
     }
 }

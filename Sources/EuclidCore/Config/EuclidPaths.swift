@@ -20,8 +20,6 @@ public struct EuclidPaths: Sendable {
     public var contentDatabase: URL { dataDirectory.appendingPathComponent("content.sqlite") }
     /// Trial start and licence key.
     public var licenceFile: URL { dataDirectory.appendingPathComponent("licence.json") }
-    /// Daily use counts, for the "last 30 days" receipt.
-    public var usageFile: URL { dataDirectory.appendingPathComponent("usage.json") }
     /// Copied images, one PNG per clip, named by content hash.
     public var clipImagesDirectory: URL { dataDirectory.appendingPathComponent("clip-images") }
 

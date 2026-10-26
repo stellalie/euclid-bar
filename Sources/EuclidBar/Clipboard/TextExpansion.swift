@@ -3,18 +3,13 @@ import EuclidCore
 
 /// `[expansion] enabled`: type a snippet's keyword in any app and it turns into the snippet.
 /// Watches keystrokes with a global monitor (passive: it never delays or swallows a key),
-/// then deletes the keyword and pastes the text, putting your clipboard back afterwards.
+/// then deletes the keyword and types the text (or, for long or multi-line text, pastes it and
+/// puts your clipboard back afterwards).
 /// Needs Accessibility access, the same permission pasting from the panel uses.
 @MainActor
 final class TextExpansion {
-    /// Changed when the footer message should change (waiting for access, or got it).
+    /// Changed when access is granted or expansion turns on or off (the Permissions row changes).
     var onChange: (() -> Void)?
-    /// For the footer while expansion is on but macOS hasn't allowed it yet.
-    var problem: String? {
-        enabled && !Paster.isTrusted
-            ? "⚠︎ Text expansion needs Accessibility: System Settings › Privacy & Security › Accessibility"
-            : nil
-    }
 
     private var enabled = false
     private var expander = TextExpander(snippets: [])
@@ -89,17 +84,26 @@ final class TextExpansion {
         if let match = expander.typed(chars) { expand(match) }
     }
 
+    /// Longest text typed out as keystrokes; anything longer, or with a newline, is pasted.
+    static let maxTyped = 200
+
     private func expand(_ match: TextExpander.Match) {
         let clipboard = NSPasteboard.general.string(forType: .string)
         let text = match.snippet.expanded(clipboard: { clipboard }) + match.suffix
-        let saved = Paster.saveContents()
         Paster.deleteBackward(match.deleteCount)
+        // Short one-liners are typed: no clipboard to borrow, so nothing can paste the wrong thing.
+        if text.count <= Self.maxTyped, !text.contains(where: \.isNewline) {
+            Paster.type(text)
+            return
+        }
+        let saved = Paster.saveContents()
         Paster.copy(text)
         let ours = NSPasteboard.general.changeCount
         Paster.pasteIntoFrontApp()
-        // The app reads the pasteboard when it gets to our ⌘V; give it time before restoring.
+        // The app reads the pasteboard when it gets to our ⌘V. Slow apps (Electron, a busy main
+        // thread) can take a while, and restoring first would paste the old clipboard: wait 1 s.
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(400))
+            try? await Task.sleep(for: .seconds(1))
             // Only if nothing else was copied in the meantime.
             if NSPasteboard.general.changeCount == ours { Paster.restore(saved) }
         }

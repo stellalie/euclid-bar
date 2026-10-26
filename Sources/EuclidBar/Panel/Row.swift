@@ -21,8 +21,6 @@ enum Row {
     /// `item.id` indexes the configured snippets.
     case snippet(SearchItem, Snippet)
     case content(ContentHit)
-    case bitbucket(BitbucketItem)
-    case jira(JiraIssue)
     /// A project's Makefile target, package.json script…, listed by ⌘K on the project.
     case task(ProjectTask, project: String)
     case command(AppCommand)
@@ -40,32 +38,10 @@ enum Row {
         case .file(let f): "file:\(f.path)"
         case .action(_, let a), .aliasAction(let a, _): "action:\(a.name)"
         case .snippet(_, let s): "snippet:\(s.name)"
-        case .bitbucket(let b): "bb:\(b.url)"
-        case .jira(let j) where j.kind != .typed: "jira:\(j.key)"
         case .content(let c): "content:\(c.ref)"
         case .command(let c): "cmd:\(c.kind.rawValue)"
         case .plugin(let e): "plug:\(e.pluginID):\(e.item.key)"
-        case .header, .clip, .history, .builtin, .calc, .transform, .jira, .task: nil
-        }
-    }
-
-    /// What a pick counts as in the usage receipt ("apps", "clips"…). Nil for headers and Euclid's own commands.
-    var usageKind: String? {
-        switch self {
-        case .app: "apps"
-        case .project: "projects"
-        case .file: "files"
-        case .clip, .builtin: "clips"
-        case .snippet: "snippets"
-        case .action, .aliasAction: "actions"
-        case .history: "pages"
-        case .content(let c): c.kind == .note ? "notes" : "pages"
-        case .bitbucket: "PRs"
-        case .jira: "issues"
-        case .task: "tasks"
-        case .calc, .transform: "answers"
-        case .plugin: "plugins"
-        case .header, .command: nil
+        case .header, .clip, .history, .builtin, .calc, .transform, .task: nil
         }
     }
 
@@ -75,7 +51,7 @@ enum Row {
         case .app(let item): item.subtitle
         case .project(let p): p.path
         case .file(let f): f.path
-        case .content(let c) where c.kind == .note: c.ref
+        case .content(let c): c.ref
         default: nil
         }
     }
@@ -96,8 +72,6 @@ enum Row {
         case .transform(let t): "t\(t.label)\u{0}\(t.value)"
         case .snippet(_, let s): "s\(s.name)"
         case .content(let c): "p\(c.ref)"
-        case .bitbucket(let b): "u\(b.url)"
-        case .jira(let j): "u\(j.url)"
         case .task(let t, _): "k\(t.commandLine)"
         case .command(let c): "x\(c.kind.rawValue)"
         case .plugin(let e): "g\(e.pluginID)\u{0}\(e.item.key)"
@@ -116,9 +90,7 @@ enum Row {
         case .file: "Files"
         case .calc, .transform: "Answers"
         case .snippet: "Snippets"
-        case .content(let c): c.kind == .note ? "Notes" : "Pages"
-        case .bitbucket: "Bitbucket"
-        case .jira: "Jira"
+        case .content: "Notes"
         case .task(_, let project): "Tasks · \(project)"
         case .command: "Euclid"
         case .plugin(let e): e.pluginName

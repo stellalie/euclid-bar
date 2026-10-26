@@ -12,8 +12,12 @@ final class HistoryService {
     /// Site icons by lowercased host (PNG bytes until first drawn).
     private var faviconData: [String: Data] = [:]
     private var faviconImages: [String: NSImage] = [:]
-    /// One-line problem for the footer (e.g. Safari needs Full Disk Access), or nil.
+    /// One-line problem for the footer (a browser's history couldn't be read), or nil.
+    /// Safari without Full Disk Access is reported by `safariBlocked` instead, on the Permissions row.
     private(set) var problem: String?
+    private(set) var safariBlocked = false
+    /// `[history] browsers` names Safari, so its missing access is worth a footer line.
+    var safariRequested: Bool { browsers?.contains("safari") ?? false }
     var onChange: (() -> Void)?
 
     private var enabled = true
@@ -49,7 +53,7 @@ final class HistoryService {
 
     func reload() {
         guard enabled else {
-            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; lastLoad = .now
+            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; safariBlocked = false; lastLoad = .now
             onChange?()
             return
         }
@@ -62,8 +66,9 @@ final class HistoryService {
             let (entries, errors) = BrowserHistory.load(sources, limit: limit)
             let items = entries.enumerated().map { $0.element.searchItem(id: $0.offset) }
             let favicons = BrowserHistory.favicons(for: sources, hosts: Set(entries.map { $0.host.lowercased() }))
-            // Safari is protected by Full Disk Access; only complain if it was asked for explicitly.
-            let failed = errors.map(\.0.browser).filter { browsers != nil || $0 != "Safari" }
+            // Safari is protected by Full Disk Access: the Permissions row covers it.
+            let safariBlocked = errors.contains { $0.0.browser == "Safari" }
+            let failed = errors.map(\.0.browser).filter { $0 != "Safari" }
             let elapsed = ContinuousClock.now - start
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -71,9 +76,8 @@ final class HistoryService {
                     self.items = items
                     self.faviconData = favicons
                     self.faviconImages = [:]
-                    self.problem = failed.contains("Safari")
-                        ? "⚠︎ Safari history needs Full Disk Access (System Settings › Privacy & Security)"
-                        : failed.isEmpty ? nil : "⚠︎ couldn't read history: \(failed.joined(separator: ", "))"
+                    self.safariBlocked = safariBlocked
+                    self.problem = failed.isEmpty ? nil : "⚠︎ couldn't read history: \(failed.joined(separator: ", "))"
                     self.lastLoad = .now
                     self.loading = false
                     self.log.notice("history: \(entries.count) pages, \(favicons.count) icons from \(sources.count) sources in \(String(describing: elapsed), privacy: .public)")

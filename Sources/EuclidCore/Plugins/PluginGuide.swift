@@ -20,6 +20,9 @@ public enum PluginGuide {
     public static let examples: [String: [(name: String, text: String, executable: Bool)]] = [
         "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true)],
         "linear": [("plugin.toml", linearManifest, false), ("items.sh", linearScript, true)],
+        "bitbucket": [("plugin.toml", bitbucketManifest, false), ("items.sh", bitbucketScript, true)],
+        "jira": [("plugin.toml", jiraManifest, false), ("items.sh", jiraItems, true), ("open.sh", jiraOpen, true),
+                 ("branch.sh", jiraBranch, true)],
         "slack": [("plugin.toml", slackManifest, false), ("channels.sh", slackChannels, true), ("search.sh", slackSearch, true)],
         "tokens": [("plugin.toml", tokensManifest, false), ("today.sh", tokensScript, true)],
         "define": [("plugin.toml", defineManifest, false), ("define.js", defineScript, false)],
@@ -77,6 +80,185 @@ gh search prs --author=@me --state=open --limit "$limit" --json number,title,url
   --jq ".[] | $row + {label: \"Your PR\"} | tojson"
 gh search issues --assignee=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Issue\", icon: \"smallcircle.filled.circle\"} | tojson"
+"""#
+
+    static let bitbucketManifest = #"""
+name = "Bitbucket"
+description = "Your open PRs, PRs waiting on your review, and your repos, from Bitbucket Cloud or Data Center. Store the token in the Keychain: security add-generic-password -s euclid-bitbucket -a \"$USER\" -w '<token>'"
+
+[source]
+run = "./items.sh"
+refresh_minutes = 5
+
+[[action]]
+name = "Search Bitbucket"
+run  = 'open "https://bitbucket.org/search?q=$EUCLID_QUERY_URL"'
+
+[settings]
+# Cloud: your Atlassian email + an API token (id.atlassian.com › Security › API tokens).
+# Data Center: base_url = "https://bitbucket.example.com" and an HTTP access token; no email.
+email         = ""
+base_url      = "https://api.bitbucket.org/2.0"
+token_command = "security find-generic-password -s euclid-bitbucket -w"
+repos         = []   # Cloud: where to look for review requests, e.g. ["team/app"]; default: your 10 latest repos
+"""#
+
+    static let bitbucketScript = #"""
+#!/bin/sh
+# Bitbucket PRs waiting on your review (also on the empty bar), your open PRs, and your repos.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+token=$(eval "$EUCLID_SETTING_TOKEN_COMMAND" 2>/dev/null) || token=""
+[ -n "$token" ] || { echo "no Bitbucket token: security add-generic-password -s euclid-bitbucket -a \"$USER\" -w '<token>'" >&2; exit 1; }
+base=${EUCLID_SETTING_BASE_URL:-https://api.bitbucket.org/2.0}
+base=${base%/}
+case $base in *api.bitbucket.org*) cloud=1 ;; *) cloud= ;; esac
+if [ -n "$cloud" ] && [ -z "${EUCLID_SETTING_EMAIL:-}" ]; then
+  echo "set your Atlassian email: [plugin.bitbucket] email = \"you@example.com\"" >&2; exit 1
+fi
+
+# GET a path; on failure say what Bitbucket said, not curl's noise.
+get() {
+  if [ -n "$cloud" ]; then
+    out=$(curl -sS -m 15 -w '\n%{http_code}' -H 'Accept: application/json' -u "$EUCLID_SETTING_EMAIL:$token" "$base$1")
+  else
+    out=$(curl -sS -m 15 -w '\n%{http_code}' -H 'Accept: application/json' -H "Authorization: Bearer $token" "$base$1")
+  fi
+  code=$(printf '%s\n' "$out" | tail -n 1)
+  case $code in
+    2??) printf '%s\n' "$out" | sed '$d' ;;
+    401|403) echo "Bitbucket said $code: check the email and token" >&2; return 1 ;;
+    *) echo "Bitbucket said $code for ${1%%\?*}" >&2; return 1 ;;
+  esac
+}
+
+if [ -n "$cloud" ]; then
+  me=$(get /user)
+  uuid=$(printf '%s' "$me" | jq -r '.uuid')
+  repos=$(get "/repositories?role=member&sort=-updated_on&pagelen=100")
+  mine=$(get "/pullrequests/$(jq -rn --arg u "$uuid" '$u | @uri')?state=OPEN&pagelen=50")
+  pr='{title, subtitle: ([.destination.repository.full_name, "#\(.id)", .author.display_name] | map(select(.)) | join(" · ")),
+       open: .links.html.href, id: .links.html.href, icon: "arrow.triangle.pull"}'
+  # Cloud has no "review requests" endpoint: ask each repo for open PRs with you as a reviewer.
+  slugs=${EUCLID_SETTING_REPOS:-$(printf '%s' "$repos" | jq -r '.values[:10][].full_name')}
+  q=$(jq -rn --arg u "$uuid" '"state=\"OPEN\" AND reviewers.uuid=\"\($u)\"" | @uri')
+  for slug in $slugs; do
+    page=$(get "/repositories/$slug/pullrequests?q=$q&pagelen=50" 2>/dev/null) || continue
+    printf '%s' "$page" | jq -c ".values[] | $pr + {label: \"Review\", suggest: true}"
+  done
+  printf '%s' "$mine" | jq -c ".values[] | $pr + {label: \"Your PR\"}"
+  printf '%s' "$repos" | jq -c '.values[] | {title: .full_name, subtitle: (if (.description // "") == "" then "Repository" else .description end),
+                                            open: .links.html.href, id: .links.html.href, icon: "folder", label: "Repo"}'
+else
+  pr='{title, subtitle: ([([.toRef.repository.project.key, .toRef.repository.slug] | map(select(.)) | join("/")), "#\(.id)", .author.user.displayName]
+                         | map(select(. != null and . != "")) | join(" · ")),
+       open: .links.self[0].href, id: .links.self[0].href, icon: "arrow.triangle.pull"}'
+  review=$(get "/rest/api/1.0/dashboard/pull-requests?state=OPEN&role=REVIEWER&limit=50")
+  mine=$(get "/rest/api/1.0/dashboard/pull-requests?state=OPEN&role=AUTHOR&limit=50")
+  repos=$(get "/rest/api/1.0/profile/recent/repos?limit=100" 2>/dev/null) || repos='{"values":[]}'
+  printf '%s' "$review" | jq -c ".values[] | $pr + {label: \"Review\", suggest: true}"
+  printf '%s' "$mine" | jq -c ".values[] | $pr + {label: \"Your PR\"}"
+  printf '%s' "$repos" | jq -c '.values[] | {title: ([.project.key, .slug] | map(select(.)) | join("/")),
+                                            subtitle: (if (.description // "") == "" then "Repository" else .description end),
+                                            open: .links.self[0].href, id: .links.self[0].href, icon: "folder", label: "Repo"}'
+fi
+"""#
+
+    static let jiraManifest = #"""
+name = "Jira"
+description = "Jira issues assigned to you and ones you viewed lately; type a key (ABC-123) to open it. ⌘C copies the key, ⇧⌘C a branch name. Store the token in the Keychain: security add-generic-password -s euclid-jira -a \"$USER\" -w '<token>'"
+
+[source]
+run = "./items.sh"
+refresh_minutes = 5
+
+[answer]
+run   = "./open.sh"
+match = '^[A-Za-z][A-Za-z0-9_]+-[1-9][0-9]*$'
+
+[[key]]
+key  = "cmd+shift+c"
+name = "Copy branch name"
+when = ["jira"]
+run  = "./branch.sh"
+
+[settings]
+# Cloud: base_url = "https://your-site.atlassian.net", your email and an API token.
+# Data Center: your server's URL and a personal access token; no email.
+base_url      = ""
+email         = ""
+token_command = "security find-generic-password -s euclid-jira -w"
+jql           = "assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
+recent        = true   # also issues you viewed lately
+"""#
+
+    static let jiraItems = #"""
+#!/bin/sh
+# Jira issues matching `jql` (default: yours, not done), then ones you viewed lately.
+# ↵ opens the issue, ⌘C copies its key.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+base=${EUCLID_SETTING_BASE_URL:-}; base=${base%/}
+[ -n "$base" ] || { echo "set your Jira: [plugin.jira] base_url = \"https://your-site.atlassian.net\"" >&2; exit 1; }
+token=$(eval "$EUCLID_SETTING_TOKEN_COMMAND" 2>/dev/null) || token=""
+[ -n "$token" ] || { echo "no Jira token: security add-generic-password -s euclid-jira -a \"$USER\" -w '<token>'" >&2; exit 1; }
+case $base in
+  https://*.atlassian.net) path=/rest/api/3/search/jql  # Cloud retired /search in 2025
+    [ -n "${EUCLID_SETTING_EMAIL:-}" ] || { echo "set your Atlassian email: [plugin.jira] email = \"you@example.com\"" >&2; exit 1; }
+    auth="Basic $(printf '%s:%s' "$EUCLID_SETTING_EMAIL" "$token" | base64 | tr -d '\n')" ;;
+  *) path=/rest/api/2/search
+    auth="Bearer $token" ;;
+esac
+
+search() { # $1 = JQL, $2 = how many
+  url="$base$path?jql=$(jq -rn --arg q "$1" '$q | @uri')&fields=summary,status,issuetype,project&maxResults=$2"
+  out=$(curl -sS -m 15 -w '\n%{http_code}' -H 'Accept: application/json' -H "Authorization: $auth" "$url")
+  code=$(printf '%s\n' "$out" | tail -n 1)
+  case $code in
+    2??) printf '%s\n' "$out" | sed '$d' ;;
+    400) echo "Jira said 400: check jql" >&2; return 1 ;;
+    401|403) echo "Jira said $code: check the email and token" >&2; return 1 ;;
+    *) echo "Jira said $code for $path" >&2; return 1 ;;
+  esac
+}
+
+row='{title: "\(.key) \(.fields.summary // "")",
+      subtitle: ([.fields.status.name, .fields.issuetype.name, .fields.project.name] | map(select(.)) | join(" · ")),
+      open: "\($base)/browse/\(.key)", id: .key, copy: .key, icon: "checklist", label: "Jira"}'
+assigned=$(search "${EUCLID_SETTING_JQL:-assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC}" 50)
+printf '%s' "$assigned" | jq -c --arg base "$base" ".issues[] | $row + {suggest: true}"
+[ "${EUCLID_SETTING_RECENT:-true}" = true ] || exit 0
+# Recently viewed is a nice extra: an old server without issueHistory() shouldn't hide your issues.
+recent=$(search "issuekey in issueHistory() ORDER BY lastViewed DESC" 30 2>/dev/null) || exit 0
+printf '%s' "$recent" | jq -c --arg base "$base" --argjson seen "$(printf '%s' "$assigned" | jq '[.issues[].key]')" \
+  ".issues[] | select(.key as \$k | \$seen | index(\$k) | not) | $row + {label: \"Viewed\"}" 2>/dev/null || true
+"""#
+
+    static let jiraOpen = #"""
+#!/bin/sh
+# A key you typed (abc-123), opened straight away. No network: it's instant.
+set -eu
+base=${EUCLID_SETTING_BASE_URL:-}; base=${base%/}
+[ -n "$base" ] || exit 0
+key=$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')
+jq -nc --arg k "$key" --arg u "$base/browse/$key" '{title: $k, subtitle: "Open in Jira", open: $u, copy: $k, icon: "checklist"}'
+"""#
+
+    static let jiraBranch = #"""
+#!/bin/sh
+# ⇧⌘C on an issue: a git branch name like ABC-123-fix-login-on-safari.
+set -eu
+title=${EUCLID_ITEM_TITLE:-$1}
+key=${title%% *}
+summary=${title#"$key"}
+# Drop accents (é → e), then keep letters and digits, joined by hyphens.
+slug=$(printf '%s' "$summary" | perl -CSD -MUnicode::Normalize -pe '$_ = NFD($_); s/\p{Mn}//g' 2>/dev/null || printf '%s' "$summary")
+slug=$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+while [ ${#slug} -gt 40 ]; do
+  case $slug in *-*) slug=${slug%-*} ;; *) slug=$(printf '%s' "$slug" | cut -c1-40) ;; esac
+done
+branch=$key${slug:+-$slug}
+jq -nc --arg b "$branch" '{copy: $b, notice: "Copied \($b)"}'
 """#
 
     static let linearManifest = #"""
@@ -402,8 +584,8 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 - Working directory: the plugin folder. `$EUCLID_PLUGIN_DIR` is its path.
 - `$1` and `$EUCLID_QUERY`: the text (answers and actions); `$EUCLID_QUERY_URL`: URL-encoded.
 - `$EUCLID_SETTING_<KEY>` for each setting, uppercased.
-- `~/.config/euclid/bin` first on PATH: `ghostty-run tab|split|window <cmd>` and
-  `herdr-run tab|split <cmd>` open a terminal running a command.
+- `~/.config/euclid/bin` first on PATH: `ghostty-run tab|split|window <cmd>` opens a
+  terminal running a command.
 - `[env]` from config.toml. Scripts run in a login shell, so Homebrew tools are on PATH.
 
 The text you type is only ever passed as `$1` and environment variables, never pasted into a
@@ -423,11 +605,11 @@ run   = "./clean.sh"               # open: the panel opened ($1 = the app you we
 [[key]]                            # a shortcut in the panel, on the selected result
 key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘1…) are taken
 name = "Open in GitHub Desktop"    # shown in the footer when it applies
-when = ["pr", "project"]           # optional: kinds it applies to, or a plugin's id
+when = ["github", "project"]       # optional: kinds it applies to, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
 ```
 
-Kinds: `app` `project` `file` `clip` `snippet` `page` `note` `history` `pr` `issue` `action` `answer`
+Kinds: `app` `project` `file` `clip` `snippet` `note` `history` `action` `answer`
 `command` `plugin` (a plugin's own items also match their plugin's id). Keys and `choose` hooks
 also get `$EUCLID_ITEM_KIND`, `_TITLE`, `_SUBTITLE`, `_URL`, `_PATH`, `_TEXT` and `_PLUGIN`.
 
@@ -461,6 +643,9 @@ change them:
 
 - `github`: your PRs, review requests and issues, through the `gh` CLI (a source).
 - `linear`: Linear issues assigned to you, through the GraphQL API (a source, key in the Keychain).
+- `bitbucket`: your PRs, review requests and repos, Cloud or Data Center (a source, token in the Keychain).
+- `jira`: your issues and ones you viewed; `ABC-123` opens any issue; ⇧⌘C copies a branch name
+  (a source, an answer with a `match`, and a `[[key]]`).
 - `slack`: jump to channels, and `slack <words>` searches messages (a source and an answer).
 - `tokens`: today's Claude Code tokens and cost on the bar, through `ccusage` (a badge).
 - `define`: `define <word>` from the macOS Dictionary, in JavaScript for Automation (an answer).
