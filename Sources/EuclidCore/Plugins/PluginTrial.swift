@@ -34,7 +34,8 @@ public enum PluginTrial {
         }
         if let answer = plugin.answer {
             if let input = answer.input(for: query) {
-                if let data = await attempt("answer", answer.run, query: input, timeout: answerTimeout) { show("answer for “\(input)”", data) }
+                if let data = await attempt("answer", answer.run, query: input,
+                                            timeout: answer.onEnter ? PluginTiming.key : answerTimeout) { show("answer for “\(input)”", data) }
             } else {
                 let trigger = answer.prefix.map { "start with “\($0) ”" } ?? "match /\(answer.match ?? "")/"
                 lines.append("answer: not run; the query must \(trigger) (pass one after the plugin name)")
@@ -74,6 +75,8 @@ public enum PluginTrial {
         var parts: [String] = []
         if let n = e.notice { parts.append("notice “\(n)”") }
         if let c = e.copy { parts.append("copy “\(c.count > 80 ? String(c.prefix(79)) + "…" : c)”") }
+        if let p = e.paste { parts.append("paste “\(p.count > 80 ? String(p.prefix(79)) + "…" : p)”") }
+        if let t = e.show { parts.append("show “\(t.count > 80 ? String(t.prefix(79)) + "…" : t)”") }
         if let o = e.open { parts.append("open \(o)") }
         if let q = e.query { parts.append("search “\(q)”") }
         return parts.joined(separator: ", ")
@@ -102,4 +105,6 @@ public enum PluginTiming {
     public static let answer = Duration.seconds(2)
     /// Hooks and keys run in the background; they shouldn't linger.
     public static let hook = Duration.seconds(10)
+    /// A key is something you asked for, and may wait on a model.
+    public static let key = Duration.seconds(60)
 }

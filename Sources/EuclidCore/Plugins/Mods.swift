@@ -11,14 +11,21 @@ public struct PluginEffect: Equatable, Sendable, Decodable {
     public var notice: String?
     /// Put this text on the clipboard.
     public var copy: String?
+    /// `[[key]]` scripts only: paste this text into the app you were in.
+    public var paste: String?
+    /// `[[key]]` scripts only: open the panel with this text as an answer to read (preview open).
+    public var show: String?
     /// Open this URL or file path.
     public var open: String?
     /// `open` hooks only: start the search with this text, unless you already typed.
     public var query: String?
 
-    public init(notice: String? = nil, copy: String? = nil, open: String? = nil, query: String? = nil) {
+    public init(notice: String? = nil, copy: String? = nil, paste: String? = nil, show: String? = nil, open: String? = nil,
+                query: String? = nil) {
         self.notice = notice
         self.copy = copy
+        self.paste = paste
+        self.show = show
         self.open = open
         self.query = query
     }

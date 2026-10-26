@@ -32,6 +32,7 @@ enum PluginCommands {
         }
 
         let env = ProcessInfo.processInfo.environment.merging(config.environment) { $1 }
+            .merging(["EUCLID_BAR": Bundle.main.executablePath ?? ""]) { $1 }
         let box = ReportBox()
         let done = DispatchSemaphore(value: 0)
         Task.detached {
