@@ -63,7 +63,9 @@ favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
 
 # Look and feel.
 [appearance]
-# accent   = "#7c5cff"           # selection and match highlight; default: your system accent colour
+theme      = "default"           # or dracula, nord, tokyo-night, catppuccin-mocha, catppuccin-latte, gruvbox-dark,
+                                 # gruvbox-light, solarized-dark, solarized-light, monokai, or themes/<name>.toml
+# accent   = "#7c5cff"           # match highlight; default: the theme's, or your system accent colour
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
