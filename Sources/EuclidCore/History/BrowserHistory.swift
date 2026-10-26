@@ -76,6 +76,24 @@ public enum BrowserHistory {
         return sources
     }
 
+    /// One footer line for failed sources, or nil. Each browser is named once, however many
+    /// profiles failed. Safari is left out: its Full Disk Access is shown on the Permissions row.
+    public static func problem(_ errors: [(Source, Error)]) -> String? {
+        let failed = errors.filter { $0.0.key != "safari" }
+        guard !failed.isEmpty else { return nil }
+        var names: [String] = []
+        for (source, _) in failed where !names.contains(source.browser) { names.append(source.browser) }
+        return "⚠︎ couldn't read \(names.joined(separator: ", ")) history: \(reason(failed[0].1))"
+    }
+
+    static func reason(_ error: Error) -> String {
+        if let db = error as? DatabaseError { return db.message ?? "unreadable database" }
+        let ns = error as NSError
+        let denied = (ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError)
+            || (ns.domain == NSPOSIXErrorDomain && (ns.code == Int(EPERM) || ns.code == Int(EACCES)))
+        return denied ? "needs Full Disk Access (System Settings › Privacy & Security)" : ns.localizedDescription
+    }
+
     /// Load the most recent pages from all sources, deduplicated (see `dedupe`).
     /// Returns entries newest first, plus per-source errors (e.g. Safari without Full Disk Access).
     public static func load(_ sources: [Source], limit: Int) -> (entries: [HistoryEntry], errors: [(Source, Error)]) {
@@ -212,7 +230,9 @@ public enum BrowserHistory {
     }
 
     static func chromiumRows(_ db: Database, browser: String, limit: Int) throws -> [HistoryEntry] {
-        try Row.fetchAll(db, sql: """
+        // A profile the browser hasn't written to yet (e.g. fresh install) has an empty History file.
+        guard try db.tableExists("urls") else { return [] }
+        return try Row.fetchAll(db, sql: """
             SELECT url, title, visit_count, last_visit_time FROM urls
             WHERE hidden = 0 AND (url LIKE 'http://%' OR url LIKE 'https://%')
             ORDER BY last_visit_time DESC LIMIT ?
