@@ -48,5 +48,12 @@ GitHub can't show those again, so take them from where you made them. Until `REL
 | `SPARKLE_PUBLIC_KEY`, `LICENCE_PUBLIC_KEY` | the public keys (not secret, but tick Secret anyway) |
 | `RELEASES_TOKEN` | fine-grained token, *Contents: Read and write* on `euclid-bar-releases` |
 
+Or put them all in one secret, `EUCLID_RELEASE_SECRETS`: base64 of gzipped `NAME=<base64 of value>`
+lines, one per variable above:
+
+```sh
+for n in MACOS_CERTIFICATE_P12 …; do printf '%s=%s\n' "$n" "$(printf '%s' "${(P)n}" | base64)"; done | gzip | base64 | pbcopy
+```
+
 The workflow's start conditions must include *Branch Changes* on `main` and *Tag Changes* matching `v*`.
 

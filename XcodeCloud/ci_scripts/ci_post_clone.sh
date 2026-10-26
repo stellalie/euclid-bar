@@ -7,6 +7,7 @@
 # Optional workflow secrets (XcodeCloud/README.md):
 #   GITHUB_SCREENS_TOKEN  publishes a PR's screenshots to the screens/pr-<n> branch
 #   RELEASES_TOKEN + the signing secrets  publish releases (scripts/publish-release.sh)
+#   EUCLID_RELEASE_SECRETS  all of those in one paste: base64 of gzipped NAME=<base64 value> lines
 set -euo pipefail
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
@@ -24,6 +25,13 @@ scripts/bundle.sh debug
 codesign --verify --strict --deep build/Euclid.app
 # Proves dyld finds Sparkle.framework inside the bundle (exits after rendering).
 build/Euclid.app/Contents/MacOS/euclid-bar --render-icon "${TMPDIR:-/tmp}/icon.icns"
+
+# One-paste form of the release secrets (XcodeCloud/README.md); separate variables still work.
+if [[ -n "${EUCLID_RELEASE_SECRETS:-}" ]]; then
+  while IFS='=' read -r name value; do
+    [[ -n "$name" ]] && export "$name=$(printf '%s' "$value" | base64 --decode)"
+  done < <(printf '%s' "$EUCLID_RELEASE_SECRETS" | base64 --decode | gunzip)
+fi
 
 # Releases: a v* tag publishes that stable version; a push to main, the dev build.
 if [[ "${CI_TAG:-}" == v* ]]; then
