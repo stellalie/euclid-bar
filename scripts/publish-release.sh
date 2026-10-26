@@ -18,9 +18,26 @@ if [[ -n "$TAG" ]]; then
 else
   # "1.1.0-dev.214": the last release (or Info.plist) plus the build number.
   BASE="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
-  VERSION="${BASE#v}-dev.$(git rev-list --count HEAD)"
+  BUILD="$(git rev-list --count HEAD)"
+  VERSION="${BASE#v}-dev.$BUILD"
   RELEASE_TAG=dev
 fi
+
+# Xcode Cloud runs builds in parallel, so an older commit can finish last. Never replace a newer
+# (or the same) dev build.
+superseded() {
+  [[ -z "$TAG" ]] || return 1
+  local title published
+  title="$(gh release view dev --repo "$REPO" --json name -q .name 2>/dev/null || true)"
+  published="${title##*-dev.}"
+  if [[ "$published" =~ ^[0-9]+$ ]] && (( published >= BUILD )); then
+    echo "Dev release already has build $published; not publishing $VERSION"
+    return 0
+  fi
+  return 1
+}
+superseded && exit 0
+
 RELEASE_TAG="$RELEASE_TAG" SKIP_TESTS=1 scripts/release.sh "$VERSION"
 
 # Never publish an un-notarized build. Apple's ticket lookup drops connections now and then, so retry.
@@ -30,6 +47,7 @@ for wait in 10 20 40 0; do
   sleep "$wait"
 done
 [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY" >&2; exit 1; }
+superseded && exit 0 # a newer build may have landed while this one notarized
 
 if [[ -n "$TAG" ]]; then
   gh release create "$TAG" --repo "$REPO" --title "Euclid $VERSION" --notes "Euclid $VERSION for macOS 14+ (Apple Silicon + Intel)." \

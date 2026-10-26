@@ -42,7 +42,7 @@ GitHub can't show those again, so take them from where you made them. Until `REL
 | --- | --- |
 | `MACOS_CERTIFICATE_P12` | `base64 -i DeveloperID.p12` |
 | `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
-| `NOTARY_KEY_P8` | `base64 -i AuthKey_XXXX.p8` (one line; the raw multi-line text won't paste) |
+| `NOTARY_KEY_P8` | the `AuthKey_XXXX.p8` text (line breaks may be lost; fine), or `base64 -i` of it |
 | `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID` | from App Store Connect › Integrations › Keys |
 | `SPARKLE_PRIVATE_KEY` | `generate_keys -x sparkle.key`, then the file's contents |
 | `SPARKLE_PUBLIC_KEY`, `LICENCE_PUBLIC_KEY` | the public keys (not secret, but tick Secret anyway) |

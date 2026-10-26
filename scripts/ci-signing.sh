@@ -2,7 +2,8 @@
 # CI only: put the Developer ID certificate and notary key from CI secrets where
 # scripts/release.sh finds them. Missing secrets mean an unsigned or un-notarized build.
 #   env P12, P12_PASSWORD, NOTARY_KEY_P8  → SIGN_IDENTITY, NOTARY_KEY_PATH in $GITHUB_ENV
-# NOTARY_KEY_P8 is the .p8 text, or that text base64-encoded (for one-line secrets, as in Xcode Cloud).
+# NOTARY_KEY_P8 is the .p8 text (line breaks optional: Xcode Cloud's field can drop them), or that
+# text base64-encoded.
 # Outside Actions, set RUNNER_TEMP and GITHUB_ENV to a temp dir and an env file to read back.
 set -euo pipefail
 
@@ -28,7 +29,8 @@ if [[ -z "${NOTARY_KEY_P8:-}" ]]; then
   echo "No notary key: skipping notarization."
 else
   if [[ "$NOTARY_KEY_P8" == -----BEGIN* ]]; then
-    printf '%s\n' "$NOTARY_KEY_P8" > "$RUNNER_TEMP/notary.p8"
+    body="$(printf '%s' "$NOTARY_KEY_P8" | sed 's/-----[^-]*-----//g' | tr -d ' \r\n')"
+    printf -- '-----BEGIN PRIVATE KEY-----\n%s\n-----END PRIVATE KEY-----\n' "$(fold -w 64 <<<"$body")" > "$RUNNER_TEMP/notary.p8"
   else
     printf '%s' "$NOTARY_KEY_P8" | base64 --decode > "$RUNNER_TEMP/notary.p8"
   fi
