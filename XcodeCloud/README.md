@@ -24,6 +24,6 @@ Xcode Cloud can't build a standalone Swift package, so:
 5. Optional, for screenshots on PRs: GitHub › Settings › Developer settings › Fine-grained tokens ›
    new token for `euclid-bar` with **Contents: Read and write**. In the workflow's
    **Environment › Environment Variables** add `GITHUB_SCREENS_TOKEN` with it, ticked **Secret**.
-6. Save and **Start Build** on `main`. It should show as a `CI | Build - macOS` check on GitHub.
+6. Save and **Start Build** on this branch (or `main` once merged). It should show as a `CI | Build - macOS` check on GitHub.
 
 Results: Xcode › Report navigator › Cloud, or App Store Connect › the app › Xcode Cloud.
