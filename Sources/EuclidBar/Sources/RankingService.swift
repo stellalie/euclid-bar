@@ -17,6 +17,7 @@ final class RankingService {
             self.store = store
         } catch {
             log.error("ranking store unavailable: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("ranking", "ranking store unavailable: \(error.localizedDescription)")
             store = nil
         }
     }
@@ -31,6 +32,7 @@ final class RankingService {
         queue.async { [log] in
             do { try store.save(pick) } catch {
                 log.error("can't save pick: \(error.localizedDescription, privacy: .public)")
+                CrashReporter.error("ranking", "can't save pick: \(error.localizedDescription)")
             }
         }
     }

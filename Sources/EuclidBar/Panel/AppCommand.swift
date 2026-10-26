@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleCrashReports, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
@@ -26,6 +26,12 @@ struct AppCommand: Equatable {
     static func expansion(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleExpansion, title: "Text Expansion", detail: "Type a snippet keyword in any app · [expansion] enabled",
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Opt-in crash and error reports (`[privacy] crash_reports`).
+    static func crashReports(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleCrashReports, title: "Send Crash Reports", detail: "Stack and versions only, never your data · [privacy] crash_reports",
+                   symbol: "ladybug", accessory: enabled ? "On" : "Off")
     }
 
     /// The update commands for the current `[updates]` settings.

@@ -35,6 +35,7 @@ final class ClipboardService {
         } catch {
             // Keep working in memory-only mode rather than failing to launch.
             log.error("history store unavailable: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("clipboard", "history store unavailable: \(error.localizedDescription)")
         }
         self.store = store
         self.imagesDirectory = imagesDirectory

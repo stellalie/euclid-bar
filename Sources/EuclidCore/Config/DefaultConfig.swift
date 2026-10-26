@@ -84,6 +84,13 @@ check        = true              # look for a new version once a day
 auto_install = true              # download it in the background, install on quit
 channel      = "stable"          # "dev": a build of every change merged to main, for testing
 
+# Send crash reports and internal errors to the Euclid developer, so they get fixed. Off by default.
+# Sent: app and macOS version, the crashed code's stack, the error message. Never your searches,
+# clipboard, files, config or anything that identifies you. A copy of each is kept in
+# ~/Library/Logs/Euclid/Reports, so you can read exactly what was sent.
+[privacy]
+crash_reports = false
+
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.
 [aliases]
