@@ -6,8 +6,9 @@ Push a tag, get a signed + notarized DMG and a Sparkle update:
 git tag v1.2.0 && git push origin v1.2.0
 ```
 
-`.github/workflows/release.yml` runs `scripts/release.sh`, then publishes a GitHub release in the
-public [euclid-bar-releases](https://github.com/stellalie/euclid-bar-releases) repo (this source repo
+Xcode Cloud (`XcodeCloud/`, start condition *Tag Changes* `v*`) runs `scripts/publish-release.sh`,
+which builds with `scripts/release.sh` and publishes a GitHub release in the public
+[euclid-bar-releases](https://github.com/stellalie/euclid-bar-releases) repo (this source repo
 is private, and private repos' release files can't be downloaded anonymously):
 
 | File | For |
@@ -24,13 +25,15 @@ The tag sets the app version (`CFBundleVersion`), and Sparkle only offers versio
 installed one, so tags must keep going up.
 
 To try the pipeline without publishing: **Actions › Release › Run workflow** (dry run, files land
-in the run's artifacts).
+in the run's artifacts), when Actions has runners.
 
 ## Dev builds
 
-Every push to `main` that passes CI also ships: `.github/workflows/dev-release.yml` builds, signs
-and notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
-(version like `1.1.0-dev.214`). It uses the same secrets as stable releases.
+Every push to `main` that passes CI also ships: Xcode Cloud runs `scripts/publish-release.sh`, which
+builds, signs and notarizes it and replaces the files on the rolling **`dev`** pre-release in
+euclid-bar-releases (version like `1.1.0-dev.214`). A build never replaces a newer one. It uses the same secrets as stable releases,
+set in the Xcode Cloud workflow (`XcodeCloud/README.md`). **Actions › Dev release › Run workflow**
+does the same on GitHub Actions by hand.
 
 To get them, set this in `config.toml`; the next update check switches feeds:
 
