@@ -65,9 +65,7 @@ struct Theme {
         case .calc: named("green", .systemGreen)
         case .transform: named("cyan", .systemTeal)
         case .snippet: named("pink", .systemPink)
-        case .content(let c): c.kind == .note ? named("purple", .systemPurple) : named("blue", .systemIndigo)
-        case .bitbucket: named("blue", .systemBlue)
-        case .jira: named("cyan", .systemCyan)
+        case .content: named("purple", .systemPurple)
         case .plugin: named("green", .systemMint)
         case .app, .project, .file, .header: subtext
         }

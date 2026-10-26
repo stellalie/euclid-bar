@@ -94,3 +94,13 @@ let isDebugBuild = false
         #expect(worst < .milliseconds(8))
     }
 }
+
+@Suite struct SearchBudgetTests {
+    /// CI holds the real budget (release build). Here: the fixture is the promised size and every prefix is timed.
+    @Test func timesEveryKeystrokeOverTenThousandItems() {
+        let r = SearchBudget.run(runs: 1)
+        #expect(r.items >= 10_000)
+        #expect(r.timings.first?.query == "g" && r.timings.contains { $0.query == "git rebase" })
+        if !isDebugBuild { #expect(r.passed, "slowest \(r.worst.query): \(r.worst.time)") }
+    }
+}

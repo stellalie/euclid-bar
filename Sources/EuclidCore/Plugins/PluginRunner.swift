@@ -8,7 +8,29 @@ import Foundation
 public enum PluginRunner {
     public struct Failure: Error, Equatable, Sendable, CustomStringConvertible {
         public let description: String
-        public init(_ description: String) { self.description = description }
+        /// The command the shell couldn't find (`gh`), when that's why it failed.
+        public var missingCommand: String?
+        public init(_ description: String, missingCommand: String? = nil) {
+            self.description = description
+            self.missingCommand = missingCommand
+        }
+    }
+
+    /// The command a shell says it couldn't find: zsh's "zsh:1: command not found: gh",
+    /// bash's "items.sh: line 3: gh: command not found", sh's "gh: not found".
+    public static func missingCommand(in stderr: String) -> String? {
+        for line in stderr.split(whereSeparator: \.isNewline).map(String.init) {
+            if let r = line.range(of: "command not found: ") {
+                let name = line[r.upperBound...].trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { return name }
+            }
+            for marker in [": command not found", ": not found"] where line.hasSuffix(marker) {
+                let head = line.dropLast(marker.count)
+                let name = head.split(separator: ":").last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+                if !name.isEmpty, !name.contains(" ") { return name }
+            }
+        }
+        return nil
     }
 
     /// Output past this is dropped.
@@ -67,6 +89,9 @@ public enum PluginRunner {
         try Task.checkCancellation()
         if stopped.isSet { throw Failure("took longer than \(timeout.formatted(.units(allowed: [.seconds, .milliseconds])))") }
         guard status == 0 else {
+            if status == 127, let missing = missingCommand(in: stderr.string) {
+                throw Failure("needs `\(missing)`, which isn't installed or isn't on PATH", missingCommand: missing)
+            }
             let line = stderr.string.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
             throw Failure(line.isEmpty ? "exit \(status)" : "exit \(status): \(line)")
         }

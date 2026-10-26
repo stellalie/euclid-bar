@@ -12,8 +12,12 @@ final class HistoryService {
     /// Site icons by lowercased host (PNG bytes until first drawn).
     private var faviconData: [String: Data] = [:]
     private var faviconImages: [String: NSImage] = [:]
-    /// One-line problem for the footer (e.g. Safari needs Full Disk Access), or nil.
+    /// One-line problem for the footer (a browser's history couldn't be read), or nil.
+    /// Safari without Full Disk Access is reported by `safariBlocked` instead, on the Permissions row.
     private(set) var problem: String?
+    private(set) var safariBlocked = false
+    /// `[history] browsers` names Safari, so its missing access is worth a footer line.
+    var safariRequested: Bool { browsers?.contains("safari") ?? false }
     var onChange: (() -> Void)?
 
     private var enabled = true
@@ -49,7 +53,7 @@ final class HistoryService {
 
     func reload() {
         guard enabled else {
-            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; lastLoad = .now
+            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; safariBlocked = false; lastLoad = .now
             onChange?()
             return
         }
@@ -62,7 +66,9 @@ final class HistoryService {
             let (entries, errors) = BrowserHistory.load(sources, limit: limit)
             let items = entries.enumerated().map { $0.element.searchItem(id: $0.offset) }
             let favicons = BrowserHistory.favicons(for: sources, hosts: Set(entries.map { $0.host.lowercased() }))
-            let problem = BrowserHistory.problem(errors, explicit: browsers != nil)
+            // Safari is protected by Full Disk Access: the Permissions row covers it.
+            let safariBlocked = errors.contains { $0.0.key == "safari" }
+            let problem = BrowserHistory.problem(errors)
             let elapsed = ContinuousClock.now - start
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -70,6 +76,7 @@ final class HistoryService {
                     self.items = items
                     self.faviconData = favicons
                     self.faviconImages = [:]
+                    self.safariBlocked = safariBlocked
                     self.problem = problem
                     for (source, error) in errors {
                         self.log.error("history: can't read \(source.database.path, privacy: .public): \(String(describing: error), privacy: .public)")

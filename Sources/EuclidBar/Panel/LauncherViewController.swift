@@ -16,15 +16,11 @@ final class LauncherViewController: NSViewController {
     var onRunAction: ((Action, _ query: String) -> Void)?
     var onRunTask: ((ProjectTask) -> Void)?
     var onCommand: ((AppCommand) -> Void)?
-    /// Something was picked, by `Row.usageKind`, for the usage receipt.
-    var onUse: ((String) -> Void)?
     var onOpenHistory: ((Int) -> Void)?
     var onCopyHistory: ((Int) -> Void)?
     var onOpenApp: ((String) -> Void)?
     var onOpenProject: ((String) -> Void)?
     var onOpenFile: ((String) -> Void)?
-    /// Open a URL (a Bitbucket PR, an indexed page) in the default browser.
-    var onOpenURL: ((String) -> Void)?
     var onOpenNote: ((String) -> Void)?
     /// Put text on the pasteboard and close (a path, a calculator answer).
     var onCopyText: ((String) -> Void)?
@@ -49,12 +45,6 @@ final class LauncherViewController: NSViewController {
     var appsProvider: () -> [SearchItem] = { [] }
     var projectsProvider: () -> [SearchItem] = { [] }
     var project: (Int) -> ProjectEntry? = { _ in nil }
-    var bitbucketProvider: () -> [SearchItem] = { [] }
-    var bitbucketItem: (Int) -> BitbucketItem? = { _ in nil }
-    var jiraProvider: () -> [SearchItem] = { [] }
-    var jiraIssue: (Int) -> JiraIssue? = { _ in nil }
-    /// Set when Jira is configured: typing an issue key ("ABC-123") opens it.
-    var jiraBaseURL: () -> String? = { nil }
     /// Items from plugin sources; `id` indexes `pluginEntry`.
     var pluginProvider: () -> [SearchItem] = { [] }
     var pluginEntry: (Int) -> PluginService.Entry? = { _ in nil }
@@ -110,7 +100,7 @@ final class LauncherViewController: NSViewController {
     private let itemsProvider: () -> [SearchItem]
     private var snippetItems: [SearchItem] = []
     private var rows: [Row] = []
-    /// Rows from the instant sources; async hits (pages, notes, files) are appended below them.
+    /// Rows from the instant sources; async hits (notes, files) are appended below them.
     private var baseRows: [Row] = []
     /// The instant rows are only the “Use … with” fallback, so an answer can go above them.
     private var baseIsFallback = false
@@ -378,7 +368,6 @@ final class LauncherViewController: NSViewController {
 
     @objc private func badgeClicked(_ sender: NSButton) {
         guard let id = sender.identifier?.rawValue, badges.first(where: { $0.pluginID == id })?.hasClick == true else { return }
-        onUse?("plugins")
         onBadgeClick?(id)
     }
 
@@ -550,9 +539,7 @@ final class LauncherViewController: NSViewController {
         }
         for name in answered { answers += [.header(name)] + byPlugin[name]! }
         var out = baseIsFallback ? answers + base : base + answers
-        let notes = contentHits.hits.filter { $0.kind == .note }, pages = contentHits.hits.filter { $0.kind == .page }
-        if !notes.isEmpty { out += [.header("Notes")] + notes.map(Row.content) }
-        if !pages.isEmpty { out += [.header("Pages")] + pages.map(Row.content) }
+        if !contentHits.hits.isEmpty { out += [.header("Notes")] + contentHits.hits.map(Row.content) }
         if !fileHits.hits.isEmpty { out += [.header("Files")] + fileHits.hits.map(Row.file) }
         return out
     }
@@ -575,8 +562,6 @@ final class LauncherViewController: NSViewController {
         }
         add(appsProvider(), limit: 20, source: 0, boost: 80) { .app($0) }
         add(projectsProvider(), limit: 20, source: 1, boost: 40) { project($0.id).map(Row.project) }
-        add(bitbucketProvider(), limit: 15, source: 2, boost: 30) { bitbucketItem($0.id).map(Row.bitbucket) }
-        add(jiraProvider(), limit: 15, source: 8, boost: 30) { jiraIssue($0.id).map(Row.jira) }
         add(pluginProvider(), limit: 15, source: 9, boost: 30) { pluginEntry($0.id).map(Row.plugin) }
         add(snippetItems, limit: 9, source: 3, boost: 20) { item in snippets.indices.contains(item.id) ? .snippet(item, snippets[item.id]) : nil }
         let actionItems = actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }
@@ -598,16 +583,13 @@ final class LauncherViewController: NSViewController {
         if let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
             top.append(.snippet(snippetItems[i], snippets[i]))
         }
-        if let key = JiraIssue.key(in: text), let base = jiraBaseURL() {
-            let known = jiraProvider().compactMap { jiraIssue($0.id) }.first { $0.key == key }
-            top.append(.jira(known ?? .typed(key, baseURL: base)))
-        }
         let topKeys = Set(top.map(\.key))
         ranked.removeAll { topKeys.contains($0.key) }
         return (top + pinned + Array(ranked.prefix(40)), searched)
     }
 
-    /// The empty box: favourites from config, then what you pick most, then PRs waiting on your review.
+    /// The empty box: favourites from config, then what you pick most, then plugin suggestions
+    /// (PRs waiting on your review, issues assigned to you).
     private func suggestions() -> [Row] {
         var picks = favorites.compactMap { resolve(title: $0, argument: nil) }
         var keys = Set(picks.map(\.key))
@@ -616,13 +598,9 @@ final class LauncherViewController: NSViewController {
             picks.append(row)
         }
         var out: [Row] = picks.isEmpty ? [] : [.header("Suggestions")] + picks
-        let reviews = bitbucketProvider().compactMap { bitbucketItem($0.id) }.filter { $0.kind == .reviewPR }.prefix(3)
-        if !reviews.isEmpty { out += [.header("Waiting on your review")] + reviews.map(Row.bitbucket) }
-        let assigned = jiraProvider().compactMap { jiraIssue($0.id) }.filter { $0.kind == .assigned && !keys.contains("u\($0.url)") }.prefix(3)
-        if !assigned.isEmpty { out += [.header("Assigned to you")] + assigned.map(Row.jira) }
         // Plugin items marked "suggest": up to 3 per plugin, under its name.
         var suggested: [String] = [], byPlugin: [String: [Row]] = [:]
-        for e in pluginProvider().compactMap({ pluginEntry($0.id) }) where e.item.suggest == true {
+        for e in pluginProvider().compactMap({ pluginEntry($0.id) }) where e.item.suggest == true && !keys.contains(Row.plugin(e).key) {
             if byPlugin[e.pluginName] == nil { suggested.append(e.pluginName) }
             if byPlugin[e.pluginName, default: []].count < 3 { byPlugin[e.pluginName, default: []].append(.plugin(e)) }
         }
@@ -661,10 +639,6 @@ final class LauncherViewController: NSViewController {
             return actions.firstIndex { $0.name == value }.map { .action(number: $0 + 1, actions[$0]) }
         case "snippet":
             return snippets.firstIndex { $0.name == value }.map { .snippet(snippetItems[$0], snippets[$0]) }
-        case "bb":
-            return bitbucketProvider().compactMap { bitbucketItem($0.id) }.first { $0.url == value }.map(Row.bitbucket)
-        case "jira":
-            return jiraProvider().compactMap { jiraIssue($0.id) }.first { $0.key == value }.map(Row.jira)
         case "plug":
             return pluginProvider().compactMap { pluginEntry($0.id) }.first { "\($0.pluginID):\($0.item.key)" == value }.map(Row.plugin)
         default: return nil
@@ -769,8 +743,7 @@ final class LauncherViewController: NSViewController {
             }
         case .history(let item):
             let url = historyURL(item.id) ?? ""
-            let body = contentBody(url) ?? ""
-            return .text(title: item.title, facts: [("URL", url), ("Where", ResultCell.historySubtitle(item))], body: body, code: false)
+            return .text(title: item.title, facts: [("URL", url), ("Where", ResultCell.historySubtitle(item))], body: "", code: false)
         case .action(_, let a), .aliasAction(let a, _):
             return .text(title: a.name, facts: [("Runs", a.run)], body: "", code: false)
         case .builtin(let b, _): return .text(title: b.rawValue, facts: [("Key", b.hint)], body: "", code: false)
@@ -788,16 +761,9 @@ final class LauncherViewController: NSViewController {
             return .text(title: s.name, facts: s.keyword.map { [("Keyword", $0)] } ?? [], body: s.expanded(clipboard: Self.clipboardText), code: false)
         case .content(let c):
             let body = contentBody(c.ref) ?? c.snippet
-            return .text(title: c.title, facts: [(c.kind == .note ? "Note" : "URL", c.ref)], body: body, code: false)
-        case .bitbucket(let b):
-            let updated = b.updated.map { RelativeAge.short($0) } ?? "—"
-            return .text(title: b.title, facts: [("Where", b.subtitle), ("Updated", updated), ("URL", b.url)], body: "", code: false)
+            return .text(title: c.title, facts: [("Note", c.ref)], body: body, code: false)
         case .task(let t, let project):
             return .text(title: t.name, facts: [("Runs", t.command), ("From", t.source), ("Project", project)], body: "", code: false)
-        case .jira(let j):
-            let updated = j.updated.map { RelativeAge.short($0) } ?? "—"
-            return .text(title: j.title, facts: [("Status", j.subtitle), ("Updated", updated), ("Branch", j.branchName), ("URL", j.url)],
-                         body: "", code: false)
         case .plugin(let e):
             let i = e.item
             var facts = [("From", e.pluginName)]
@@ -830,7 +796,7 @@ final class LauncherViewController: NSViewController {
             switch selectedRow {
             case .clip?, .snippet?: list.append(H(key: "↵", label: "Paste"))
             case .history(let item)?: list.append(H(key: "↵", label: "Open in \(item.subtitle.components(separatedBy: " · ").first ?? "browser")"))
-            case .app?, .project?, .file?, .bitbucket?, .jira?, .content?: list.append(H(key: "↵", label: "Open"))
+            case .app?, .project?, .file?, .content?: list.append(H(key: "↵", label: "Open"))
             case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
             case .plugin(let e)?:
                 let i = e.item
@@ -848,9 +814,7 @@ final class LauncherViewController: NSViewController {
             }
             if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
             if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
-            if case .bitbucket? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
             if case .plugin(let e)? = selectedRow, (e.item.copy ?? e.item.open) != nil { list.append(H(key: "⌘C", label: "Copy")) }
-            if case .jira? = selectedRow { list += [H(key: "⌘C", label: "Copy key"), H(key: "⇧⌘C", label: "Copy branch")] }
             if selectedRow?.path != nil { list.append(H(key: "⌘C", label: "Copy path")) }
             hints.set(list)
         case .actions:
@@ -898,7 +862,6 @@ final class LauncherViewController: NSViewController {
 
     /// Open, run or paste a row, as ↵ does. Also used by hotkeys with the panel closed.
     func activate(_ row: Row, query: String) {
-        if let kind = row.usageKind { onUse?(kind) }
         switch row {
         case .header: return
         case .clip(let item): onPaste?(item.id)
@@ -911,9 +874,7 @@ final class LauncherViewController: NSViewController {
         case .calc(let result, _): onCopyText?(result.text)
         case .transform(let t): onCopyText?(t.value)
         case .snippet(_, let s): onPasteText?(s.expanded(clipboard: Self.clipboardText))
-        case .content(let c): c.kind == .note ? onOpenNote?(c.ref) : onOpenURL?(c.ref)
-        case .bitbucket(let b): onOpenURL?(b.url)
-        case .jira(let j): onOpenURL?(j.url)
+        case .content(let c): onOpenNote?(c.ref)
         case .task(let t, _): onRunTask?(t)
         case .command(let c): onCommand?(c)
         case .plugin(let e): onPluginItem?(e)
@@ -928,7 +889,6 @@ final class LauncherViewController: NSViewController {
     /// ⌘1–⌘9 (any mode) or plain 1–9 (in ⌘K): run the Nth action.
     private func runAction(number n: Int) {
         guard actions.indices.contains(n - 1) else { NSSound.beep(); return }
-        onUse?("actions")
         onRunAction?(actions[n - 1], query)
     }
 
@@ -978,18 +938,11 @@ final class LauncherViewController: NSViewController {
             case .history(let item)?: onCopyHistory?(item.id)
             case .calc(let result, _)?: onCopyText?(result.text)
             case .transform(let t)?: onCopyText?(t.value)
-            case .bitbucket(let b)?: onCopyText?(b.url)
-            case .jira(let j)?: onCopyText?(j.key)
             case .plugin(let e)? where (e.item.copy ?? e.item.open) != nil: onCopyText?(e.item.copy ?? e.item.open!)
-            case .content(let c)? where c.kind == .page: onCopyText?(c.ref)
             case .snippet(_, let s)?: onCopyText?(s.expanded(clipboard: Self.clipboardText))
             case let row? where row.path != nil: onCopyText?(row.path!)
             default: return false
             }
-            return true
-        case ([.command, .shift], kVK_ANSI_C):
-            guard case .jira(let j)? = selectedRow, !inActions else { return false }
-            onCopyText?(j.branchName)
             return true
         case (.command, kVK_Delete):
             guard case .clip(let item)? = selectedRow, !inActions else { return false }
@@ -1035,9 +988,7 @@ final class LauncherViewController: NSViewController {
         case .transform(let t): return ModItem(kind: "answer", title: t.display, subtitle: t.label, text: t.value)
         case .snippet(_, let s): return ModItem(kind: "snippet", title: s.name, text: s.text)
         case .content(let c):
-            return c.kind == .note ? ModItem(kind: "note", title: c.title, path: c.ref) : ModItem(kind: "page", title: c.title, url: c.ref)
-        case .bitbucket(let b): return ModItem(kind: "pr", title: b.title, subtitle: b.subtitle, url: b.url)
-        case .jira(let j): return ModItem(kind: "issue", title: "\(j.key) \(j.summary)", url: j.url, text: j.key)
+            return ModItem(kind: "note", title: c.title, path: c.ref)
         case .task(let t, let project): return ModItem(kind: "task", title: t.command, subtitle: project, text: t.commandLine)
         case .command(let c): return ModItem(kind: "command", title: c.title, subtitle: c.detail)
         case .plugin(let e):
@@ -1145,23 +1096,9 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .snippet(let item, let s):
             show("text.quote", s.name, detail: s.keyword ?? "", tagged("Snippet", title: item.title))
         case .content(let c):
-            show(c.kind == .note ? "note.text" : "doc.richtext", c.title, detail: c.snippet, c.kind == .note ? "Note" : "Page", plain: true)
-        case .bitbucket(let b):
-            let (symbol, label) = switch b.kind {
-            case .reviewPR: ("arrow.triangle.pull", "Review")
-            case .myPR: ("arrow.triangle.pull", "Your PR")
-            case .repo: ("shippingbox", "Repo")
-            }
-            show(symbol, b.title, detail: b.subtitle, label)
+            show("note.text", c.title, detail: c.snippet, "Note", plain: true)
         case .task(let t, _):
             show("hammer", t.name, detail: t.command, t.source)
-        case .jira(let j):
-            let label = switch j.kind {
-            case .assigned: "Assigned"
-            case .recent: "Viewed"
-            case .typed: "Jira"
-            }
-            show("checklist", j.title, detail: j.subtitle, label)
         case .command(let c):
             show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
         case .plugin(let e):

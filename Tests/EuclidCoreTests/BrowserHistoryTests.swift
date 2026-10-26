@@ -151,7 +151,7 @@ import Testing
         let (entries, errors) = BrowserHistory.load(sources, limit: 10)
         #expect(entries.isEmpty)
         #expect(errors.isEmpty)
-        #expect(BrowserHistory.problem(errors, explicit: false) == nil)
+        #expect(BrowserHistory.problem(errors) == nil)
     }
 
     @Test func problemNamesEachBrowserOnceWithReason() throws {
@@ -164,18 +164,19 @@ import Testing
         let arc = BrowserHistory.Source(browser: "Arc", key: "arc", kind: .chromium, database: junk)
         let (_, errors) = BrowserHistory.load(dia + [arc], limit: 10)
         #expect(errors.count == 51)
-        let line = try #require(BrowserHistory.problem(errors, explicit: false))
+        let line = try #require(BrowserHistory.problem(errors))
         #expect(line.hasPrefix("⚠︎ couldn't read Dia, Arc history: "))
         #expect(line.components(separatedBy: "Dia").count == 2)
         #expect(!line.contains("while executing"))   // short reason, not the full SQLite dump
     }
 
-    @Test func safariProblemOnlyWhenAskedFor() {
+    /// Safari's missing Full Disk Access is on the Permissions row, not the footer.
+    @Test func safariIsNotAFooterProblem() {
         let safari = BrowserHistory.Source(browser: "Safari", key: "safari", kind: .safari,
                                            database: URL(fileURLWithPath: "/nonexistent/History.db"))
         let (_, errors) = BrowserHistory.load([safari], limit: 10)
-        #expect(BrowserHistory.problem(errors, explicit: false) == nil)
-        #expect(BrowserHistory.problem(errors, explicit: true)?.contains("Full Disk Access") == true)
+        #expect(errors.count == 1)
+        #expect(BrowserHistory.problem(errors) == nil)
     }
 
     @Test func historyConfig() throws {

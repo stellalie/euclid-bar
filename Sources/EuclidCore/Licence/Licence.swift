@@ -30,7 +30,7 @@ public struct Licence: Codable, Equatable, Sendable {
         public var description: String {
             switch self {
             case .malformed: "That doesn't look like a Euclid licence key. Paste the whole key, starting with EUCLID-."
-            case .badSignature: "That licence key isn't valid. Check it was pasted in full, or email hello@lgtmworks.com."
+            case .badSignature: "That licence key isn't valid. Check it was pasted in full, or email hello@lgtm.ninja."
             }
         }
     }

@@ -280,14 +280,18 @@ import Testing
         return src.components(separatedBy: "ghosttyRun = #\"\"\"\n")[1].components(separatedBy: "\n\"\"\"#")[0]
     }
 
-    /// herdr-run against a fake `herdr` that answers like the real CLI (JSON IDs)
-    /// and, for `pane run`, types the text into a shell with the pane's --env set.
+    /// The herdr-run recipe (docs/recipes, no longer installed by default) against a fake `herdr`
+    /// that answers like the real CLI (JSON IDs) and, for `pane run`, types the text into a shell
+    /// with the pane's --env set.
     @Test(arguments: ["tab", "split", "split-down"])
     func herdrRunScriptKeepsQueryInert(place: String) async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let bin = dir.appendingPathComponent("bin")
-        try ConfigLoader.installDefaultScripts(in: bin)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let recipe = URL(fileURLWithPath: #filePath.components(separatedBy: "/Tests/")[0] + "/docs/recipes/herdr-run")
+        try FileManager.default.copyItem(at: recipe, to: bin.appendingPathComponent("herdr-run"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.appendingPathComponent("herdr-run").path)
         let fake = bin.appendingPathComponent("herdr")
         try #"""
         #!/bin/zsh

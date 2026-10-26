@@ -93,10 +93,10 @@ import Testing
         var issues: [ConfigIssue] = []
         let manifest = try String(contentsOf: folder.appendingPathComponent("plugin.toml"), encoding: .utf8)
         let p = try #require(PluginLoader.parse(manifest, id: "cleanlinks", directory: folder.path, &issues))
-        let (report, ok) = await PluginTrial.run(p, query: "https://ex.com/a?utm_source=x&id=3#top", shell: "/bin/zsh", pathPrefix: nil)
+        let (report, ok) = await PluginTrial.run(p, query: "https://ex.com/a?utm_source=x&id=3#top", shell: "/bin/zsh", pathPrefix: nil, answerTimeout: .seconds(30))
         #expect(ok, "\(report)")
         #expect(report.contains(#"copy “https://ex.com/a?id=3#top”, notice “Cleaned a tracking link”"#) || report.contains("notice “Cleaned a tracking link”, copy “https://ex.com/a?id=3#top”"), "\(report)")
-        let (quiet, _) = await PluginTrial.run(p, query: "https://ex.com/a?id=3", shell: "/bin/zsh", pathPrefix: nil)
+        let (quiet, _) = await PluginTrial.run(p, query: "https://ex.com/a?id=3", shell: "/bin/zsh", pathPrefix: nil, answerTimeout: .seconds(30))
         #expect(quiet.contains("no effects"))
     }
 }

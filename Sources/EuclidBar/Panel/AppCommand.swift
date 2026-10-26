@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, showUsage, connectAgents }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
@@ -14,17 +14,18 @@ struct AppCommand: Equatable {
                                            detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
 
     static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
-                                          detail: "Let your agents search your clipboard, pages and notes", symbol: "point.3.connected.trianglepath.dotted")
+                                          detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
+
+    /// Every permission Euclid uses, in one row: ↵ opens the pane for the first one missing.
+    static func permissions(_ needs: [Permissions.Need]) -> AppCommand {
+        AppCommand(kind: .permissions, title: "Permissions", detail: Permissions.summary(needs), symbol: "lock.shield",
+                   accessory: needs.isEmpty ? "OK" : "\(needs.count) missing")
+    }
 
     /// Snippet keywords expanding in any app (`[expansion] enabled`).
     static func expansion(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleExpansion, title: "Text Expansion", detail: "Type a snippet keyword in any app · [expansion] enabled",
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
-    }
-
-    /// How much you used Euclid lately, once there's something to show.
-    static func usage(receipt: String?) -> [AppCommand] {
-        receipt.map { [AppCommand(kind: .showUsage, title: "Usage: Your Last 30 Days", detail: $0, symbol: "chart.bar")] } ?? []
     }
 
     /// The update commands for the current `[updates]` settings.
@@ -42,7 +43,7 @@ struct AppCommand: Equatable {
     static func licence(summary: String, licensed: Bool) -> [AppCommand] {
         guard !licensed else { return [] }
         return [
-            AppCommand(kind: .buyLicence, title: "Buy Euclid Licence", detail: "\(summary) · opens euclid.lgtmworks.com",
+            AppCommand(kind: .buyLicence, title: "Buy Euclid Licence", detail: "\(summary) · opens lgtm.ninja/euclid",
                        symbol: "cart"),
             AppCommand(kind: .enterLicence, title: "Enter Licence Key", detail: summary, symbol: "key"),
         ]

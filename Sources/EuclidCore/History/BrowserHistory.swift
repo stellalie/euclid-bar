@@ -77,14 +77,10 @@ public enum BrowserHistory {
     }
 
     /// One footer line for failed sources, or nil. Each browser is named once, however many
-    /// profiles failed. Safari is protected by Full Disk Access, so its failure is only reported
-    /// when it was asked for (`explicit`) and then comes with that fix.
-    public static func problem(_ errors: [(Source, Error)], explicit: Bool) -> String? {
-        let failed = errors.filter { explicit || $0.0.key != "safari" }
+    /// profiles failed. Safari is left out: its Full Disk Access is shown on the Permissions row.
+    public static func problem(_ errors: [(Source, Error)]) -> String? {
+        let failed = errors.filter { $0.0.key != "safari" }
         guard !failed.isEmpty else { return nil }
-        if failed.contains(where: { $0.0.key == "safari" }) {
-            return "⚠︎ Safari history needs Full Disk Access (System Settings › Privacy & Security)"
-        }
         var names: [String] = []
         for (source, _) in failed where !names.contains(source.browser) { names.append(source.browser) }
         return "⚠︎ couldn't read \(names.joined(separator: ", ")) history: \(reason(failed[0].1))"

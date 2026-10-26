@@ -56,6 +56,30 @@ import Testing
         #expect(DevTransforms.evaluate("abcdefghijklmnop").isEmpty)
     }
 
+    @Test func base64LeavesLookalikesAlone() {
+        let lookalikes = [
+            "3f786850e387550fdab836ed7e6dc881de23001b",       // git SHA
+            "d41d8cd98f00b204e9800998ecf8427e",               // md5
+            "9b2f3c4e5a6d7e8f9a0b1c2d3e4f5a6b",               // uuid without dashes
+            "/opt/homebrew/bin/python3",                      // path
+            "ThisIsAVeryLongCamelCaseName",                   // identifier
+            "node_modules_cache_v2",                          // identifier
+            "release-2026-10-25-build",                       // branch name
+            "useEffectCleanup2024",                           // identifier
+            "AbCdEfGhIjKlMnOpQrStUvWx",                       // decodes to gibberish
+        ]
+        for s in lookalikes {
+            #expect(DevTransforms.autoBase64(s).isEmpty, "\(s) decoded to \(DevTransforms.autoBase64(s).first?.value ?? "")")
+        }
+        // Real payloads still decode: padded, unpadded, URL-safe, JSON.
+        let token = Data(#"{"user":"stella","id":42}"#.utf8).base64EncodedString()
+        #expect(DevTransforms.autoBase64(token).first?.value == #"{"user":"stella","id":42}"#)
+        let urlSafe = Data("subjects?/a>b".utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        #expect(DevTransforms.autoBase64(urlSafe).first?.value == "subjects?/a>b")
+        #expect(DevTransforms.autoBase64("dXNlcm5hbWU6cGFzc3dvcmQ=").first?.value == "username:password")
+    }
+
     @Test func json() {
         let r = DevTransforms.evaluate(#"{"b":1,"a":[1,2]}"#)
         #expect(r.count == 2)
@@ -119,24 +143,22 @@ import Testing
             show_speed = false
 
             [pages]
-            enabled = true
-            limit = 50
-            exclude_hosts = ["Mail.Google.com"]
+            enabled = false
+            limit = 500
 
             [obsidian]
             vault = "~/Notes"
-
-            [bitbucket]
-            email = "me@example.com"
-            repos = ["team/app", "bad"]
             """)
         #expect(c.config.appearance.accent == "#7c5cff")
         #expect(c.config.appearance.density == .compact)
         #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed)
-        #expect(c.config.pagesEnabled && c.config.pagesLimit == 50 && c.config.pagesExcludedHosts == ["mail.google.com"])
         #expect(c.config.obsidianVault == "~/Notes")
-        #expect(c.config.bitbucket?.repos == ["team/app"])
-        #expect(c.issues.count == 1) // the bad repo slug
+        #expect(c.issues.isEmpty) // the old, off [pages] table is ignored quietly
+    }
+
+    @Test func removedPagesTableSaysSoOnlyWhenOn() throws {
+        let c = try ConfigLoader.parse("[pages]\nenabled = true")
+        #expect(c.issues.map(\.message) == ["[pages] was removed: Euclid no longer downloads pages. Delete the table; browser history still works"])
     }
 
     @Test func badValuesWarn() throws {
@@ -144,22 +166,9 @@ import Testing
             [appearance]
             accent = "purple"
             density = "huge"
-
-            [bitbucket]
-            enabled = true
             """)
         #expect(c.config.appearance == Appearance())
-        #expect(c.config.bitbucket == nil) // Cloud needs an email
-        #expect(c.issues.count == 3)
-    }
-
-    @Test func dataCenterNeedsNoEmail() throws {
-        let c = try ConfigLoader.parse("""
-            [bitbucket]
-            base_url = "https://stash.example.com/"
-            """)
-        #expect(c.config.bitbucket?.baseURL == "https://stash.example.com")
-        #expect(c.config.bitbucket?.isCloud == false)
+        #expect(c.issues.count == 2)
     }
 
     @Test func defaultConfigStillClean() throws {
@@ -191,18 +200,6 @@ import Testing
 }
 
 @Suite struct ContentIndexTests {
-    @Test func pagesSearchWithSnippets() throws {
-        let index = try ContentIndex(path: nil)
-        try index.savePage(url: "https://a.dev/x", title: "Swift Testing guide", text: "Use #expect to check values in swift-testing.")
-        try index.savePage(url: "https://b.dev/y", title: "Other", text: nil)
-        let hits = try index.search("expect val")
-        #expect(hits.map(\.ref) == ["https://a.dev/x"])
-        #expect(hits[0].snippet.contains("expect"))
-        #expect(try index.fetchedURLs() == ["https://a.dev/x", "https://b.dev/y"])
-        #expect(try index.search("ex").isEmpty)              // too short
-        #expect(try index.search(#"a" OR "b"#).isEmpty)      // FTS syntax stays inert
-    }
-
     @Test func notesFollowTheVault() throws {
         let vault = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: vault.appendingPathComponent(".obsidian"), withIntermediateDirectories: true)
@@ -213,82 +210,11 @@ import Testing
         #expect(try index.syncNotes(vault: vault) == 0) // unchanged
         let hits = try index.search("rollout")
         #expect(hits.map(\.title) == ["Standup"])
-        #expect(hits[0].kind == .note)
+        #expect(hits[0].snippet.contains("rollout"))
+        #expect(try index.search("ro").isEmpty)                // too short
+        #expect(try index.search(#"a" OR "b"#).isEmpty)        // FTS syntax stays inert
         try FileManager.default.removeItem(at: vault.appendingPathComponent("Standup.md"))
         try index.syncNotes(vault: vault)
         #expect(try index.search("rollout").isEmpty)
-    }
-
-    @Test func fetchPolicy() {
-        #expect(PageText.shouldFetch("https://developer.apple.com/documentation/appkit"))
-        #expect(!PageText.shouldFetch("https://example.com/reset-password"))
-        #expect(!PageText.shouldFetch("https://example.com/page?id=1"))
-        #expect(!PageText.shouldFetch("http://localhost:3000/docs"))
-        #expect(!PageText.shouldFetch("http://192.168.1.2/docs"))
-        #expect(!PageText.shouldFetch("https://mail.google.com/x", excludedHosts: ["google.com"]))
-    }
-
-    @Test func extractsVisibleText() {
-        let html = """
-            <html><head><title>My &amp; Page</title><style>body{}</style></head>
-            <body><script>var x = 1;</script><h1>Hello</h1><p>World&nbsp;&#x41;&#66;</p><!-- hidden --></body></html>
-            """
-        let (title, text) = PageText.extract(html: html)
-        #expect(title == "My & Page")
-        #expect(text == "Hello\nWorld AB")
-    }
-}
-
-@Suite struct BitbucketTests {
-    final class Calls: @unchecked Sendable { var paths: [String] = []; var auth: [String] = [] }
-
-    func client(_ settings: BitbucketSettings, _ responses: [String: String], calls: Calls) -> BitbucketClient {
-        BitbucketClient(settings: settings, token: "tok") { request in
-            let url = request.url!.absoluteString
-            calls.paths.append(url)
-            calls.auth.append(request.value(forHTTPHeaderField: "Authorization") ?? "")
-            guard let body = responses.first(where: { url.contains($0.key) })?.value else { return (Data(), 404) }
-            return (Data(body.utf8), 200)
-        }
-    }
-
-    @Test func cloud() async throws {
-        var s = BitbucketSettings()
-        s.email = "me@example.com"
-        let calls = Calls()
-        let c = client(s, [
-            "/user": #"{"uuid":"{abc}"}"#,
-            "/repositories?role=member": #"{"values":[{"full_name":"team/app","links":{"html":{"href":"https://bitbucket.org/team/app"}},"updated_on":"2024-01-01T12:00:00.123456+00:00"}]}"#,
-            "/pullrequests/%7Babc%7D": #"{"values":[{"id":7,"title":"Fix login","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/7"}},"destination":{"repository":{"full_name":"team/app"}},"author":{"display_name":"Me"}}]}"#,
-            "/repositories/team/app/pullrequests": #"{"values":[{"id":9,"title":"Add cache","links":{"html":{"href":"https://bitbucket.org/team/app/pull-requests/9"}},"author":{"display_name":"Sam"}}]}"#,
-        ], calls: calls)
-        let items = try await c.fetchAll()
-        #expect(items.map(\.kind) == [.reviewPR, .myPR, .repo])
-        #expect(items[1].subtitle == "team/app · #7 · Me")
-        #expect(items[2].updated != nil)
-        #expect(calls.auth.allSatisfy { $0 == "Basic " + Data("me@example.com:tok".utf8).base64EncodedString() })
-    }
-
-    @Test func dataCenter() async throws {
-        var s = BitbucketSettings()
-        s.baseURL = "https://stash.example.com"
-        let calls = Calls()
-        let pr = #"{"values":[{"id":3,"title":"Bump deps","updatedDate":1700000000000,"links":{"self":[{"href":"https://stash.example.com/projects/P/repos/r/pull-requests/3"}]},"toRef":{"repository":{"slug":"r","project":{"key":"P"}}},"author":{"user":{"displayName":"Ana"}}}]}"#
-        let c = client(s, [
-            "role=AUTHOR": #"{"values":[]}"#,
-            "role=REVIEWER": pr,
-            "recent/repos": #"{"values":[{"slug":"r","project":{"key":"P"},"links":{"self":[{"href":"https://stash.example.com/projects/P/repos/r"}]}}]}"#,
-        ], calls: calls)
-        let items = try await c.fetchAll()
-        #expect(items.map(\.title) == ["Bump deps", "P/r"])
-        #expect(items[0].subtitle == "P/r · #3 · Ana")
-        #expect(calls.auth.allSatisfy { $0 == "Bearer tok" })
-    }
-
-    @Test func authFailureIsReadable() async {
-        var s = BitbucketSettings()
-        s.baseURL = "https://stash.example.com"
-        let c = BitbucketClient(settings: s, token: "x") { _ in (Data(), 401) }
-        await #expect(throws: BitbucketClient.Failure.self) { try await c.fetchAll() }
     }
 }

@@ -13,11 +13,15 @@ enum AgentServer {
 
     static func run() -> Int32 {
         let paths = EuclidPaths()
-        let config = (try? ConfigLoader.loadOrCreate(at: paths.configFile))?.config ?? EuclidConfig()
+        // Read-only: never write a default config.toml from here; the app does that on first launch.
+        let config = FileManager.default.fileExists(atPath: paths.configFile.path)
+            ? (try? ConfigLoader.loadOrCreate(at: paths.configFile))?.config ?? EuclidConfig()
+            : EuclidConfig()
         let clips = try? ClipStore(path: paths.historyDatabase.path)
         let content = try? ContentIndex(path: paths.contentDatabase.path)
         var history: [HistoryEntry]?
-        let store = AgentTools.Store(
+        var unreadable: [String] = []
+        var store = AgentTools.Store(
             clips: { try clips?.loadRecent(limit: config.clipboardLimit) ?? [] },
             search: { query, limit in try content?.search(query, limit: limit) ?? [] },
             body: { content?.body(ref: $0) },
@@ -26,10 +30,19 @@ enum AgentServer {
                 if let history { return history }
                 let browsers = config.historyBrowsers
                 let sources = config.historyEnabled ? BrowserHistory.discoverSources().filter { browsers?.contains($0.key) ?? true } : []
-                let loaded = BrowserHistory.dedupe(BrowserHistory.load(sources, limit: config.historyLimit).entries)
+                let (entries, errors) = BrowserHistory.load(sources, limit: config.historyLimit)
+                let loaded = BrowserHistory.dedupe(entries)
+                unreadable = errors.map(\.0.browser)
                 history = loaded
                 return loaded
             })
+        // Launched by an agent, this process has the terminal's permissions, not Euclid's.
+        store.historyNote = {
+            guard !unreadable.isEmpty else { return nil }
+            let safari = unreadable.contains("Safari")
+                ? " Safari history needs Full Disk Access for the app that runs your agent (your terminal or editor)." : ""
+            return "couldn't read \(unreadable.joined(separator: ", ")) history.\(safari)"
+        }
         let tools = AgentTools.make(store, share: config.agentShare)
         MCPServer(tools: tools, name: "euclid", version: Updater.version).serve()
         return 0
