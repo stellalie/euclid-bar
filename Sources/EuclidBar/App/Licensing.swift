@@ -5,7 +5,7 @@ import EuclidCore
 /// (release builds stamp `EuclidLicencePublicKey`), so local builds never nag.
 @MainActor
 final class Licensing {
-    static let buyURL = URL(string: "https://euclid.lgtmworks.com/#pricing")!
+    static let buyURL = URL(string: "https://lgtm.ninja/euclid/#pricing")!
 
     private let file: URL
     private let publicKey: Data?

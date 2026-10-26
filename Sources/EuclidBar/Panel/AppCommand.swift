@@ -42,7 +42,7 @@ struct AppCommand: Equatable {
     static func licence(summary: String, licensed: Bool) -> [AppCommand] {
         guard !licensed else { return [] }
         return [
-            AppCommand(kind: .buyLicence, title: "Buy Euclid Licence", detail: "\(summary) · opens euclid.lgtmworks.com",
+            AppCommand(kind: .buyLicence, title: "Buy Euclid Licence", detail: "\(summary) · opens lgtm.ninja/euclid",
                        symbol: "cart"),
             AppCommand(kind: .enterLicence, title: "Enter Licence Key", detail: summary, symbol: "key"),
         ]

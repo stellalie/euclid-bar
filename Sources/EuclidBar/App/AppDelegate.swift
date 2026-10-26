@@ -149,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Opens the website's feedback form with the app and macOS versions filled in.
     @objc private func sendFeedback() {
         let os = ProcessInfo.processInfo.operatingSystemVersion
-        var url = URLComponents(string: "https://euclid.lgtmworks.com/feedback/")!
+        var url = URLComponents(string: "https://lgtm.ninja/euclid/feedback/")!
         url.queryItems = [
             URLQueryItem(name: "v", value: Updater.version),
             URLQueryItem(name: "os", value: "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"),
