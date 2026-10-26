@@ -28,9 +28,11 @@ in the run's artifacts).
 
 ## Dev builds
 
-Every push to `main` that passes CI also ships: `.github/workflows/dev-release.yml` builds, signs
-and notarizes it and replaces the files on the rolling **`dev`** pre-release in euclid-bar-releases
-(version like `1.1.0-dev.214`). It uses the same secrets as stable releases.
+Every push to `main` that passes CI also ships: Xcode Cloud runs `scripts/dev-release.sh`, which
+builds, signs and notarizes it and replaces the files on the rolling **`dev`** pre-release in
+euclid-bar-releases (version like `1.1.0-dev.214`). It uses the same secrets as stable releases,
+set in the Xcode Cloud workflow (`XcodeCloud/README.md`). **Actions › Dev release › Run workflow**
+does the same on GitHub Actions by hand.
 
 To get them, set this in `config.toml`; the next update check switches feeds:
 

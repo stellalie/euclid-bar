@@ -1,32 +1,26 @@
 name: Dev release
 
-# Every push to main that passes CI → a signed, notarized build on the rolling `dev`
-# pre-release in stellalie/euclid-bar-releases. Apps with `[updates] channel = "dev"` get it.
+# Manual fallback: Xcode Cloud publishes dev builds on each push to main (XcodeCloud/README.md).
+# Rebuilds the current main as a signed, notarized build on the rolling `dev` pre-release in
+# stellalie/euclid-bar-releases. Apps with `[updates] channel = "dev"` get it.
 # Pre-releases never count as "latest", so the stable feed doesn't see these.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
-  workflow_dispatch: # rebuild the current main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-# One build at a time; a newer merge waits and replaces any older waiting one. Cancelling the
-# running build instead would starve the channel whenever merges come faster than notarization.
+# One build at a time, so two runs can't race on the release's files.
 concurrency:
   group: dev-release
   cancel-in-progress: false
 
 jobs:
   dev:
-    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0 # tags for the version, history for the build number
 
       - name: Import signing certificate and notary key
@@ -36,41 +30,12 @@ jobs:
           NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
         run: scripts/ci-signing.sh
 
-      - name: Build, sign, notarize
+      - name: Build, sign, notarize, publish
         env:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
           SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
           LICENCE_PUBLIC_KEY: ${{ vars.LICENCE_PUBLIC_KEY }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-          RELEASE_TAG: dev
-          SKIP_TESTS: 1 # CI just tested this commit
-        run: |
-          # "1.1.0-dev.214": the last release (or Info.plist) plus the build number.
-          BASE="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || /usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
-          VERSION="${BASE#v}-dev.$(git rev-list --count HEAD)"
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          scripts/release.sh "$VERSION"
-
-      - name: Publish to the dev pre-release
-        env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          REPO: stellalie/euclid-bar-releases
-        run: |
-          # Never publish an un-notarized build. Apple's ticket lookup drops connections now and then, so retry.
-          for wait in 10 20 40 0; do
-            xcrun stapler validate build/release/*.dmg && break
-            [[ $wait == 0 ]] && exit 1
-            sleep "$wait"
-          done
-          [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY" >&2; exit 1; }
-          gh release view dev --repo "$REPO" >/dev/null 2>&1 ||
-            gh release create dev --repo "$REPO" --prerelease --target main --title "Dev build" --notes "Rolling build of main."
-          # The new archive goes up before the feed that points at it.
-          gh release upload dev --repo "$REPO" --clobber build/release/*.zip build/release/*.dmg
-          gh release upload dev --repo "$REPO" --clobber build/release/appcast.xml
-          for asset in $(gh release view dev --repo "$REPO" --json assets -q '.assets[].name'); do
-            case "$asset" in appcast.xml|"Euclid-$VERSION".*) ;; *) gh release delete-asset dev "$asset" --repo "$REPO" --yes ;; esac
-          done
-          gh release edit dev --repo "$REPO" --title "Dev build $VERSION" \
-            --notes "Euclid $VERSION, built from main @ $(git rev-parse --short HEAD). For testing: set \`[updates] channel = \"dev\"\` to get these automatically."
+        run: scripts/dev-release.sh
