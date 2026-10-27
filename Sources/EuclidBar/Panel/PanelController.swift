@@ -86,7 +86,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginAnswer = { [unowned plugins] text in plugins.answer(text) }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
-        plugins.onAnswers = { [weak self] text, entries in self?.content.setPluginAnswers(entries, for: text) }
+        plugins.onAnswers = { [weak self] text, entries, reveal in self?.content.setPluginAnswers(entries, for: text, reveal: reveal) }
         plugins.onChange = { [weak self] in
             guard let self else { return }
             self.content.badges = self.plugins.badges
@@ -96,7 +96,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         // Mods: hooks and keys.
         let front = NSWorkspace.shared.frontmostApplication
         frontApp = (front?.localizedName ?? "", front?.bundleIdentifier ?? "")
-        plugins.onEffects = { [weak self] name, effects in self?.apply(effects, from: name) }
+        plugins.onEffects = { [weak self] id, name, effects in self?.apply(effects, from: name, pluginID: id) }
         content.onModKey = { [weak self] pluginID, key, item in
             guard let self else { return }
             let query = self.content.query
@@ -273,10 +273,13 @@ final class PanelController: NSObject, NSWindowDelegate {
                                       baseEnvironment: env, completion: completion)
     }
 
-    /// ↵ on a plugin's item: the first of open, paste, copy, run that it set.
+    /// ↵ on a plugin's item: the first of open, paste, copy, run that it set,
+    /// or, on an “Ask” row, its answer (the panel stays open for the reply).
     private func activate(_ entry: PluginService.Entry) {
         let item = entry.item
-        if let open = item.open {
+        if entry.ask != nil {
+            plugins.ask(entry, query: content.query)
+        } else if let open = item.open {
             hide()
             let expanded = (open as NSString).expandingTildeInPath
             if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
@@ -292,11 +295,19 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     /// What a hook or key script asked for.
-    private func apply(_ effects: [PluginEffect], from pluginName: String) {
+    private func apply(_ effects: [PluginEffect], from pluginName: String, pluginID: String) {
         for e in effects {
             if let text = e.copy {
                 hookCopy = text
                 Paster.copy(text)
+            }
+            if let text = e.paste {
+                hookCopy = text
+                pasteText(text)
+            }
+            if let text = e.show {
+                if !panel.isVisible { show() }
+                plugins.present(text, pluginName: pluginName, pluginID: pluginID, query: content.query)
             }
             if let open = e.open {
                 let expanded = (open as NSString).expandingTildeInPath

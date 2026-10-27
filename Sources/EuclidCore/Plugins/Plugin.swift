@@ -61,6 +61,9 @@ public struct Plugin: Equatable, Sendable {
         public let prefix: String?
         /// Or: runs with the whole query when it matches this regex.
         public let match: String?
+        /// `on_enter = true`: shows “Ask” and runs only when you press ↵, with up to 60 s,
+        /// for slow replies such as an AI model's. Otherwise it runs as you type, with 2 s.
+        public var onEnter = false
 
         /// What the command gets as `$1` for this query, or nil when it doesn't apply.
         public func input(for query: String) -> String? {
@@ -201,8 +204,12 @@ public enum PluginLoader {
 
         if root.contains(key: "answer") {
             if let t = try? root.table(forKey: "answer") {
-                ConfigLoader.warnUnknownKeys(t, known: ["run", "prefix", "match"], in: "[answer]", &issues)
-                var prefix: String?, match: String?
+                ConfigLoader.warnUnknownKeys(t, known: ["run", "prefix", "match", "on_enter"], in: "[answer]", &issues)
+                var prefix: String?, match: String?, onEnter = false
+                if t.contains(key: "on_enter") {
+                    if let b = try? t.bool(forKey: "on_enter") { onEnter = b }
+                    else { issues.append(.warning("answer.on_enter must be true or false")) }
+                }
                 if t.contains(key: "prefix") {
                     if let s = try? t.string(forKey: "prefix"), !s.isEmpty, !s.contains(" ") { prefix = s }
                     else { issues.append(.warning("answer.prefix must be one word, e.g. \"tz\"")) }
@@ -216,7 +223,7 @@ public enum PluginLoader {
                         // Running a command on every keystroke would cost every search; ask for a trigger.
                         issues.append(.warning("[answer] needs a prefix or a match, so it doesn't run on every search; skipped"))
                     } else {
-                        plugin.answer = .init(run: run, prefix: prefix, match: match)
+                        plugin.answer = .init(run: run, prefix: prefix, match: match, onEnter: onEnter)
                     }
                 }
             } else { issues.append(.warning("answer must be a table: [answer]")) }

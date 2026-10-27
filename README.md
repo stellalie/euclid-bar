@@ -68,6 +68,7 @@ with `euclid-bar --plugin add <name>`:
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
+| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -521,7 +522,8 @@ when = ["github"]           # kinds of result, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
 ```
 
-Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}` or, on `open`, `{"query":…}`.
+Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}`, from a key `{"paste":…}` or `{"show":…}`
+(opens the panel with text to read), or, on `open`, `{"query":…}`. Hooks get 10 s, keys 60 s.
 Examples: `euclid-bar --plugin add cleanlinks` (strips tracking parameters from copied links) and
 `euclid-bar --plugin add reveal` (⇧⌘R shows a file in Finder).
 

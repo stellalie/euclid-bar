@@ -10,6 +10,8 @@ final class PluginService {
         let pluginID: String
         let pluginName: String
         let item: PluginItem
+        /// An `on_enter` answer's “Ask” row: ↵ runs it with this input.
+        var ask: String? = nil
     }
 
     struct BadgeState: Equatable {
@@ -27,10 +29,10 @@ final class PluginService {
     /// One-line problem for the footer, or nil.
     var problem: String? { problems.sorted { $0.key < $1.key }.first.map { "⚠︎ \($0.value)" } }
     var onChange: (() -> Void)?
-    /// Answers for `query` arrived (possibly none).
-    var onAnswers: ((_ query: String, [Entry]) -> Void)?
+    /// Answers for `query` arrived (possibly none). `reveal`: select the first and open its preview.
+    var onAnswers: ((_ query: String, [Entry], _ reveal: Bool) -> Void)?
     /// A hook or key printed effects (or failed: a notice saying so).
-    var onEffects: ((_ pluginName: String, [PluginEffect]) -> Void)?
+    var onEffects: ((_ pluginID: String, _ pluginName: String, [PluginEffect]) -> Void)?
     /// Every `[[key]]`, in plugin order.
     var keys: [(pluginID: String, key: Plugin.Key)] { plugins.flatMap { p in p.keys.map { (p.id, $0) } } }
     /// Whether anything listens for `event`, so callers can skip building its input.
@@ -47,6 +49,9 @@ final class PluginService {
     private var running: Set<String> = []
     private var generation = 0
     private var answerTask: Task<Void, Never>?
+    /// What was asked (↵ on an “Ask” row) or shown, kept while the query stays the same,
+    /// so a refresh of the results doesn't drop or restart it.
+    private var asked: (query: String, entries: [Entry])?
     /// Hooks still running; one run of each at a time.
     private var hooksRunning: Set<String> = []
     private let log = Logger(subsystem: "dev.euclid", category: "plugins")
@@ -139,21 +144,30 @@ final class PluginService {
     }
 
     /// Run the answers whose prefix or regex matches, after a short pause in typing.
-    /// Earlier, unfinished answers are stopped.
+    /// Earlier, unfinished answers are stopped. `on_enter` answers only offer an “Ask” row.
     func answer(_ query: String) {
-        answerTask?.cancel()
-        let matching = plugins.compactMap { p in p.answer.flatMap { a in a.input(for: query).map { (p, a, $0) } } }
-        guard !matching.isEmpty else {
-            answerTask = nil
-            onAnswers?(query, [])
+        if let asked, asked.query == query {
+            onAnswers?(query, asked.entries, false)
             return
         }
+        cancelAnswers()
+        let matching = plugins.compactMap { p in p.answer.flatMap { a in a.input(for: query).map { (p, a, $0) } } }
+        let asks = matching.filter { $0.1.onEnter }.map { m in
+            Entry(pluginID: m.0.id, pluginName: m.0.name,
+                  item: PluginItem(title: "Ask: \(m.2)", subtitle: "↵ asks \(m.0.name)", icon: "sparkles"), ask: m.2)
+        }
+        let typed = matching.filter { !$0.1.onEnter }
+        guard !typed.isEmpty else {
+            onAnswers?(query, asks, false)
+            return
+        }
+        if !asks.isEmpty { onAnswers?(query, asks, false) }
         let shell = shell, env = mergedEnvironment, bin = binDirectory
         answerTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
             let results = await withTaskGroup(of: (Int, [Entry], String?).self) { group in
-                for (i, (plugin, answer, input)) in matching.enumerated() {
+                for (i, (plugin, answer, input)) in typed.enumerated() {
                     group.addTask {
                         do {
                             let data = try await PluginRunner.output(of: answer.run, plugin: plugin, query: input, shell: shell,
@@ -171,13 +185,51 @@ final class PluginService {
             }
             guard !Task.isCancelled, let self else { return }
             for (_, _, failure) in results { if let failure { self.log.error("answer: \(failure, privacy: .public)") } }
-            self.onAnswers?(query, results.flatMap(\.1))
+            self.onAnswers?(query, asks + results.flatMap(\.1), false)
         }
+    }
+
+    /// ↵ on an “Ask” row: run its answer (up to 60 s), showing “Thinking…” until it replies.
+    func ask(_ entry: Entry, query: String) {
+        guard let input = entry.ask, let p = plugin(id: entry.pluginID), let answer = p.answer else { return }
+        cancelAnswers()
+        let thinking = Entry(pluginID: p.id, pluginName: p.name,
+                             item: PluginItem(title: "Thinking…", subtitle: input, icon: "ellipsis", id: "thinking"))
+        asked = (query, [thinking])
+        onAnswers?(query, [thinking], false)
+        let shell = shell, env = mergedEnvironment, bin = binDirectory
+        answerTask = Task { [weak self] in
+            var entries: [Entry]
+            do {
+                let data = try await PluginRunner.output(of: answer.run, plugin: p, query: input, shell: shell,
+                                                         pathPrefix: bin, environment: env, timeout: PluginTiming.key)
+                entries = PluginOutput.parse(data).items.map { Entry(pluginID: p.id, pluginName: p.name, item: $0) }
+                if entries.isEmpty { entries = [Entry(pluginID: p.id, pluginName: p.name, item: PluginItem(title: "No answer", icon: "questionmark"))] }
+            } catch {
+                guard !Task.isCancelled else { return }
+                entries = [Entry(pluginID: p.id, pluginName: p.name, item: PluginItem(title: "⚠︎ \(error)", icon: "exclamationmark.triangle"))]
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.asked = (query, entries)
+            self.onAnswers?(query, entries, true)
+        }
+    }
+
+    /// A key's `{"show": …}`: one answer to read, for `query` (the panel was just opened).
+    func present(_ text: String, pluginName: String, pluginID: String, query: String) {
+        cancelAnswers()
+        let title = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
+        let entry = Entry(pluginID: pluginID, pluginName: pluginName,
+                          item: PluginItem(title: title, subtitle: "↵ copies · → reads it all", copy: text, icon: "sparkles",
+                                           preview: text, id: "shown"))
+        asked = (query, [entry])
+        onAnswers?(query, [entry], true)
     }
 
     func cancelAnswers() {
         answerTask?.cancel()
         answerTask = nil
+        asked = nil
     }
 
     /// Run the hooks for `event` in the background, with `input` as `$1`.
@@ -186,7 +238,8 @@ final class PluginService {
             for (i, hook) in p.hooks.enumerated() where hook.event == event {
                 let key = "\(p.id)#\(i)"
                 guard hooksRunning.insert(key).inserted else { continue } // the last one is still going
-                execute(hook.run, plugin: p, input: input, environment: extra, label: "\(p.name) (on \(event.rawValue))") { [weak self] in
+                execute(hook.run, plugin: p, input: input, environment: extra, label: "\(p.name) (on \(event.rawValue))",
+                        timeout: PluginTiming.hook, mayPaste: false) { [weak self] in
                     self?.hooksRunning.remove(key)
                 }
             }
@@ -197,17 +250,17 @@ final class PluginService {
     func runKey(_ key: Plugin.Key, pluginID: String, item: ModItem, query: String) {
         guard let p = plugin(id: pluginID) else { return }
         execute(key.run, plugin: p, input: item.value, environment: item.environment.merging(["EUCLID_SEARCH": query]) { $1 },
-                label: key.name, done: nil)
+                label: key.name, timeout: PluginTiming.key, mayPaste: true, done: nil)
     }
 
     private func execute(_ command: String, plugin p: Plugin, input: String, environment extra: [String: String],
-                         label: String, done: (@MainActor @Sendable () -> Void)?) {
+                         label: String, timeout: Duration, mayPaste: Bool, done: (@MainActor @Sendable () -> Void)?) {
         let shell = shell, env = mergedEnvironment.merging(extra) { $1 }, bin = binDirectory, log = log
         Task.detached(priority: .userInitiated) {
             let result: Result<Data, Error>
             do {
                 result = .success(try await PluginRunner.output(of: command, plugin: p, query: input, shell: shell, pathPrefix: bin,
-                                                                environment: env, timeout: PluginTiming.hook))
+                                                                environment: env, timeout: timeout))
             } catch {
                 result = .failure(error)
             }
@@ -215,11 +268,13 @@ final class PluginService {
                 done?()
                 switch result {
                 case .success(let data):
-                    let effects = PluginEffect.parse(data)
-                    if !effects.isEmpty { self.onEffects?(p.name, effects) }
+                    var effects = PluginEffect.parse(data)
+                    // Only a key you pressed may type into your app or open the panel; a hook fires on its own.
+                    if !mayPaste { effects = effects.map { var e = $0; e.paste = nil; e.show = nil; return e } }
+                    if !effects.isEmpty { self.onEffects?(p.id, p.name, effects) }
                 case .failure(let error):
                     log.error("\(label, privacy: .public): \(String(describing: error), privacy: .public)")
-                    self.onEffects?(p.name, [PluginEffect(notice: "⚠︎ \(label): \(error)")])
+                    self.onEffects?(p.id, p.name, [PluginEffect(notice: "⚠︎ \(label): \(error)")])
                 }
             }
         }
@@ -233,7 +288,9 @@ final class PluginService {
                                       completion: completion)
     }
 
+    /// `$EUCLID_BAR` is this app's binary, so a plugin can call `"$EUCLID_BAR" --ai`.
     private var mergedEnvironment: [String: String] {
         ProcessInfo.processInfo.environment.merging(environment) { $1 }
+            .merging(["EUCLID_BAR": Bundle.main.executablePath ?? ""]) { $1 }
     }
 }
