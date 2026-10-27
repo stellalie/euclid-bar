@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var licensing: Licensing!
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
+    private var crashReportsItem: NSMenuItem!
     private var expansionItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
     private var licenceItems: [NSMenuItem] = []
@@ -26,9 +27,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         licensing = Licensing(file: config.paths.licenceFile)
         do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("setup", "can't install helper scripts: \(error.localizedDescription)")
         }
         do { try PluginGuide.install(in: config.paths.pluginsDirectory) } catch {
             perfLog.error("can't write the plugin guide: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("setup", "can't write the plugin guide: \(error.localizedDescription)")
         }
         let settings = config.current.config
         clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, imagesDirectory: config.paths.clipImagesDirectory,
@@ -73,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboard.ignoredBundleIDs = settings.ignoredApps
         history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         updater.apply(settings.updates)
+        CrashReporter.shared.apply(enabled: settings.crashReports, channel: settings.updates.channel)
+        crashReportsItem.state = settings.crashReports ? .on : .off
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
         panel.configDidChange()
         updateLicence()
@@ -83,7 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .importLauncher, .connectAgents]
+            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .crashReports(enabled: settings.crashReports),
+               .importLauncher, .connectAgents]
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -130,6 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoInstallItem = menu.addItem(withTitle: "Install Updates Automatically", action: #selector(toggleAutoInstall), keyEquivalent: "")
         autoInstallItem.target = self
         autoInstallItem.toolTip = "[updates] auto_install in config.toml"
+        crashReportsItem = menu.addItem(withTitle: "Send Crash Reports", action: #selector(toggleCrashReports), keyEquivalent: "")
+        crashReportsItem.target = self
+        crashReportsItem.toolTip = "Stack and versions only, never your data: [privacy] crash_reports in config.toml"
 
         let licenceSeparator = NSMenuItem.separator()
         licenceSeparator.isHidden = !licensing.isEnabled
@@ -187,6 +196,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    /// Flips `[privacy] crash_reports`.
+    @objc private func toggleCrashReports() {
+        guard let problem = config.set("crash_reports", to: !config.current.config.crashReports, in: "privacy") else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change crash reports"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
     /// Flips `[expansion] enabled`. Turning it on asks macOS for Accessibility if needed.
     @objc private func toggleExpansion() {
         let on = !config.current.config.expansionEnabled
@@ -208,6 +227,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleAutoInstall()
         case .toggleExpansion:
             toggleExpansion()
+        case .toggleCrashReports:
+            toggleCrashReports()
         case .buyLicence:
             panel.hide()
             buyLicence()

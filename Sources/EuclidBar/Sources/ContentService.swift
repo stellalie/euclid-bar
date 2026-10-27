@@ -21,6 +21,7 @@ final class ContentService {
     init(databaseURL: URL) {
         do { index = try ContentIndex(path: databaseURL.path) } catch {
             Logger(subsystem: "dev.euclid", category: "content").error("content index unavailable: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("content", "content index unavailable: \(error.localizedDescription)")
             index = nil
         }
     }

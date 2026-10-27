@@ -53,6 +53,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var agentShare = Set(AgentTools.Source.allCases)
     /// Sparkle auto-update (`[updates]`).
     public var updates = UpdateSettings()
+    /// Send crash reports and internal errors to the developer (`[privacy] crash_reports`). Off by default.
+    public var crashReports = false
     /// Installed plugins, from `<config>/plugins` and `[plugins] paths`, minus `disabled`.
     public var plugins: [Plugin] = []
     /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
@@ -268,7 +270,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "privacy", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -573,6 +575,11 @@ public enum ConfigLoader {
                 if t.contains(key: "auto_install") { issues.append(.warning("updates.auto_install needs updates.check = true")) }
                 config.updates.autoInstall = false
             }
+        }
+
+        if let t = table(root, "privacy", &issues) {
+            warnUnknownKeys(t, known: ["crash_reports"], in: "[privacy]", &issues)
+            if let b = bool(t, "crash_reports", in: "privacy", &issues) { config.crashReports = b }
         }
     }
 
