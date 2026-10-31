@@ -1,0 +1,19 @@
+# Euclid's licence endpoint: https://licences.lgtm.ninja/v1/licence?txn=txn_…
+# Deploy: npm run deploy (then once each: npx wrangler@4 secret put PADDLE_API_KEY / LICENCE_PRIVATE_KEY)
+name = "euclid-licences"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "licences.lgtm.ninja", custom_domain = true }]
+
+[vars]
+PADDLE_API = "https://api.paddle.com"
+ALLOWED_ORIGIN = "https://lgtm.ninja"
+# Paddle price → edition. Seats are the line's quantity.
+PRICES = '{"pri_01m5q75xfm3ptqwwj80e6spnb9":"personal","pri_01m5q73hw0zjq6vn24z020nwmd":"business"}'
+
+# At most 10 lookups a minute from one address.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }
