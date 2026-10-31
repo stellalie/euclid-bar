@@ -1,7 +1,8 @@
 # Crash reports and usage ping
 
-Opt-in only: `[privacy] crash_reports = true` in config.toml, or **Send Crash Reports** in the menu bar icon
-or in search. Off by default; nothing is sent until the user turns it on, and nothing from before.
+Opt-in: `[privacy] crash_reports = true` in config.toml, or **Send Crash Reports** in the menu bar icon
+or in search. Off until the user says yes: on first launch Euclid asks once, with crash reports and the usage ping
+both pre-ticked. Nothing is sent before that, and nothing from before it was turned on.
 
 ## What's sent
 
@@ -44,7 +45,7 @@ A daily Claude routine reads open `crash-report` issues and, for each one withou
 
 ## Usage ping
 
-Opt-in only, off by default: `[privacy] usage_ping = true`, or **Send Anonymous Usage Ping** in the menu bar
+Opt-in, offered pre-ticked in the first-launch prompt: `[privacy] usage_ping = true`, or **Send Anonymous Usage Ping** in the menu bar
 icon or in search. Counts how many people use Euclid.
 
 - Sent once per UTC day while Euclid runs (`UsagePing`, `Sources/EuclidCore/Reports/UsagePing.swift`):

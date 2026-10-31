@@ -263,7 +263,7 @@ check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
 channel      = "stable"                       # "dev": a build of every change, for testing
 
-[privacy]
+[privacy]                                     # asked once on first launch, both pre-ticked
 crash_reports = false                         # true: send crashes and internal errors so they get fixed
                                               # (stack + versions only; copies in ~/Library/Logs/Euclid/Reports)
 usage_ping    = false                         # true: a daily anonymous "in use" ping (random ID + versions),
