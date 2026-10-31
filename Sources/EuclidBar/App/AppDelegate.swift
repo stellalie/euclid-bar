@@ -65,6 +65,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, andSelector: #selector(handleURL(_:reply:)),
             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL)
         )
+        askAboutReports()
+    }
+
+    /// Once per Mac: offer crash reports and the usage ping, both ticked. Nothing is sent until this is answered.
+    private func askAboutReports() {
+        let asked = "askedAboutReports"
+        guard !UserDefaults.standard.bool(forKey: asked) else { return }
+        UserDefaults.standard.set(true, forKey: asked)
+        let settings = config.current.config
+        guard !settings.crashReports || !settings.usagePing else { return }
+
+        let crash = NSButton(checkboxWithTitle: "Send crash reports: the crashed code's stack and versions", target: nil, action: nil)
+        let ping = NSButton(checkboxWithTitle: "Send a daily usage ping: a random install ID and versions", target: nil, action: nil)
+        crash.state = .on
+        ping.state = .on
+        let boxes = NSStackView(views: [crash, ping])
+        boxes.orientation = .vertical
+        boxes.alignment = .leading
+        boxes.setFrameSize(boxes.fittingSize)
+
+        let alert = NSAlert()
+        alert.messageText = "Help make Euclid better?"
+        alert.informativeText = "Both are anonymous: never your searches, clipboard, files or config. "
+            + "Change them any time in the menu bar icon, or under [privacy] in config.toml."
+        alert.accessoryView = boxes
+        alert.addButton(withTitle: "Continue")
+        NSApp.activate()
+        alert.runModal()
+        for (key, box, current) in [("crash_reports", crash, settings.crashReports), ("usage_ping", ping, settings.usagePing)] {
+            let on = box.state == .on
+            if on != current, let problem = config.set(key, to: on, in: "privacy") {
+                perfLog.error("can't save [privacy] \(key, privacy: .public): \(problem, privacy: .public)")
+            }
+        }
     }
 
     /// Apply everything that can change live. (clipboard.limit applies on next launch.)
