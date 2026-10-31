@@ -1,7 +1,7 @@
 // node --test server/reports/test
 import assert from "node:assert/strict";
 import { test, beforeEach } from "node:test";
-import worker, { issueTitle, validate } from "../src/index.js";
+import worker, { issueTitle, validate } from "../src/reports.js";
 
 const report = {
   kind: "crash",

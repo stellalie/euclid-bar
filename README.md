@@ -266,6 +266,8 @@ channel      = "stable"                       # "dev": a build of every change, 
 [privacy]
 crash_reports = false                         # true: send crashes and internal errors so they get fixed
                                               # (stack + versions only; copies in ~/Library/Logs/Euclid/Reports)
+usage_ping    = false                         # true: a daily anonymous "in use" ping (random ID + versions),
+                                              # so installs can be counted
 
 [expansion]
 enabled = true                                # snippet keywords expand in any app (needs Accessibility)

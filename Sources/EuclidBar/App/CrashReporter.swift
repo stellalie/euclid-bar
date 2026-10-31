@@ -97,16 +97,16 @@ final class CrashReporter {
         }.resume()
     }
 
-    private static var build: String {
+    static var build: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "dev"
     }
 
-    private static var os: String {
+    static var os: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
     }
 
-    private static var arch: String {
+    static var arch: String {
         #if arch(arm64)
         return "arm64"
         #else

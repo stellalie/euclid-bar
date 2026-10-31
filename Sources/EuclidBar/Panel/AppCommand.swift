@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleCrashReports, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleCrashReports, toggleUsagePing, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
@@ -32,6 +32,12 @@ struct AppCommand: Equatable {
     static func crashReports(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleCrashReports, title: "Send Crash Reports", detail: "Stack and versions only, never your data · [privacy] crash_reports",
                    symbol: "ladybug", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Opt-in daily anonymous ping (`[privacy] usage_ping`).
+    static func usagePing(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleUsagePing, title: "Send Anonymous Usage Ping", detail: "Random install ID and versions, once a day · [privacy] usage_ping",
+                   symbol: "chart.bar", accessory: enabled ? "On" : "Off")
     }
 
     /// The update commands for the current `[updates]` settings.
