@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleCrashReports, toggleUsagePing, buyLicence, enterLicence, connectAgents, permissions }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleOpenAtLogin, toggleCrashReports, toggleUsagePing, buyLicence, enterLicence, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
@@ -23,6 +23,12 @@ struct AppCommand: Equatable {
     static func expansion(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleExpansion, title: "Text Expansion", detail: "Type a snippet keyword in any app · [expansion] enabled",
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Start at login (`[startup] open_at_login`), as macOS has it now.
+    static func openAtLogin(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleOpenAtLogin, title: "Open at Login", detail: "Start Euclid when you log in · [startup] open_at_login",
+                   symbol: "power", accessory: enabled ? "On" : "Off")
     }
 
     /// Opt-in crash and error reports (`[privacy] crash_reports`).

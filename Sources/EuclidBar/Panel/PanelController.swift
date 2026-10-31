@@ -28,6 +28,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     var onCommand: ((AppCommand) -> Void)?
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
+    /// Shown in the footer the next time the panel opens, once (the first-launch welcome).
+    var welcome: String?
     /// "412 opens on 21 days · 120 apps, 38 actions" for the last 30 days, or nil before any use.
     /// Shown after the search speed while unregistered.
     var licenceNote: String {
@@ -379,7 +381,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         plugins.refreshIfStale()
         contentSearch.syncNotesIfStale()
         content.prepareForShow() // sizes the panel for its first results
-        if let message = reminder?() { content.notice = message }
+        if let message = welcome {
+            content.notice = message
+            welcome = nil
+        } else if let message = reminder?() {
+            content.notice = message
+        }
         if plugins.hasHooks(for: .open) { plugins.fire(.open, input: frontApp.name, environment: ["EUCLID_APP_ID": frontApp.id]) }
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
