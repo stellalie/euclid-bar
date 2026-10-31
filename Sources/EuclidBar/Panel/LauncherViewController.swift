@@ -804,7 +804,8 @@ final class LauncherViewController: NSViewController {
             case .plugin(let e)?:
                 let i = e.item
                 list.append(H(key: "↵", label: e.ask != nil ? "Ask" : i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
-            case .command(let c)? where c.kind == .toggleAutoInstall || c.kind == .toggleExpansion || c.kind == .toggleCrashReports: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
+            case .command(let c)? where c.kind == .toggleAutoInstall || c.kind == .toggleExpansion || c.kind == .toggleCrashReports
+                || c.kind == .toggleUsagePing: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))
             }

@@ -88,8 +88,13 @@ channel      = "stable"          # "dev": a build of every change merged to main
 # Sent: app and macOS version, the crashed code's stack, the error message. Never your searches,
 # clipboard, files, config or anything that identifies you. A copy of each is kept in
 # ~/Library/Logs/Euclid/Reports, so you can read exactly what was sent.
+#
+# usage_ping: once a day, send a random install ID (made when you turn it on, forgotten when you
+# turn it off), the app and macOS version, so the developer can count how many people use Euclid.
+# Nothing else. The last one sent is in ~/Library/Logs/Euclid/Reports/usage-ping.json.
 [privacy]
 crash_reports = false
+usage_ping    = false
 
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.

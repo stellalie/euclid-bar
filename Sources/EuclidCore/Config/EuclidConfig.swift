@@ -55,6 +55,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var updates = UpdateSettings()
     /// Send crash reports and internal errors to the developer (`[privacy] crash_reports`). Off by default.
     public var crashReports = false
+    /// Send a once-a-day anonymous "in use" ping, so installs can be counted (`[privacy] usage_ping`). Off by default.
+    public var usagePing = false
     /// Installed plugins, from `<config>/plugins` and `[plugins] paths`, minus `disabled`.
     public var plugins: [Plugin] = []
     /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
@@ -578,8 +580,9 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "privacy", &issues) {
-            warnUnknownKeys(t, known: ["crash_reports"], in: "[privacy]", &issues)
+            warnUnknownKeys(t, known: ["crash_reports", "usage_ping"], in: "[privacy]", &issues)
             if let b = bool(t, "crash_reports", in: "privacy", &issues) { config.crashReports = b }
+            if let b = bool(t, "usage_ping", in: "privacy", &issues) { config.usagePing = b }
         }
     }
 

@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
     private var crashReportsItem: NSMenuItem!
+    private var usagePingItem: NSMenuItem!
     private var expansionItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
     private var licenceItems: [NSMenuItem] = []
@@ -78,6 +79,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updater.apply(settings.updates)
         CrashReporter.shared.apply(enabled: settings.crashReports, channel: settings.updates.channel)
         crashReportsItem.state = settings.crashReports ? .on : .off
+        UsagePinger.shared.apply(enabled: settings.usagePing, channel: settings.updates.channel)
+        usagePingItem.state = settings.usagePing ? .on : .off
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
         panel.configDidChange()
         updateLicence()
@@ -89,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
             + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .crashReports(enabled: settings.crashReports),
-               .importLauncher, .connectAgents]
+               .usagePing(enabled: settings.usagePing), .importLauncher, .connectAgents]
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -139,6 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         crashReportsItem = menu.addItem(withTitle: "Send Crash Reports", action: #selector(toggleCrashReports), keyEquivalent: "")
         crashReportsItem.target = self
         crashReportsItem.toolTip = "Stack and versions only, never your data: [privacy] crash_reports in config.toml"
+        usagePingItem = menu.addItem(withTitle: "Send Anonymous Usage Ping", action: #selector(toggleUsagePing), keyEquivalent: "")
+        usagePingItem.target = self
+        usagePingItem.toolTip = "Once a day: a random install ID and versions, so installs can be counted: [privacy] usage_ping in config.toml"
 
         let licenceSeparator = NSMenuItem.separator()
         licenceSeparator.isHidden = !licensing.isEnabled
@@ -206,6 +212,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    /// Flips `[privacy] usage_ping`.
+    @objc private func toggleUsagePing() {
+        guard let problem = config.set("usage_ping", to: !config.current.config.usagePing, in: "privacy") else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change the usage ping"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
     /// Flips `[expansion] enabled`. Turning it on asks macOS for Accessibility if needed.
     @objc private func toggleExpansion() {
         let on = !config.current.config.expansionEnabled
@@ -229,6 +245,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleExpansion()
         case .toggleCrashReports:
             toggleCrashReports()
+        case .toggleUsagePing:
+            toggleUsagePing()
         case .buyLicence:
             panel.hide()
             buyLicence()
