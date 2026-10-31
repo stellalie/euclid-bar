@@ -98,19 +98,6 @@ final class ConfigService {
         return nil
     }
 
-    /// Add text to the end of config.toml (imported snippets and actions), then reload.
-    func append(_ text: String) -> String? {
-        let file = paths.configFile
-        guard let existing = try? String(contentsOf: file, encoding: .utf8) else { return "can't read \(file.path)" }
-        let separator = existing.isEmpty || existing.hasSuffix("\n") ? "" : "\n"
-        // In place, not atomically: a symlinked config.toml (dotfiles) stays a symlink.
-        do { try (existing + separator + text).write(to: file, atomically: false, encoding: .utf8) } catch {
-            return "can't write \(file.path): \(error.localizedDescription)"
-        }
-        reload()
-        return nil
-    }
-
     private func scheduleReload() {
         pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in
