@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var crashReportsItem: NSMenuItem!
     private var usagePingItem: NSMenuItem!
     private var expansionItem: NSMenuItem!
+    private var openAtLoginItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
     private var licenceItems: [NSMenuItem] = []
 
@@ -64,21 +65,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, andSelector: #selector(handleURL(_:reply:)),
             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL)
         )
-        askAboutReports()
+        firstLaunch()
     }
 
-    /// Once per Mac: offer crash reports and the usage ping, both ticked. Nothing is sent until this is answered.
-    private func askAboutReports() {
+    /// Once per Mac: ask about reports, then open the panel with a welcome, so a menu-bar-only app
+    /// doesn't start silently and people learn the hotkey.
+    private func firstLaunch() {
         let asked = "askedAboutReports"
         guard !UserDefaults.standard.bool(forKey: asked) else { return }
         UserDefaults.standard.set(true, forKey: asked)
+        askAboutReports()
+        let hotkey = config.current.config.hotkey?.symbols ?? "⌥Space"
+        panel.welcome = "Welcome! Press \(hotkey) in any app to open Euclid. Settings: menu bar icon → Edit Config…"
+        NSApp.activate()
+        panel.show()
+    }
+
+    /// Offer crash reports and the usage ping, both unticked: nothing is sent unless you tick them.
+    private func askAboutReports() {
         let settings = config.current.config
         guard !settings.crashReports || !settings.usagePing else { return }
 
         let crash = NSButton(checkboxWithTitle: "Send crash reports: the crashed code's stack and versions", target: nil, action: nil)
         let ping = NSButton(checkboxWithTitle: "Send a daily usage ping: a random install ID and versions", target: nil, action: nil)
-        crash.state = .on
-        ping.state = .on
+        crash.state = settings.crashReports ? .on : .off
+        ping.state = settings.usagePing ? .on : .off
         let boxes = NSStackView(views: [crash, ping])
         boxes.orientation = .vertical
         boxes.alignment = .leading
@@ -115,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UsagePinger.shared.apply(enabled: settings.usagePing, channel: settings.updates.channel)
         usagePingItem.state = settings.usagePing ? .on : .off
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
+        if let problem = LoginItem.apply(settings.openAtLogin) { CrashReporter.error("login-item", problem) }
         panel.configDidChange()
         updateLicence()
     }
@@ -124,8 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .crashReports(enabled: settings.crashReports),
+            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled)]
+            + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled)] : [])
+            + [.crashReports(enabled: settings.crashReports),
                .usagePing(enabled: settings.usagePing), .connectAgents]
+        openAtLoginItem.state = LoginItem.isEnabled ? .on : .off
+        openAtLoginItem.isEnabled = LoginItem.isAvailable
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -162,6 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         expansionItem = menu.addItem(withTitle: "Expand Snippet Keywords", action: #selector(toggleExpansion), keyEquivalent: "")
         expansionItem.target = self
         expansionItem.toolTip = "Type a snippet's keyword in any app: [expansion] enabled in config.toml"
+        openAtLoginItem = menu.addItem(withTitle: "Open at Login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
+        openAtLoginItem.target = self
+        openAtLoginItem.toolTip = "Start Euclid when you log in: [startup] open_at_login in config.toml"
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: updater.isEnabled ? "Updates · \(Updater.version)" : "Updates · local build"))
@@ -254,6 +273,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    /// Flips what macOS has now (it may differ from config.toml if switched in System Settings), and saves it to
+    /// `[startup] open_at_login`.
+    @objc private func toggleOpenAtLogin() {
+        let on = !LoginItem.isEnabled
+        let problem = LoginItem.apply(on, force: true) ?? config.set("open_at_login", to: on, in: "startup")
+        updateLicence()
+        guard let problem else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change Open at Login"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
     /// Flips `[expansion] enabled`. Turning it on asks macOS for Accessibility if needed.
     @objc private func toggleExpansion() {
         let on = !config.current.config.expansionEnabled
@@ -275,6 +308,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleAutoInstall()
         case .toggleExpansion:
             toggleExpansion()
+        case .toggleOpenAtLogin:
+            toggleOpenAtLogin()
         case .toggleCrashReports:
             toggleCrashReports()
         case .toggleUsagePing:

@@ -17,6 +17,10 @@ hotkey = "opt+space"
 # An app ("Sublime Text", "Zed", "Visual Studio Code") or a command ("subl", "code", "zed").
 # editor = "Sublime Text"
 
+# Start Euclid when you log in, so the hotkey works after a restart. Also in the menu bar icon.
+[startup]
+open_at_login = true
+
 [clipboard]
 limit = 5000                 # entries kept
 ignore_apps = []             # bundle IDs never recorded, e.g. ["com.1password.1password"]
