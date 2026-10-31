@@ -354,17 +354,6 @@ Palettes come from [Dracula](https://draculatheme.com) (MIT), [Nord](https://www
 [Catppuccin](https://catppuccin.com) (MIT), [Gruvbox](https://github.com/morhetz/gruvbox) (MIT, Pavel Pertsev),
 [Solarized](https://ethanschoonover.com/solarized/) (MIT, Ethan Schoonover) and Monokai (Wimer Hazenberg). Thank you.
 
-### Coming from Raycast or Alfred
-
-Menu bar 🧠 › **Import from Raycast or Alfred…** (or type `import`), then pick your exports:
-
-- Raycast: *Snippets › Export Snippets* and *Quicklinks › Export Quicklinks* (`.json`)
-- Alfred: *Features › Snippets ›* right-click a collection › *Export* (`.alfredsnippets`)
-
-Snippets become `[[snippet]]` blocks and web quicklinks become `[[action]]`s, appended to
-`config.toml`. Placeholders carry over (`{date}`, `{time}`, `{clipboard}`, `{argument}` → your query).
-From a terminal: `euclid-bar --import snippets.json >> ~/.config/euclid/config.toml`.
-
 ### Share a config with your team
 
 Put the team's actions, snippets and plugin settings in a TOML file in a repo everyone clones,

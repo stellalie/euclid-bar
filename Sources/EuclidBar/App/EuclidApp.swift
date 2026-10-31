@@ -21,14 +21,6 @@ enum EuclidApp {
         if let i = CommandLine.arguments.firstIndex(of: "--issue-licence") {
             exit(LicenceTool.issue(Array(CommandLine.arguments.dropFirst(i + 1))))
         }
-        if let i = CommandLine.arguments.firstIndex(of: "--import") {
-            // Print TOML for Raycast/Alfred exports, e.g. `--import snippets.json >> config.toml`.
-            let urls = CommandLine.arguments.dropFirst(i + 1).map { URL(fileURLWithPath: $0) }
-            let (result, source) = LauncherImporter.read(urls, existing: [])
-            for line in result.skipped { FileHandle.standardError.write(Data("skipped: \(line)\n".utf8)) }
-            print(LauncherImport.toml(result, source: source), terminator: "")
-            exit(result.isEmpty ? 1 : 0)
-        }
         if let i = CommandLine.arguments.firstIndex(of: "--render-icon") {
             _ = NSApplication.shared
             let out = CommandLine.arguments.dropFirst(i + 1).first ?? "Resources/AppIcon.icns"
