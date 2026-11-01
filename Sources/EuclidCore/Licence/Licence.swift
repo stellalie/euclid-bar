@@ -61,11 +61,12 @@ public struct Licence: Codable, Equatable, Sendable {
     }
 }
 
-/// The 30-day evaluation. It never locks anything: once it's over, Euclid shows that it's
-/// unregistered and reminds you now and then.
+/// Personal use is free, forever: with `betaEnds` nil every install is `.free` and nothing nags.
+/// Business licences are an honour system for work use. The 30-day evaluation below only applies
+/// if `betaEnds` is ever set; it never locks anything, it just shows "Unregistered" and reminds.
 public enum Evaluation {
-    /// Personal use is free while this is nil. Set it at launch: anyone who first ran Euclid
-    /// before then keeps Personal free for good, and later installs get the trial.
+    /// nil: Personal is free for everyone (the current model). A date would give installs after it
+    /// the trial, while earlier installs keep Personal free.
     public static let betaEnds: Date? = nil
     public static let days = 30
     /// The gap between reminders once the trial is over.
@@ -73,15 +74,15 @@ public enum Evaluation {
 
     public enum Status: Equatable, Sendable {
         case licensed(Licence)
-        /// Free Personal use: installed during the beta.
-        case beta
+        /// Free Personal use.
+        case free
         case trial(daysLeft: Int)
         case unregistered
     }
 
     public static func status(_ state: LicenceState, publicKey: Data, betaEnds: Date? = betaEnds, now: Date = Date()) -> Status {
         if let key = state.key, let licence = try? Licence.verify(key, publicKey: publicKey) { return .licensed(licence) }
-        if betaEnds.map({ state.firstRun < $0 }) ?? true { return .beta }
+        if betaEnds.map({ state.firstRun < $0 }) ?? true { return .free }
         let used = Int(now.timeIntervalSince(state.firstRun) / 86_400)
         return used < days ? .trial(daysLeft: days - max(used, 0)) : .unregistered
     }

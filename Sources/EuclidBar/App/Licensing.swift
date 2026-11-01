@@ -1,7 +1,7 @@
 import AppKit
 import EuclidCore
 
-/// The licence and the 30-day evaluation. Off unless the bundle carries the licence public key
+/// The licence (Business for work use; Personal is free) and the optional evaluation. Off unless the bundle carries the licence public key
 /// (release builds stamp `EuclidLicencePublicKey`), so local builds never nag.
 @MainActor
 final class Licensing {
@@ -29,7 +29,7 @@ final class Licensing {
     var summary: String {
         switch status {
         case .licensed(let l): "\(l.name) · \(l.edition == .business ? "Business, \(l.seats) seat\(l.seats == 1 ? "" : "s")" : "Personal")"
-        case .beta: "Free beta · Personal"
+        case .free: "Personal · free forever"
         case .trial(let days): "Trial · \(days) day\(days == 1 ? "" : "s") left"
         case .unregistered: "Unregistered"
         }
