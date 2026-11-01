@@ -17,6 +17,10 @@ hotkey = "opt+space"
 # An app ("Sublime Text", "Zed", "Visual Studio Code") or a command ("subl", "code", "zed").
 # editor = "Sublime Text"
 
+# Start Euclid when you log in, so the hotkey works after a restart. Also in the menu bar icon.
+[startup]
+open_at_login = true
+
 [clipboard]
 limit = 5000                 # entries kept
 ignore_apps = []             # bundle IDs never recorded, e.g. ["com.1password.1password"]
@@ -83,6 +87,20 @@ share = ["clipboard", "notes", "history"]
 check        = true              # look for a new version once a day
 auto_install = true              # download it in the background, install on quit
 channel      = "stable"          # "dev": a build of every change merged to main, for testing
+
+# Euclid asks about both of these once, on first launch. Your answer is saved here.
+#
+# Send crash reports and internal errors to the Euclid developer, so they get fixed.
+# Sent: app and macOS version, the crashed code's stack, the error message. Never your searches,
+# clipboard, files, config or anything that identifies you. A copy of each is kept in
+# ~/Library/Logs/Euclid/Reports, so you can read exactly what was sent.
+#
+# usage_ping: once a day, send a random install ID (made when you turn it on, forgotten when you
+# turn it off), the app and macOS version, so the developer can count how many people use Euclid.
+# Nothing else. The last one sent is in ~/Library/Logs/Euclid/Reports/usage-ping.json.
+[privacy]
+crash_reports = false
+usage_ping    = false
 
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.

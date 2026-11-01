@@ -1,0 +1,35 @@
+# Euclid's crash report and usage ping endpoints: https://reports.lgtm.ninja/v1/report, /v1/ping
+# Deploy: npm run deploy (then once: npx wrangler@4 secret put GITHUB_TOKEN)
+name = "euclid-reports"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "reports.lgtm.ninja", custom_domain = true }]
+
+[vars]
+GITHUB_REPO = "stellalie/euclid-bar"
+
+# At most 5 reports a minute from one address.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+# At most 10 usage pings a minute from one address (each install sends one a day).
+[[ratelimits]]
+name = "PING_LIMITER"
+namespace_id = "1002"
+simple = { limit = 10, period = 60 }
+
+# Usage pings live in one SQLite Durable Object (see src/pings.js).
+[[durable_objects.bindings]]
+name = "PINGS"
+class_name = "Pings"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Pings"]
+
+# Hourly: write the usage counts to the "Install stats" issue.
+[triggers]
+crons = ["17 * * * *"]

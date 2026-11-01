@@ -1,7 +1,6 @@
 import AppKit
 import EuclidCore
 import KeyboardShortcuts
-import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -15,7 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var licensing: Licensing!
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
+    private var crashReportsItem: NSMenuItem!
+    private var usagePingItem: NSMenuItem!
     private var expansionItem: NSMenuItem!
+    private var openAtLoginItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
     private var licenceItems: [NSMenuItem] = []
 
@@ -26,9 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         licensing = Licensing(file: config.paths.licenceFile)
         do { try ConfigLoader.installDefaultScripts(in: config.paths.binDirectory) } catch {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("setup", "can't install helper scripts: \(error.localizedDescription)")
         }
         do { try PluginGuide.install(in: config.paths.pluginsDirectory) } catch {
             perfLog.error("can't write the plugin guide: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("setup", "can't write the plugin guide: \(error.localizedDescription)")
         }
         let settings = config.current.config
         clipboard = ClipboardService(databaseURL: config.paths.historyDatabase, imagesDirectory: config.paths.clipImagesDirectory,
@@ -61,6 +65,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self, andSelector: #selector(handleURL(_:reply:)),
             forEventClass: AEEventClass(kInternetEventClass), andEventID: AEEventID(kAEGetURL)
         )
+        firstLaunch()
+    }
+
+    /// Once per Mac: ask about reports, then open the panel with a welcome, so a menu-bar-only app
+    /// doesn't start silently and people learn the hotkey.
+    private func firstLaunch() {
+        let asked = "askedAboutReports"
+        guard !UserDefaults.standard.bool(forKey: asked) else { return }
+        UserDefaults.standard.set(true, forKey: asked)
+        askAboutReports()
+        let hotkey = config.current.config.hotkey?.symbols ?? "⌥Space"
+        panel.welcome = "Welcome! Press \(hotkey) in any app to open Euclid. Settings: menu bar icon → Edit Config…"
+        NSApp.activate()
+        panel.show()
+    }
+
+    /// Offer crash reports and the usage ping, both unticked: nothing is sent unless you tick them.
+    private func askAboutReports() {
+        let settings = config.current.config
+        guard !settings.crashReports || !settings.usagePing else { return }
+
+        let crash = NSButton(checkboxWithTitle: "Send crash reports: the crashed code's stack and versions", target: nil, action: nil)
+        let ping = NSButton(checkboxWithTitle: "Send a daily usage ping: a random install ID and versions", target: nil, action: nil)
+        crash.state = settings.crashReports ? .on : .off
+        ping.state = settings.usagePing ? .on : .off
+        let boxes = NSStackView(views: [crash, ping])
+        boxes.orientation = .vertical
+        boxes.alignment = .leading
+        boxes.setFrameSize(boxes.fittingSize)
+
+        let alert = NSAlert()
+        alert.messageText = "Help make Euclid better?"
+        alert.informativeText = "Both are anonymous: never your searches, clipboard, files or config. "
+            + "Change them any time in the menu bar icon, or under [privacy] in config.toml."
+        alert.accessoryView = boxes
+        alert.addButton(withTitle: "Continue")
+        NSApp.activate()
+        alert.runModal()
+        for (key, box, current) in [("crash_reports", crash, settings.crashReports), ("usage_ping", ping, settings.usagePing)] {
+            let on = box.state == .on
+            if on != current, let problem = config.set(key, to: on, in: "privacy") {
+                perfLog.error("can't save [privacy] \(key, privacy: .public): \(problem, privacy: .public)")
+            }
+        }
     }
 
     /// Apply everything that can change live. (clipboard.limit applies on next launch.)
@@ -73,7 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboard.ignoredBundleIDs = settings.ignoredApps
         history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         updater.apply(settings.updates)
+        CrashReporter.shared.apply(enabled: settings.crashReports, channel: settings.updates.channel)
+        crashReportsItem.state = settings.crashReports ? .on : .off
+        UsagePinger.shared.apply(enabled: settings.usagePing, channel: settings.updates.channel)
+        usagePingItem.state = settings.usagePing ? .on : .off
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
+        if let problem = LoginItem.apply(settings.openAtLogin) { CrashReporter.error("login-item", problem) }
         panel.configDidChange()
         updateLicence()
     }
@@ -83,7 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = config.current.config
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
-            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled), .importLauncher, .connectAgents]
+            + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled)]
+            + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled)] : [])
+            + [.crashReports(enabled: settings.crashReports),
+               .usagePing(enabled: settings.usagePing), .connectAgents]
+        openAtLoginItem.state = LoginItem.isEnabled ? .on : .off
+        openAtLoginItem.isEnabled = LoginItem.isAvailable
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
         licenceHeader.title = "Licence · \(licensing.summary)"
@@ -115,12 +173,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
-        menu.addItem(withTitle: "Import from Raycast or Alfred…", action: #selector(importLauncher), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
         expansionItem = menu.addItem(withTitle: "Expand Snippet Keywords", action: #selector(toggleExpansion), keyEquivalent: "")
         expansionItem.target = self
         expansionItem.toolTip = "Type a snippet's keyword in any app: [expansion] enabled in config.toml"
+        openAtLoginItem = menu.addItem(withTitle: "Open at Login", action: #selector(toggleOpenAtLogin), keyEquivalent: "")
+        openAtLoginItem.target = self
+        openAtLoginItem.toolTip = "Start Euclid when you log in: [startup] open_at_login in config.toml"
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: updater.isEnabled ? "Updates · \(Updater.version)" : "Updates · local build"))
@@ -130,6 +190,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoInstallItem = menu.addItem(withTitle: "Install Updates Automatically", action: #selector(toggleAutoInstall), keyEquivalent: "")
         autoInstallItem.target = self
         autoInstallItem.toolTip = "[updates] auto_install in config.toml"
+        crashReportsItem = menu.addItem(withTitle: "Send Crash Reports", action: #selector(toggleCrashReports), keyEquivalent: "")
+        crashReportsItem.target = self
+        crashReportsItem.toolTip = "Stack and versions only, never your data: [privacy] crash_reports in config.toml"
+        usagePingItem = menu.addItem(withTitle: "Send Anonymous Usage Ping", action: #selector(toggleUsagePing), keyEquivalent: "")
+        usagePingItem.target = self
+        usagePingItem.toolTip = "Once a day: a random install ID and versions, so installs can be counted: [privacy] usage_ping in config.toml"
 
         let licenceSeparator = NSMenuItem.separator()
         licenceSeparator.isHidden = !licensing.isEnabled
@@ -187,6 +253,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
+    /// Flips `[privacy] crash_reports`.
+    @objc private func toggleCrashReports() {
+        guard let problem = config.set("crash_reports", to: !config.current.config.crashReports, in: "privacy") else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change crash reports"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
+    /// Flips `[privacy] usage_ping`.
+    @objc private func toggleUsagePing() {
+        guard let problem = config.set("usage_ping", to: !config.current.config.usagePing, in: "privacy") else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change the usage ping"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
+    /// Flips what macOS has now (it may differ from config.toml if switched in System Settings), and saves it to
+    /// `[startup] open_at_login`.
+    @objc private func toggleOpenAtLogin() {
+        let on = !LoginItem.isEnabled
+        let problem = LoginItem.apply(on, force: true) ?? config.set("open_at_login", to: on, in: "startup")
+        updateLicence()
+        guard let problem else { return }
+        let alert = NSAlert()
+        alert.messageText = "Couldn't change Open at Login"
+        alert.informativeText = problem
+        NSApp.activate()
+        alert.runModal()
+    }
+
     /// Flips `[expansion] enabled`. Turning it on asks macOS for Accessibility if needed.
     @objc private func toggleExpansion() {
         let on = !config.current.config.expansionEnabled
@@ -208,15 +308,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleAutoInstall()
         case .toggleExpansion:
             toggleExpansion()
+        case .toggleOpenAtLogin:
+            toggleOpenAtLogin()
+        case .toggleCrashReports:
+            toggleCrashReports()
+        case .toggleUsagePing:
+            toggleUsagePing()
         case .buyLicence:
             panel.hide()
             buyLicence()
         case .enterLicence:
             panel.hide()
             enterLicence()
-        case .importLauncher:
-            panel.hide()
-            importLauncher()
         case .connectAgents:
             panel.hide()
             connectAgents()
@@ -246,37 +349,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Close")
         NSApp.activate()
         if alert.runModal() == .alertFirstButtonReturn { Paster.copy(AgentServer.claudeSetupCommand) }
-    }
-
-    /// Pick Raycast/Alfred exports, append what they hold to config.toml, say what happened.
-    @objc private func importLauncher() {
-        let open = NSOpenPanel()
-        open.message = "Choose Raycast snippet or quicklink exports (.json) or Alfred snippets (.alfredsnippets)"
-        open.allowsMultipleSelection = true
-        open.allowedContentTypes = [.json] + [UTType(filenameExtension: "alfredsnippets")].compactMap { $0 }
-        NSApp.activate()
-        guard open.runModal() == .OK, !open.urls.isEmpty else { return }
-
-        let settings = config.current.config
-        let existing = Set(settings.actions.map(\.name) + settings.snippets.map(\.name))
-        let (result, source) = LauncherImporter.read(open.urls, existing: existing)
-        let alert = NSAlert()
-        if result.isEmpty {
-            alert.messageText = "Nothing to import"
-        } else if let problem = config.append(LauncherImport.toml(result, source: source)) {
-            alert.messageText = "Couldn't import"
-            alert.informativeText = problem
-            alert.runModal()
-            return
-        } else {
-            alert.messageText = "Imported \(result.snippets.count) snippets and \(result.quicklinks.count) quicklinks"
-        }
-        let skipped = result.skipped.prefix(8).joined(separator: "\n")
-        let more = result.skipped.count > 8 ? "\n…and \(result.skipped.count - 8) more" : ""
-        alert.informativeText = result.isEmpty || !skipped.isEmpty
-            ? (skipped.isEmpty ? "No snippets or quicklinks found." : "Skipped:\n\(skipped)\(more)")
-            : "They're at the end of config.toml. Quicklinks are actions: type a name, or ⌘K."
-        alert.runModal()
     }
 
     /// Opens config.toml with `editor` (an app or a command), or the default text editor.

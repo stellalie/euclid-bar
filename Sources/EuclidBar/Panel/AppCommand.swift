@@ -2,16 +2,13 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleOpenAtLogin, toggleCrashReports, toggleUsagePing, buyLicence, enterLicence, connectAgents, permissions }
     let kind: Kind
     let title: String
     var detail = ""
     let symbol: String
     /// Right-hand label: "On"/"Off" for a toggle.
     var accessory = ""
-
-    static let importLauncher = AppCommand(kind: .importLauncher, title: "Import from Raycast or Alfred…",
-                                           detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
 
     static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
                                           detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
@@ -26,6 +23,24 @@ struct AppCommand: Equatable {
     static func expansion(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleExpansion, title: "Text Expansion", detail: "Type a snippet keyword in any app · [expansion] enabled",
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Start at login (`[startup] open_at_login`), as macOS has it now.
+    static func openAtLogin(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleOpenAtLogin, title: "Open at Login", detail: "Start Euclid when you log in · [startup] open_at_login",
+                   symbol: "power", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Opt-in crash and error reports (`[privacy] crash_reports`).
+    static func crashReports(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleCrashReports, title: "Send Crash Reports", detail: "Stack and versions only, never your data · [privacy] crash_reports",
+                   symbol: "ladybug", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Opt-in daily anonymous ping (`[privacy] usage_ping`).
+    static func usagePing(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleUsagePing, title: "Send Anonymous Usage Ping", detail: "Random install ID and versions, once a day · [privacy] usage_ping",
+                   symbol: "chart.bar", accessory: enabled ? "On" : "Off")
     }
 
     /// The update commands for the current `[updates]` settings.

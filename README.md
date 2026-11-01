@@ -68,6 +68,7 @@ with `euclid-bar --plugin add <name>`:
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
+| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -262,6 +263,15 @@ check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
 channel      = "stable"                       # "dev": a build of every change, for testing
 
+[startup]
+open_at_login = true                          # start Euclid at login (also a menu toggle)
+
+[privacy]                                     # asked once on first launch, both unticked
+crash_reports = false                         # true: send crashes and internal errors so they get fixed
+                                              # (stack + versions only; copies in ~/Library/Logs/Euclid/Reports)
+usage_ping    = false                         # true: a daily anonymous "in use" ping (random ID + versions),
+                                              # so installs can be counted
+
 [expansion]
 enabled = true                                # snippet keywords expand in any app (needs Accessibility)
 
@@ -346,17 +356,6 @@ Palettes come from [Dracula](https://draculatheme.com) (MIT), [Nord](https://www
 [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (MIT, enkia),
 [Catppuccin](https://catppuccin.com) (MIT), [Gruvbox](https://github.com/morhetz/gruvbox) (MIT, Pavel Pertsev),
 [Solarized](https://ethanschoonover.com/solarized/) (MIT, Ethan Schoonover) and Monokai (Wimer Hazenberg). Thank you.
-
-### Coming from Raycast or Alfred
-
-Menu bar 🧠 › **Import from Raycast or Alfred…** (or type `import`), then pick your exports:
-
-- Raycast: *Snippets › Export Snippets* and *Quicklinks › Export Quicklinks* (`.json`)
-- Alfred: *Features › Snippets ›* right-click a collection › *Export* (`.alfredsnippets`)
-
-Snippets become `[[snippet]]` blocks and web quicklinks become `[[action]]`s, appended to
-`config.toml`. Placeholders carry over (`{date}`, `{time}`, `{clipboard}`, `{argument}` → your query).
-From a terminal: `euclid-bar --import snippets.json >> ~/.config/euclid/config.toml`.
 
 ### Share a config with your team
 
@@ -517,7 +516,8 @@ when = ["github"]           # kinds of result, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
 ```
 
-Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}` or, on `open`, `{"query":…}`.
+Scripts can print `{"notice":…}`, `{"copy":…}`, `{"open":…}`, from a key `{"paste":…}` or `{"show":…}`
+(opens the panel with text to read), or, on `open`, `{"query":…}`. Hooks get 10 s, keys 60 s.
 Examples: `euclid-bar --plugin add cleanlinks` (strips tracking parameters from copied links) and
 `euclid-bar --plugin add reveal` (⇧⌘R shows a file in Finder).
 
