@@ -154,6 +154,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 missing; `↵` opens the right pane in System Settings. The footer only mentions it when something
 you turned on is waiting.
 - **Accessibility**: for `↵` to paste into the previous app, and for text expansion. Without it, Euclid copies instead.
+  If Euclid keeps asking although it looks ticked, the tick belongs to another copy of Euclid: Euclid clears its own entry when it asks, so tick it once more.
 - **Automation**: the first time an action drives Ghostty.
 - **Full Disk Access** *(optional)*: only to include Safari history.
 
@@ -554,8 +555,9 @@ scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cer
                      check-toolchain.sh, test-core-linux.sh (core tests on Linux)
 ```
 
-`make cert` creates a local signing identity so macOS keeps Accessibility permission across
-rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI screens* check).
+Local builds are a separate app, *Euclid Dev* (`dev.euclid.Euclid.dev`), so they never take the
+installed Euclid's Accessibility permission. `make cert` creates a local signing identity so macOS
+keeps that permission across rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI screens* check).
 </details>
 
 ## Roadmap

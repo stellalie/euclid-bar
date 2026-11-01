@@ -39,6 +39,15 @@ find "$BIN" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/euclid-bar"
 
+# Local builds are their own app, "Euclid Dev" (dev.euclid.Euclid.dev). macOS keeps one
+# Accessibility grant per bundle ID, tied to one signature: a local build sharing the release's
+# ID takes that grant over, and the installed Euclid loses it and asks again.
+if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+  plutil -replace CFBundleIdentifier -string dev.euclid.Euclid.dev "$APP/Contents/Info.plist"
+  plutil -replace CFBundleName -string "Euclid Dev" "$APP/Contents/Info.plist"
+  plutil -replace CFBundleDisplayName -string "Euclid Dev" "$APP/Contents/Info.plist"
+fi
+
 # Release: Developer ID + hardened runtime + secure timestamp, as notarization requires.
 # Dev: the stable "Euclid Dev" identity if present (scripts/make-dev-cert.sh), so macOS
 # keeps the Accessibility grant across rebuilds; else ad-hoc, which changes every build
