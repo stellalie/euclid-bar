@@ -2,7 +2,7 @@ import AppKit
 import EuclidCore
 
 /// The licence (Business for work use; Personal is free) and the optional evaluation. Off unless the bundle carries the licence public key
-/// (release builds stamp `EuclidLicencePublicKey`), so local builds never nag.
+/// (`EuclidLicencePublicKey`, checked in to Resources/Info.plist). Personal is free, so nothing nags.
 @MainActor
 final class Licensing {
     static let buyURL = URL(string: "https://lgtm.ninja/euclid/#pricing")!
