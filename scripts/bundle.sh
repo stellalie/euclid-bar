@@ -6,7 +6,7 @@
 #   BUILD=n      stamp CFBundleVersion, which Sparkle compares (default: VERSION)
 #   SIGN_IDENTITY="Developer ID Application: …"  release signing (hardened runtime + timestamp)
 #   SPARKLE_PUBLIC_KEY=…  turn on auto-update (EdDSA public key from Sparkle's generate_keys)
-#   LICENCE_PUBLIC_KEY=…  turn on the 30-day trial and licence keys (from euclid-bar --licence-keygen)
+#   LICENCE_PUBLIC_KEY=…  override the licence public key in Resources/Info.plist (testing only)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,7 +26,7 @@ if [[ -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
   plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$APP/Contents/Info.plist"
 fi
 if [[ -n "${LICENCE_PUBLIC_KEY:-}" ]]; then
-  plutil -insert EuclidLicencePublicKey -string "$LICENCE_PUBLIC_KEY" "$APP/Contents/Info.plist"
+  plutil -replace EuclidLicencePublicKey -string "$LICENCE_PUBLIC_KEY" "$APP/Contents/Info.plist"
 fi
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"

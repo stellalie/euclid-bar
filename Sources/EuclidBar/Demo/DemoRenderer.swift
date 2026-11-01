@@ -331,7 +331,7 @@ enum DemoRenderer {
                  NSColor.white.withAlphaComponent(0.92), y: 255)
         centered("⚡ 1.4 ms search   ·   🧩 plugins in any language   ·   🔒 stays on your Mac",
                  .systemFont(ofSize: 18, weight: .regular), NSColor.white.withAlphaComponent(0.85), y: 190)
-        centered("Built for developers · native Swift · free during the beta", .systemFont(ofSize: 16, weight: .regular),
+        centered("Built for developers · native Swift · free for personal use", .systemFont(ofSize: 16, weight: .regular),
                  NSColor.white.withAlphaComponent(0.7), y: 150)
         centered("lgtm.ninja/euclid", .monospacedSystemFont(ofSize: 20, weight: .semibold), .white, y: 80)
     }

@@ -18,6 +18,8 @@
 	<string>1.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1.1.0</string>
+	<key>EuclidLicencePublicKey</key>
+	<string>0P1mzGVrSCNXO4wlrT1nDLti2gsJ3AsLlgjlDSY1lvE=</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
