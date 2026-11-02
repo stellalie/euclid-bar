@@ -130,15 +130,17 @@ import Testing
         let plugin = Plugin(id: "t", name: "T", description: "", directory: dir.path)
         let start = ContinuousClock.now
         do {
-            _ = try await PluginRunner.output(of: "sleep 3; touch done", plugin: plugin, shell: "/bin/zsh", pathPrefix: nil,
+            // 8 s, far past the 0.2 s wait: on a busy 3-core CI runner running every suite at once,
+            // getting back to this test can take a few seconds on its own (a 3 s sleep was too close).
+            _ = try await PluginRunner.output(of: "sleep 8; touch done", plugin: plugin, shell: "/bin/zsh", pathPrefix: nil,
                                               timeout: .milliseconds(200), keepRunning: true)
             Issue.record("should have stopped waiting")
         } catch let f as PluginRunner.Failure {
             #expect(f.stillRunning)
         }
-        #expect(ContinuousClock.now - start < .milliseconds(2500)) // didn't wait the 3 s out
+        #expect(ContinuousClock.now - start < .seconds(6)) // didn't wait the 8 s out
         let done = dir.appendingPathComponent("done").path
-        for _ in 0..<50 where !FileManager.default.fileExists(atPath: done) { try await Task.sleep(for: .milliseconds(200)) }
+        for _ in 0..<75 where !FileManager.default.fileExists(atPath: done) { try await Task.sleep(for: .milliseconds(200)) }
         #expect(FileManager.default.fileExists(atPath: done)) // not killed
     }
 
@@ -336,7 +338,7 @@ import Testing
         try await Task.sleep(for: .milliseconds(100))
         // Not reaped yet (a zombie), and already counts as gone.
         #expect(try await kp.activate(row).effects.first?.notice == "It already quit")
-        sleeper.waitUntilExit()
+        for _ in 0..<50 where sleeper.isRunning { try await Task.sleep(for: .milliseconds(50)) } // never block a test thread
         #expect(try await kp.run(#"./list.sh rows "$1""#, query: "no-such-process-name").isEmpty)
     }
 
