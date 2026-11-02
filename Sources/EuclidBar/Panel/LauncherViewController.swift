@@ -103,13 +103,21 @@ final class LauncherViewController: NSViewController {
 
     /// Views a plugin opened, newest last; `esc` goes back one.
     private struct ViewState {
-        let view: PluginView
+        var view: PluginView
         let pluginID: String
         let pluginName: String
         /// What the search box had under it, to put back.
         let under: String
+        /// Tells a reload's reply apart from one for a view that has since closed.
+        let id = UUID()
     }
     private var views: [ViewState] = []
+    /// A live view's next `refresh_seconds` reload.
+    private var refreshTimer: Timer?
+    /// The view whose `reload` is running, so reloads never pile up.
+    private var reloading: UUID?
+    /// Run a live view's `reload` command; the reply comes back through `viewReloaded`.
+    var onReloadView: ((_ command: String, _ pluginID: String, _ viewID: UUID) -> Void)?
     private var layout: PluginView.Layout? { mode == .view ? views.last?.view.layout : nil }
 
     /// An item's fields, shown in the search row while you fill them in.
@@ -436,6 +444,7 @@ final class LauncherViewController: NSViewController {
     }
 
     func didHide() {
+        stopRefresh()
         notice = nil
         endArguments()
         setPreview(open: false)
@@ -472,6 +481,7 @@ final class LauncherViewController: NSViewController {
     // MARK: - Modes
 
     private func enterSearchMode(query: String) {
+        stopRefresh()
         mode = .search
         views = []
         applyLayout()
@@ -491,6 +501,7 @@ final class LauncherViewController: NSViewController {
             projectTasks = nil
         }
         let query = searchField.stringValue
+        stopRefresh()
         mode = .actions(query: query, clipID: clipID)
         views = []
         applyLayout()
@@ -528,17 +539,72 @@ final class LauncherViewController: NSViewController {
         modeLabel.stringValue = top.view.title.isEmpty ? top.pluginName : top.view.title
         runSearch()
         searchField.currentEditor()?.moveToEndOfDocument(nil)
+        scheduleRefresh()
     }
 
     /// `esc` in a view: back to the one under it, or to the search you came from.
     private func popView() {
         guard let top = views.popLast() else { return }
+        stopRefresh()
+        if reloading == top.id { reloading = nil }
         if views.isEmpty {
             if standalone { onClose?(); return }
             enterSearchMode(query: top.under)
         } else {
             showTopView(text: top.under)
+            reloadTopView() // it may be out of date after what you did in the one you left
         }
+    }
+
+    // MARK: - Live views (`reload`, `refresh_seconds`)
+
+    /// Run the open view's `reload` now, if it has one: after a `run` in it changed something,
+    /// when you come back to it, and on its `refresh_seconds` timer.
+    func reloadTopView() {
+        guard mode == .view, argumentEntry == nil, let top = views.last, let command = top.view.reload,
+              reloading == nil else { return }
+        refreshTimer?.invalidate()
+        reloading = top.id
+        onReloadView?(command, top.pluginID, top.id)
+    }
+
+    /// What `reload` printed for view `id` (nil: it failed or printed no view). The rows change
+    /// in place: the filter text stays and the selection follows its item.
+    func viewReloaded(_ id: UUID, with fresh: PluginView?) {
+        if reloading == id { reloading = nil }
+        guard let i = views.firstIndex(where: { $0.id == id }) else { return }
+        if var fresh {
+            if fresh.reload == nil { (fresh.reload, fresh.refreshSeconds) = (views[i].view.reload, views[i].view.refreshSeconds) }
+            views[i].view = fresh
+            if i == views.count - 1, mode == .view { refreshTopView() }
+        }
+        if i == views.count - 1 { scheduleRefresh() }
+    }
+
+    private func refreshTopView() {
+        guard let top = views.last else { return }
+        let previous = selectedRow.map(\.key)
+        modeLabel.stringValue = top.view.title.isEmpty ? top.pluginName : top.view.title
+        if top.view.layout == .detail {
+            applyLayout()
+            return
+        }
+        runSearch()
+        if let previous, let row = rows.firstIndex(where: { $0.key == previous }) { select(row: row) }
+    }
+
+    private func scheduleRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        guard mode == .view, let seconds = views.last?.view.refreshSeconds else { return }
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(seconds), repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadTopView() }
+        }
+    }
+
+    private func stopRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
 
     /// The list, the grid or the detail text, for the mode.

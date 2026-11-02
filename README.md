@@ -68,10 +68,12 @@ with `euclid-bar --plugin add <name>`:
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
-| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
+| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues the chat in a terminal with your AI CLI. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
 | `raycast` *(plugin)* | Runs your Raycast script commands: each is a row, `rc <name> <args>` runs one. Modes silent, compact, fullOutput and inline; typed arguments; confirmation |
 | `emoji` *(plugin)* | An emoji grid; `emoji heart` lists matches. `↵` pastes |
 | `volume` *(plugin)* | Volume Up, Down and Mute rows, `vol 40`, and Set Volume with a dropdown |
+| `kill-process` *(plugin)* | Your processes, busiest first, refreshing live; `↵` quits one, `↵` again force-quits; `kill chrome` finds one |
+| `docker` *(plugin)* | Your containers, live: logs (live too), a shell, open its port, start, stop, restart |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -490,7 +492,11 @@ A script prints rows like `{"title":"Fix login","subtitle":"acme/web · #412","o
 `{"notice":"Volume 40%"}` in the footer, or a header like `{"view":"grid","title":"Emoji"}` and
 then items, to open a **list**, a **grid** (emoji, images) or a **detail** page of text. A row can
 ask for up to 3 **typed arguments** (text, password, dropdown) in the search bar before it runs.
-Icons can be SF Symbols, emoji or image files.
+Icons can be SF Symbols, emoji, image files or an app (`/Applications/Safari.app`).
+
+**Live views, no state.** Add `"reload":"./list.sh","refresh_seconds":3` to the header and Euclid
+reruns the script to keep the view current: on a timer, after an action, and when you come back to
+it. Your filter and selection stay put. That's how `kill-process` and `docker` stay live.
 
 ```sh
 echo '{"view":"grid","title":"Emoji","columns":8}'
@@ -516,6 +522,7 @@ euclid-bar --plugin add slack       # jump to channels; `slack <words>` searches
 euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
 euclid-bar --plugin add currency    # `100 usd to eur`; also define, contacts, shortcuts
 euclid-bar --plugin add raycast     # your Raycast script commands; also emoji, volume
+euclid-bar --plugin add docker      # live containers; also kill-process
 euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
 euclid-bar --try-plugin github      # run it once and print what the bar would show
 ```

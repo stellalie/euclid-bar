@@ -53,6 +53,18 @@ import Testing
         #expect(bad.effects.first?.notice?.contains("unknown view") == true)
     }
 
+    @Test func liveViewsReloadAndRefresh() throws {
+        let live = try #require(PluginResult.parse(Data(#"{"view":"list","reload":" ./list.sh ","refresh_seconds":3}"#.utf8)).view)
+        #expect(live.reload == "./list.sh")
+        #expect(live.refreshSeconds == 3)
+        #expect(PluginResult.parse(Data(#"{"view":"list","reload":"./l.sh","refresh_seconds":0}"#.utf8)).view?.refreshSeconds == 1)
+        #expect(PluginResult.parse(Data(#"{"view":"list","reload":"./l.sh","refresh_seconds":9999}"#.utf8)).view?.refreshSeconds == 3600)
+        // Refreshing needs something to run; a blank reload is none.
+        let plain = try #require(PluginResult.parse(Data(#"{"view":"list","reload":" ","refresh_seconds":3}"#.utf8)).view)
+        #expect(plain.reload == nil)
+        #expect(plain.refreshSeconds == nil)
+    }
+
     // MARK: - Arguments
 
     @Test func raycastStyleArgumentsDecode() throws {
@@ -265,5 +277,88 @@ import Testing
         #expect(PluginOutput.parse(Data(try await vol.run("./find.sh", query: "mute").utf8)).items.map(\.run) == ["./set.sh mute"])
         #expect(try await vol.run("./find.sh", query: "400").isEmpty)
         #expect(try await vol.run("./find.sh", query: "loud").isEmpty)
+    }
+
+    @Test func killProcessListsAndKills() async throws {
+        let kp = try install("kill-process")
+        defer { try? FileManager.default.removeItem(at: kp.dir) }
+        let entry = try #require(PluginOutput.parse(Data(try await kp.run("./items.sh").utf8)).items.first)
+        let opened = try await kp.activate(entry)
+        let view = try #require(opened.view)
+        #expect(opened.problems.isEmpty)
+        #expect(view.reload == "./list.sh")
+        #expect(view.refreshSeconds == 3)
+        #expect(!view.items.isEmpty)
+        #expect(view.items.allSatisfy { $0.run?.hasPrefix("./kill.sh ") == true && $0.id?.hasPrefix("pid:") == true })
+        #expect(!view.items.contains { ["ps", "sort", "awk"].contains($0.title) }) // not its own pipeline
+
+        // A process that ignores ↵'s polite quit: `kill sleep` finds it, ↵ asks, ↵ again force-quits.
+        let sleeper = Process()
+        sleeper.executableURL = URL(fileURLWithPath: "/bin/sh")
+        sleeper.arguments = ["-c", "trap '' TERM; exec sleep 30"]
+        try sleeper.run()
+        defer { if sleeper.isRunning { sleeper.terminate() } }
+        try await Task.sleep(for: .milliseconds(200)) // until it's `sleep`
+        let found = PluginOutput.parse(Data(try await kp.run(#"./list.sh rows "$1""#, query: "slee").utf8)).items
+        let row = try #require(found.first { $0.id == "pid:\(sleeper.processIdentifier)" })
+        #expect(row.title == "sleep")
+        #expect(row.subtitle?.contains("PID \(sleeper.processIdentifier)") == true)
+        let asked = try await kp.activate(row)
+        #expect(asked.view == nil) // effects only, so a live view reloads
+        #expect(asked.effects.first?.notice == "Asked sleep to quit · ↵ again force-quits it")
+        #expect(try await kp.activate(row).effects.first?.notice == "Force-quit sleep")
+        try await Task.sleep(for: .milliseconds(100))
+        // Not reaped yet (a zombie), and already counts as gone.
+        #expect(try await kp.activate(row).effects.first?.notice == "It already quit")
+        sleeper.waitUntilExit()
+        #expect(try await kp.run(#"./list.sh rows "$1""#, query: "no-such-process-name").isEmpty)
+    }
+
+    @Test func dockerContainersDrillDown() async throws {
+        let dk = try install("docker")
+        defer { try? FileManager.default.removeItem(at: dk.dir) }
+        // A fake docker with one running and one stopped container.
+        let bin = dk.dir.appendingPathComponent("bin")
+        try script(bin, "docker", #"""
+            #!/bin/sh
+            echo "$*" >> "$(dirname "$0")/calls"
+            case $1 in
+              ps) printf 'exited\tbbb222\t"db"\t"postgres:16"\t"Exited (0) 2 hours ago"\n'
+                  printf 'running\taaa111\t"web \\"x\\""\t"nginx:1"\t"Up 3 minutes"\n' ;;
+              inspect) [ "$4" = aaa111 ] && printf 'running\t"/web"\n' || printf 'exited\t"/db"\n' ;;
+              port) echo '80/tcp -> 0.0.0.0:8080'; echo '80/tcp -> [::]:8080' ;;
+              logs) printf 'first\nsecond\n' ;;
+              start|stop|restart) echo "$2" ;;
+            esac
+            """#)
+        let env = ["PATH": bin.path + ":" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")]
+        func open(_ command: String) async throws -> PluginResult { PluginResult.parse(Data(try await dk.run(command, env: env).utf8)) }
+
+        let list = try #require(try await open("./containers.sh").view)
+        #expect(list.reload == "./containers.sh")
+        #expect(list.items.map(\.title) == [#"web "x""#, "db"]) // running first
+        #expect(list.items.map(\.icon) == ["🟢", "⚪️"])
+        #expect(list.items.first?.subtitle == "nginx:1 · Up 3 minutes")
+
+        let web = try #require(try await open("./container.sh aaa111").view)
+        #expect(web.title == "web")
+        #expect(web.items.map(\.title) == ["Logs", "Open Shell", "Open localhost:8080", "Restart", "Stop", "Copy ID"])
+        #expect(web.items[2].open == "http://localhost:8080")
+        let db = try #require(try await open("./container.sh bbb222").view)
+        #expect(db.items.map(\.title) == ["Start", "Logs", "Copy ID"])
+
+        let logs = try #require(try await open("./logs.sh aaa111").view)
+        #expect(logs.layout == .detail)
+        #expect(logs.text == "second\nfirst") // newest first
+        #expect(logs.refreshSeconds == 2)
+
+        #expect(try await open("./act.sh start bbb222").effects.first?.notice == "Started")
+        #expect(try await open("./act.sh stop aaa111").effects.first?.notice == "Stopping…")
+        // Ids go into commands, so only hex is accepted.
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await dk.run("./container.sh 'a;b'", env: env) }
+
+        // No docker at all: one clear line.
+        let none = ["PATH": "/usr/bin:/bin"]
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await dk.run("./containers.sh", env: none) }
     }
 }

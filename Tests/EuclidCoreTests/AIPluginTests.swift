@@ -27,8 +27,9 @@ struct AIPluginTests {
     @Test func keysAndAction() throws {
         let (plugin, dir) = try install()
         defer { try? FileManager.default.removeItem(at: dir) }
-        #expect(plugin.keys.map(\.key.symbols) == ["⇧⌘F", "⇧⌘T", "⇧⌘E"])
-        #expect(plugin.keys.allSatisfy { $0.when == ["clip", "snippet"] })
+        #expect(plugin.keys.map(\.key.symbols) == ["⇧⌘F", "⇧⌘T", "⇧⌘E", "⇧⌘↩"])
+        #expect(plugin.keys.dropLast().allSatisfy { $0.when == ["clip", "snippet"] })
+        #expect(plugin.keys.last?.when == ["ai"]) // only on its own answer
         #expect(plugin.answer?.onEnter == true)
         #expect(plugin.answer?.input(for: "ai what is a monad") == "what is a monad")
         #expect(plugin.actions.isEmpty)
@@ -62,6 +63,33 @@ struct AIPluginTests {
         #expect(item.subtitle?.hasPrefix("claude · ") == true)
         #expect(item.preview?.hasSuffix("\n\nwhat is a monad") == true)
         #expect(item.copy == item.preview)
+    }
+
+    @Test func continueInTerminalHandsTheCLITheQuestionAndAnswer() async throws {
+        let (installed, dir) = try install()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bin = try fakeCLI(in: dir)
+        var plugin = installed
+        plugin.settings["terminal"] = #"printf %s\n"# // the "terminal" prints what it would run
+        let key = try #require(plugin.keys.last)
+        let answer = #"It's a "monoid" in $(whoami)"#
+        var env = environment
+        env["EUCLID_SEARCH"] = "ai what is a monad"
+        env["EUCLID_ITEM_TEXT"] = answer
+        env["EUCLID_ITEM_TITLE"] = "It's a"
+        let out = String(decoding: try await PluginRunner.output(of: key.run, plugin: plugin, query: answer, shell: "/bin/zsh",
+                                                                 pathPrefix: bin.path, environment: env, timeout: .seconds(20)),
+                         as: UTF8.self)
+        #expect(out.hasPrefix("claude\nI asked a quick question"))
+        #expect(out.contains("\nQuestion: what is a monad\n"))
+        #expect(out.contains("\nAnswer: " + answer)) // passed as text, never run
+
+        // The "Ask" row has no answer yet: say so instead of opening an empty chat.
+        env["EUCLID_ITEM_TEXT"] = nil
+        await #expect(throws: PluginRunner.Failure.self) {
+            _ = try await PluginRunner.output(of: key.run, plugin: plugin, query: "", shell: "/bin/zsh", pathPrefix: bin.path,
+                                              environment: env, timeout: .seconds(20))
+        }
     }
 
     /// No `$EUCLID_BAR`, so the fake `claude` is picked rather than Apple's model.

@@ -241,6 +241,32 @@ enum ScreensRenderer {
         vc.standalone = false
         vc.prepareForShow()
 
+        // Live views (kill-process, docker): a reload swaps the rows in place.
+        func process(_ name: String, _ cpu: String, _ mem: String, _ pid: Int, app: String? = nil) -> PluginItem {
+            PluginItem(title: name, subtitle: "\(cpu)% CPU · \(mem) · PID \(pid)", run: "./kill.sh \(pid)",
+                       icon: app ?? "gearshape", id: "pid:\(pid)")
+        }
+        let processes = [
+            process("Safari", "38.2", "1.4 GB", 812, app: "/Applications/Safari.app"),
+            process("node", "21.7", "512 MB", 4410),
+            process("Xcode", "9.3", "2.1 GB", 655, app: "/Applications/Xcode.app"),
+            process("Finder", "1.2", "98 MB", 402, app: "/System/Library/CoreServices/Finder.app"),
+            process("mds_stores", "0.8", "64 MB", 311),
+        ]
+        vc.present(PluginView(layout: .list, title: "Processes", placeholder: "Filter processes…", items: processes,
+                              reload: "./list.sh", refreshSeconds: 3), pluginID: "kill-process", pluginName: "Kill Process")
+        try step("kill-process plugin: a live view, refreshed every 3 s; ↵ quits, ↵ again force-quits", hold: 2.0, name: "live-processes")
+        vc.prepareForShow()
+        let containers = [
+            PluginItem(title: "web", subtitle: "nginx:1.27 · Up 3 minutes", run: "./container.sh a1", icon: "🟢", id: "docker:a1"),
+            PluginItem(title: "api", subtitle: "acme/api:dev · Up 2 hours", run: "./container.sh b2", icon: "🟢", id: "docker:b2"),
+            PluginItem(title: "db", subtitle: "postgres:16 · Exited (0) 2 hours ago", run: "./container.sh c3", icon: "⚪️", id: "docker:c3"),
+        ]
+        vc.present(PluginView(layout: .list, title: "Containers", placeholder: "Filter containers…", items: containers,
+                              reload: "./containers.sh", refreshSeconds: 3), pluginID: "docker", pluginName: "Docker")
+        try step("docker plugin: containers, live; ↵ opens logs, a shell, its port, start, stop, restart", hold: 2.0, name: "live-docker")
+        vc.prepareForShow()
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")

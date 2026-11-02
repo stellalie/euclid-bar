@@ -31,13 +31,18 @@ public enum PluginGuide {
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
-        "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true)],
+        "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true), ("continue.sh", aiContinue, true)],
         "raycast": [("plugin.toml", raycastManifest, false), ("list.sh", raycastList, true), ("scan.awk", raycastScan, false),
                     ("run.sh", raycastRun, true)],
         "emoji": [("plugin.toml", emojiManifest, false), ("items.sh", emojiItems, true), ("grid.sh", emojiGrid, true),
                   ("find.sh", emojiFind, true), ("emoji.tsv", emojiData + "\n", false)],
         "volume": [("plugin.toml", volumeManifest, false), ("items.sh", volumeItems, true), ("find.sh", volumeFind, true),
                    ("set.sh", volumeSet, true)],
+        "kill-process": [("plugin.toml", killManifest, false), ("items.sh", killItems, true), ("list.sh", killList, true),
+                         ("kill.sh", killKill, true)],
+        "docker": [("plugin.toml", dockerManifest, false), ("items.sh", dockerItems, true), ("containers.sh", dockerContainers, true),
+                   ("container.sh", dockerContainer, true), ("logs.sh", dockerLogs, true), ("act.sh", dockerAct, true),
+                   ("shell.sh", dockerShell, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -542,11 +547,20 @@ name = "Explain"
 when = ["clip", "snippet"]
 run  = './ai.sh show "Explain the text below briefly and plainly. If it is code or an error, say what it does or what went wrong." "$1"'
 
+# On an answer: ⇧⌘↵ opens a terminal running your AI CLI with the question and answer, to keep going there.
+[[key]]
+key  = "cmd+shift+return"
+name = "Continue in terminal"
+when = ["ai"]
+run  = "./continue.sh"
+
 [settings]
 cli      = ""          # empty: Apple's on-device model (macOS 26, Apple Intelligence on), else the first
                        # of claude, codex, gemini on your PATH. Or any command that takes the prompt as
                        # its last argument, e.g. "ollama run llama3.2"
 language = "English"   # what Translate translates into
+terminal = ""          # how Continue in terminal opens one: empty = Ghostty if you have it, else Terminal;
+                       # or a command that runs its arguments, e.g. "ghostty-run window"
 """#
 
     static let aiScript = #"""
@@ -599,6 +613,50 @@ function run(argv) {
     copy: answer, preview: answer, icon: "sparkles", id: "ai-answer",
   })
 }' "$mode" "$cli" "$answer"
+"""#
+
+    static let aiContinue = #"""
+#!/bin/sh
+# ⇧⌘↵ on an `ai` answer: a terminal running your AI CLI, already told the question and the answer,
+# so you can keep going there. The bar keeps no chat history; the CLI has its own.
+set -eu
+question=${EUCLID_SEARCH:-}
+question=${question#ai }
+answer=${EUCLID_ITEM_TEXT:-}
+[ -n "$answer" ] || { echo "press ↵ for an answer first" >&2; exit 1; }
+cli=${EUCLID_SETTING_CLI:-}
+case $cli in claude*|codex*|gemini*) cli=${cli%% *} ;; *) cli= ;; esac  # Apple's model and others have no chat
+if [ -z "$cli" ]; then
+  for c in claude codex gemini; do
+    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+  done
+fi
+[ -n "$cli" ] || { echo "Continue in terminal needs the claude, codex or gemini CLI" >&2; exit 1; }
+prompt="I asked a quick question and got this answer. Keep it in mind and wait for my follow-up; reply only \"Go ahead.\" for now.
+
+Question: $question
+
+Answer: $answer"
+case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;; esac
+
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  $term "$@"
+else
+  # Terminal.app runs a command line: quote each argument for the shell, then for AppleScript.
+  line=$(for a in "$@"; do printf "'%s' " "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"; done)
+  osascript - "$line" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "Terminal"
+    do script (item 1 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
 """#
 
     public static let guide = marker + "\n" + #"""
@@ -714,6 +772,17 @@ echo '{"title":"grinning face","icon":"😀","paste":"😀"}'     # items, as a 
 `esc` goes back. Items in a view work like any item, so a `run` can open another view
 (a confirm step, a drill-down).
 
+**Live views.** Add `"reload"` to the header, a command that prints the view again, and Euclid
+keeps it current without the script remembering anything: it reruns it after a `run` in the view
+that printed no new view (a kill, a stop), when you come back to it with `esc`, and every
+`refresh_seconds` (1–3600) while it's on screen. The rows change in place: your filter text stays
+and the selection follows its item (give items an `id`). Only one reload runs at a time, and none
+while the panel is closed. Keep `reload` fast (well under a second): it's the whole refresh.
+
+```sh
+echo '{"view":"list","title":"Processes","reload":"./list.sh","refresh_seconds":3}'
+```
+
 ### dmenu: pick from any list
 
 `euclid-bar --pick` reads lines from stdin, opens the panel to pick one and prints it
@@ -804,8 +873,9 @@ change them:
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
 - `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
-  ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default, or the `claude`, `codex` or
-  `gemini` CLI you're logged into (an `on_enter` answer and `[[key]]`s).
+  ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues in a terminal with your AI CLI.
+  Apple's on-device model by default, or the `claude`, `codex` or `gemini` CLI you're logged into
+  (an `on_enter` answer and `[[key]]`s).
 - `raycast`: runs Raycast script commands from a folder (default `~/.config/euclid/raycast`):
   each script is a row, `rc <name> <args>` runs one with arguments. Reads `@raycast.title`, `mode`
   (silent, compact, fullOutput, inline), `argument1`–`3`, `needsConfirmation`, `icon`,
@@ -813,5 +883,9 @@ change them:
   (a source, an answer, views and arguments).
 - `emoji`: “Emoji” opens a grid of every emoji; `emoji heart` lists matches. ↵ pastes (a grid view).
 - `volume`: Volume Up / Down / Mute rows, `vol 40`, and Set Volume with a dropdown (effects and arguments).
+- `kill-process`: your processes, busiest first, refreshing every 3 s; ↵ quits one, ↵ again
+  force-quits; `kill chrome` finds one (a live view and an answer).
+- `docker`: your containers, live: logs (live too), a shell, open its port, start, stop, restart
+  (live views that drill down).
 """#
 }

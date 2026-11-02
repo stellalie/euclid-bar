@@ -20,7 +20,9 @@ enum PluginIcon {
         case .symbol: return nil
         case .file(let path):
             if let cached = images[path] { return cached }
-            guard let image = NSImage(contentsOfFile: path) else { return nil }
+            // An app bundle (`/Applications/Safari.app`) shows the app's own icon.
+            let bundle = path.hasSuffix(".app") && FileManager.default.fileExists(atPath: path)
+            guard let image = bundle ? NSWorkspace.shared.icon(forFile: path) : NSImage(contentsOfFile: path) else { return nil }
             if images.count > 500 { images.removeAll() }
             images[path] = image
             return image

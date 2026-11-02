@@ -11,6 +11,10 @@ import Foundation
 ///
 /// `list` and `grid` show the item lines after the header (typing filters them);
 /// `detail` shows the rest of the output as text to read.
+///
+/// `"reload":"./list.sh"` makes it live: Euclid runs that command again (it prints the same kind of
+/// view) after a `run` in the view that opened no new view, when you come back to it with `esc`,
+/// and every `refresh_seconds` while it's on screen. The script keeps no state: it reads it again.
 public struct PluginView: Equatable, Sendable {
     public enum Layout: String, Equatable, Sendable, CaseIterable {
         case list, grid, detail
@@ -27,11 +31,16 @@ public struct PluginView: Equatable, Sendable {
     public var text: String
     /// Show a detail's text monospaced (command output).
     public var code: Bool
+    /// A command that prints this view again with fresh content (run in the plugin's folder).
+    public var reload: String?
+    /// Run `reload` this often while the view is on screen: 1–3600 s; nil = only after a change.
+    public var refreshSeconds: Int?
 
     public static let defaultColumns = 6
 
     public init(layout: Layout, title: String = "", placeholder: String? = nil, columns: Int = defaultColumns,
-                items: [PluginItem] = [], text: String = "", code: Bool = false) {
+                items: [PluginItem] = [], text: String = "", code: Bool = false, reload: String? = nil,
+                refreshSeconds: Int? = nil) {
         self.layout = layout
         self.title = title
         self.placeholder = placeholder
@@ -39,6 +48,9 @@ public struct PluginView: Equatable, Sendable {
         self.items = items
         self.text = text
         self.code = code
+        let reload = reload?.trimmingCharacters(in: .whitespaces)
+        self.reload = reload?.isEmpty == false ? reload : nil
+        self.refreshSeconds = self.reload == nil ? nil : refreshSeconds.map { min(max($0, 1), 3600) }
     }
 }
 
@@ -73,7 +85,8 @@ public struct PluginResult: Equatable, Sendable {
                 var view = PluginView(layout: layout, title: json["title"] as? String ?? "",
                                       placeholder: json["placeholder"] as? String,
                                       columns: (json["columns"] as? Int) ?? PluginView.defaultColumns,
-                                      code: json["code"] as? Bool ?? false)
+                                      code: json["code"] as? Bool ?? false, reload: json["reload"] as? String,
+                                      refreshSeconds: (json["refresh_seconds"] as? NSNumber)?.intValue)
                 let rest = String(text[next...])
                 var problems: [String] = []
                 if layout == .detail {
