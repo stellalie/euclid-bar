@@ -15,6 +15,8 @@ import Foundation
 /// `"reload":"./list.sh"` makes it live: Euclid runs that command again (it prints the same kind of
 /// view) after a `run` in the view that opened no new view, when you come back to it with `esc`,
 /// and every `refresh_seconds` while it's on screen. The script keeps no state: it reads it again.
+/// `"search":"./find.sh"` hands what you type to the script instead (`$1`), for searches only it
+/// can do (an API); the view then shows exactly the rows it prints.
 public struct PluginView: Equatable, Sendable {
     public enum Layout: String, Equatable, Sendable, CaseIterable {
         case list, grid, detail
@@ -35,12 +37,15 @@ public struct PluginView: Equatable, Sendable {
     public var reload: String?
     /// Run `reload` this often while the view is on screen: 1–3600 s; nil = only after a change.
     public var refreshSeconds: Int?
+    /// A command that gets what you type as `$1` and prints the rows for it (the script searches,
+    /// e.g. an API); without it, typing filters the rows the view already has.
+    public var search: String?
 
     public static let defaultColumns = 6
 
     public init(layout: Layout, title: String = "", placeholder: String? = nil, columns: Int = defaultColumns,
                 items: [PluginItem] = [], text: String = "", code: Bool = false, reload: String? = nil,
-                refreshSeconds: Int? = nil) {
+                refreshSeconds: Int? = nil, search: String? = nil) {
         self.layout = layout
         self.title = title
         self.placeholder = placeholder
@@ -50,7 +55,9 @@ public struct PluginView: Equatable, Sendable {
         self.code = code
         let reload = reload?.trimmingCharacters(in: .whitespaces)
         self.reload = reload?.isEmpty == false ? reload : nil
-        self.refreshSeconds = self.reload == nil ? nil : refreshSeconds.map { min(max($0, 1), 3600) }
+        let search = search?.trimmingCharacters(in: .whitespaces)
+        self.search = search?.isEmpty == false && layout != .detail ? search : nil
+        self.refreshSeconds = self.reload == nil && self.search == nil ? nil : refreshSeconds.map { min(max($0, 1), 3600) }
     }
 }
 
@@ -68,7 +75,8 @@ public struct PluginResult: Equatable, Sendable {
     }
 
     /// Effect lines up to a `{"view":…}` header; after it, the view's content.
-    public static func parse(_ data: Data) -> PluginResult {
+    /// `rows`: output with no header is the rows of a list (what a view's `search` prints).
+    public static func parse(_ data: Data, rows: Bool = false) -> PluginResult {
         let text = String(decoding: data.prefix(PluginRunner.maxOutput), as: UTF8.self)
         var offset = text.startIndex
         while offset < text.endIndex {
@@ -86,7 +94,8 @@ public struct PluginResult: Equatable, Sendable {
                                       placeholder: json["placeholder"] as? String,
                                       columns: (json["columns"] as? Int) ?? PluginView.defaultColumns,
                                       code: json["code"] as? Bool ?? false, reload: json["reload"] as? String,
-                                      refreshSeconds: (json["refresh_seconds"] as? NSNumber)?.intValue)
+                                      refreshSeconds: (json["refresh_seconds"] as? NSNumber)?.intValue,
+                                      search: json["search"] as? String)
                 let rest = String(text[next...])
                 var problems: [String] = []
                 if layout == .detail {
@@ -98,6 +107,10 @@ public struct PluginResult: Equatable, Sendable {
                 return PluginResult(effects: effects, view: view, problems: problems)
             }
             offset = next
+        }
+        if rows {
+            let (items, problems) = PluginOutput.parse(data)
+            return PluginResult(view: PluginView(layout: .list, items: items), problems: problems)
         }
         return PluginResult(effects: PluginEffect.parse(data))
     }

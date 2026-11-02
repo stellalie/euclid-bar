@@ -18,7 +18,7 @@ public enum PluginGuide {
 
     /// An example plugin's files, by name: `euclid-bar --plugin add github`.
     public static let examples: [String: [(name: String, text: String, executable: Bool)]] = [
-        "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true)],
+        "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true), ("search.sh", githubSearch, true)],
         "linear": [("plugin.toml", linearManifest, false), ("items.sh", linearScript, true)],
         "bitbucket": [("plugin.toml", bitbucketManifest, false), ("items.sh", bitbucketScript, true)],
         "jira": [("plugin.toml", jiraManifest, false), ("items.sh", jiraItems, true), ("open.sh", jiraOpen, true),
@@ -70,6 +70,10 @@ description = "Your open PRs, PRs waiting on your review, and issues assigned to
 run = "./items.sh"
 refresh_minutes = 5
 
+[answer]                  # `gh fix login`: issues and PRs as you type, right in the bar
+run    = './search.sh rows "$1"'
+prefix = "gh"
+
 [[action]]
 name = "Search GitHub code"
 run  = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
@@ -84,7 +88,13 @@ limit = 30          # per list; override in config.toml with [plugin.github] lim
 set -eu
 command -v gh >/dev/null 2>&1 || { echo "needs the GitHub CLI: brew install gh && gh auth login" >&2; exit 1; }
 limit=${EUCLID_SETTING_LIMIT:-30}
-row='{title, subtitle: "\(.repository.nameWithOwner) · #\(.number)", open: .url, id: .url, icon: "arrow.triangle.pull"}'
+echo '{"title":"Search GitHub","subtitle":"Issues and PRs, as you type","run":"./search.sh open","icon":"magnifyingglass","id":"github:search"}'
+# ⌘K on a row: copy its URL, approve it, or comment (asks for the text first).
+row='{title, subtitle: "\(.repository.nameWithOwner) · #\(.number)", open: .url, id: .url, icon: "arrow.triangle.pull",
+  actions: [{title: "Copy URL", copy: .url, icon: "link"},
+            {title: "Approve", run: "./search.sh approve \(.url | @sh)", icon: "checkmark.circle"},
+            {title: "Comment…", run: "./search.sh comment \(.url | @sh)", icon: "text.bubble",
+             arguments: [{placeholder: "Comment"}]}]}'
 
 gh search prs --review-requested=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Review\", suggest: true} | tojson"
@@ -92,6 +102,32 @@ gh search prs --author=@me --state=open --limit "$limit" --json number,title,url
   --jq ".[] | $row + {label: \"Your PR\"} | tojson"
 gh search issues --assignee=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Issue\", icon: \"smallcircle.filled.circle\"} | tojson"
+"""#
+
+    static let githubSearch = #"""
+#!/bin/sh
+# ./search.sh open [words]   a view that searches your issues and PRs as you type (Euclid reruns
+#                            `./search.sh rows <what you typed>` after each pause)
+# ./search.sh approve <url>  approve a PR      ./search.sh comment <url> <text>  comment on it
+set -eu
+command -v gh >/dev/null 2>&1 || { echo "needs the GitHub CLI: brew install gh && gh auth login" >&2; exit 1; }
+what=${1:-open}
+case $what in
+  approve) gh pr review "$2" --approve >/dev/null; echo '{"notice":"Approved"}'; exit 0 ;;
+  comment) gh issue comment "$2" --body "$3" >/dev/null; echo '{"notice":"Commented"}'; exit 0 ;;
+  open) echo '{"view":"list","title":"GitHub","placeholder":"Search issues and PRs…","search":"./search.sh rows"}' ;;
+  rows) ;;
+  *) echo "usage: search.sh open|rows [words] | approve <url> | comment <url> <text>" >&2; exit 64 ;;
+esac
+words=${2:-}
+[ -n "$words" ] || words="involves:@me is:open"   # before you type: what involves you
+gh search issues --include-prs --limit 30 --json number,title,url,repository,isPullRequest,state --jq '.[] |
+  {title, subtitle: "\(.repository.nameWithOwner) · #\(.number) · \(.state)", open: .url, id: .url,
+   icon: (if .isPullRequest then "arrow.triangle.pull" else "smallcircle.filled.circle" end),
+   actions: ([{title: "Copy URL", copy: .url, icon: "link"}]
+     + (if .isPullRequest then [{title: "Approve", run: "./search.sh approve \(.url | @sh)", icon: "checkmark.circle"}] else [] end)
+     + [{title: "Comment…", run: "./search.sh comment \(.url | @sh)", icon: "text.bubble", arguments: [{placeholder: "Comment"}]}])}
+  | tojson' -- "$words"
 """#
 
     static let bitbucketManifest = #"""
@@ -730,8 +766,9 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 | `id` | Stable identity, so Euclid learns what you pick; default: `open`, then `title` |
 | `suggest` | `true` = also shown when the search box is empty (3 per plugin) |
 | `arguments` | Up to 3 fields to fill in before `run` runs (see below) |
+| `actions` | More things to do with it, shown by `⌘K`: a list of items like this one (up to 20) |
 
-`↵` does the first of `open`, `paste`, `copy`, `run` that is set. All fields are strings except
+`↵` does the first of `open`, `paste`, `copy`, `run` that is set, else its first action. All fields are strings except
 `suggest` and `arguments`. Print errors to stderr and exit non-zero: Euclid shows the first stderr line.
 
 ### Arguments: ask before running
@@ -771,6 +808,20 @@ echo '{"title":"grinning face","icon":"😀","paste":"😀"}'     # items, as a 
 
 `esc` goes back. Items in a view work like any item, so a `run` can open another view
 (a confirm step, a drill-down).
+
+**Actions.** An item's `actions` are items too (`open`, `copy`, `run`, `arguments`…). `⌘K` on it
+opens them as a list; `↵` runs one and goes back, and a live view under it reloads:
+
+```json
+{"title":"Fix login","open":"https://github.com/acme/web/pull/412","actions":[
+  {"title":"Copy URL","copy":"https://github.com/acme/web/pull/412"},
+  {"title":"Approve","run":"gh pr review https://github.com/acme/web/pull/412 --approve"},
+  {"title":"Comment…","run":"./comment.sh 412","arguments":[{"placeholder":"Comment"}]}]}
+```
+
+**Search as you type.** Add `"search":"./find.sh"` to a list or grid header and Euclid hands what
+you type to that command as `$1` after each pause (0.15 s), and shows exactly the rows it prints
+(no header needed). Use it when only the script can search: an API, a server, a big index.
 
 **Live views.** Add `"reload"` to the header, a command that prints the view again, and Euclid
 keeps it current without the script remembering anything: it reruns it after a `run` in the view
@@ -845,6 +896,25 @@ Hooks run in the background with a 10 s limit and never slow the panel down; key
 sample text: `euclid-bar --try-plugin <id> "https://example.com/?utm_source=x"`. Keys aren't run
 by `--try-plugin`; it checks them and lists them.
 
+## Port a Raycast extension
+
+Most Raycast extensions are an API or a CLI plus lists, and port to a plugin. Ask your agent:
+
+> Port the Raycast extension at <github.com/raycast/extensions/tree/main/extensions/NAME> to a
+> Euclid plugin in ~/.config/euclid/plugins/NAME. Read its package.json and src/ to see each
+> command and what it calls, then follow ~/.config/euclid/plugins/AGENTS.md:
+> a command with a list → a source row whose `run` opens a list view; `<List.Item>` → an item;
+> its `<ActionPanel>` → the item's `actions` (first one = ↵); `onSearchTextChange` that calls a
+> server → `"search"`; `useCachedPromise` / `setInterval` / `revalidate` → `"reload"` with
+> `refresh_seconds`; `<Detail markdown>` → a detail view; `<Form>` with ≤3 fields → `arguments`;
+> preferences → `[settings]`; tokens → the Keychain (`security find-generic-password`).
+> Prefer the service's CLI (gh, docker, brew, kubectl) over raw HTTP. Keep each script fast.
+> Check it with `euclid-bar --try-plugin NAME` until it runs clean, and tell me what you left out.
+
+What doesn't port: extensions that need Raycast's AI, a browser extension, window management, or
+forms with more than 3 fields. Worked examples: `docker` and `kill-process` (Raycast has both),
+`github` (search, actions).
+
 ## Rules of thumb
 
 - Keep sources fast and quiet: they run in the background with a 30 s limit, answers with 2 s.
@@ -859,7 +929,8 @@ by `--try-plugin`; it checks them and lists them.
 `euclid-bar --plugin add <name>` writes a working example into this folder. Read them, copy them,
 change them:
 
-- `github`: your PRs, review requests and issues, through the `gh` CLI (a source).
+- `github`: your PRs, review requests and issues, through the `gh` CLI; ⌘K copies, approves or
+  comments; `gh <words>` searches issues and PRs as you type (a source, `actions`, a `search` view).
 - `linear`: Linear issues assigned to you, through the GraphQL API (a source, key in the Keychain).
 - `bitbucket`: your PRs, review requests and repos, Cloud or Data Center (a source, token in the Keychain).
 - `jira`: your issues and ones you viewed; `ABC-123` opens any issue; ⇧⌘C copies a branch name

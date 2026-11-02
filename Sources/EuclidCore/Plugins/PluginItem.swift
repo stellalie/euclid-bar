@@ -25,10 +25,15 @@ public struct PluginItem: Equatable, Sendable, Decodable {
     public var suggest: Bool?
     /// Up to 3 fields to fill in before ↵ runs it; their values reach `run` as `$1`–`$3`.
     public var arguments: [PluginArgument]?
+    /// More things to do with it, shown by ⌘K: items like this one (without their own `actions`).
+    /// The first is what ↵ does when the item itself has no `open`, `paste`, `copy` or `run`.
+    public var actions: [PluginItem]?
+
+    public static let maxActions = 20
 
     public init(title: String, subtitle: String? = nil, open: String? = nil, copy: String? = nil, paste: String? = nil,
                 run: String? = nil, icon: String? = nil, label: String? = nil, preview: String? = nil,
-                id: String? = nil, suggest: Bool? = nil, arguments: [PluginArgument]? = nil) {
+                id: String? = nil, suggest: Bool? = nil, arguments: [PluginArgument]? = nil, actions: [PluginItem]? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.open = open
@@ -41,10 +46,12 @@ public struct PluginItem: Equatable, Sendable, Decodable {
         self.id = id
         self.suggest = suggest
         self.arguments = arguments.map { Array($0.prefix(PluginArgument.max)) }
+        let actions = (actions ?? []).prefix(Self.maxActions).map { var a = $0; a.actions = nil; return a }
+        self.actions = actions.isEmpty ? nil : Array(actions)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case title, subtitle, open, copy, paste, run, icon, label, preview, id, suggest, arguments
+        case title, subtitle, open, copy, paste, run, icon, label, preview, id, suggest, arguments, actions
     }
 
     public init(from decoder: Decoder) throws {
@@ -60,7 +67,8 @@ public struct PluginItem: Equatable, Sendable, Decodable {
                   preview: try c.decodeIfPresent(String.self, forKey: .preview),
                   id: try c.decodeIfPresent(String.self, forKey: .id),
                   suggest: try c.decodeIfPresent(Bool.self, forKey: .suggest),
-                  arguments: try c.decodeIfPresent([PluginArgument].self, forKey: .arguments))
+                  arguments: try c.decodeIfPresent([PluginArgument].self, forKey: .arguments),
+                  actions: try c.decodeIfPresent([PluginItem].self, forKey: .actions))
     }
 
     /// Fields to fill in before ↵ runs it (only with `run`).

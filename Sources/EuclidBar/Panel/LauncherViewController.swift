@@ -110,14 +110,21 @@ final class LauncherViewController: NSViewController {
         let under: String
         /// Tells a reload's reply apart from one for a view that has since closed.
         let id = UUID()
+        /// An item's ⌘K actions: running one goes back to the view it's for.
+        var isActions = false
     }
     private var views: [ViewState] = []
     /// A live view's next `refresh_seconds` reload.
     private var refreshTimer: Timer?
-    /// The view whose `reload` is running, so reloads never pile up.
+    /// The view whose `reload` (or `search`) is running, so they never pile up.
     private var reloading: UUID?
-    /// Run a live view's `reload` command; the reply comes back through `viewReloaded`.
-    var onReloadView: ((_ command: String, _ pluginID: String, _ viewID: UUID) -> Void)?
+    /// Something changed while one was running: run it again when it's back.
+    private var reloadAgain = false
+    /// Typing in a view with `search`: wait for a pause before asking the script.
+    private var searchTimer: Timer?
+    /// Run a view's `reload`, or its `search` with what you typed (`query`); the reply comes back
+    /// through `viewReloaded`.
+    var onReloadView: ((_ command: String, _ pluginID: String, _ viewID: UUID, _ query: String?) -> Void)?
     private var layout: PluginView.Layout? { mode == .view ? views.last?.view.layout : nil }
 
     /// An item's fields, shown in the search row while you fill them in.
@@ -520,12 +527,12 @@ final class LauncherViewController: NSViewController {
     // MARK: - Plugin views
 
     /// A script printed a view: show it on top of whatever is open (`esc` comes back here).
-    func present(_ view: PluginView, pluginID: String, pluginName: String) {
+    func present(_ view: PluginView, pluginID: String, pluginName: String, isActions: Bool = false) {
         endArguments()
         setPreview(open: false)
         let under = mode == .view ? searchField.stringValue : query
         if case .actions = mode { mode = .search }
-        views.append(ViewState(view: view, pluginID: pluginID, pluginName: pluginName, under: under))
+        views.append(ViewState(view: view, pluginID: pluginID, pluginName: pluginName, under: under, isActions: isActions))
         showTopView(text: "")
     }
 
@@ -561,22 +568,48 @@ final class LauncherViewController: NSViewController {
     /// Run the open view's `reload` now, if it has one: after a `run` in it changed something,
     /// when you come back to it, and on its `refresh_seconds` timer.
     func reloadTopView() {
-        guard mode == .view, argumentEntry == nil, let top = views.last, let command = top.view.reload,
-              reloading == nil else { return }
+        guard mode == .view, argumentEntry == nil, let top = views.last,
+              let command = top.view.search ?? top.view.reload else { return }
+        guard reloading == nil else { reloadAgain = true; return }
         refreshTimer?.invalidate()
+        searchTimer?.invalidate()
         reloading = top.id
-        onReloadView?(command, top.pluginID, top.id)
+        onReloadView?(command, top.pluginID, top.id, top.view.search == nil ? nil : searchField.stringValue)
+    }
+
+    /// ⌘K on a plugin item with `actions`: they open as a list on top; ↵ runs one and comes back.
+    private func presentActions(for e: PluginService.Entry) {
+        guard let actions = e.item.actions, !actions.isEmpty else { return }
+        present(PluginView(layout: .list, title: e.item.title, placeholder: "Actions for \(e.item.title)…", items: actions),
+                pluginID: e.pluginID, pluginName: e.pluginName, isActions: true)
+    }
+
+    /// Leave an actions list before running one of its actions, so a live view under it reloads.
+    private func leaveActions() {
+        if mode == .view, views.last?.isActions == true { popView() }
     }
 
     /// What `reload` printed for view `id` (nil: it failed or printed no view). The rows change
     /// in place: the filter text stays and the selection follows its item.
-    func viewReloaded(_ id: UUID, with fresh: PluginView?) {
+    func viewReloaded(_ id: UUID, with fresh: PluginView?, query: String?) {
         if reloading == id { reloading = nil }
+        defer {
+            if reloadAgain, reloading == nil { reloadAgain = false; reloadTopView() }
+        }
         guard let i = views.firstIndex(where: { $0.id == id }) else { return }
-        if var fresh {
-            if fresh.reload == nil { (fresh.reload, fresh.refreshSeconds) = (views[i].view.reload, views[i].view.refreshSeconds) }
-            views[i].view = fresh
-            if i == views.count - 1, mode == .view { refreshTopView() }
+        let isTop = i == views.count - 1 && mode == .view
+        // Rows for what you typed before the latest keystroke: ask again instead.
+        if let query, isTop, query != searchField.stringValue { reloadAgain = true; return }
+        if let fresh {
+            if query != nil {
+                views[i].view.items = fresh.items // a search's rows; the view stays as it was
+            } else {
+                var fresh = fresh
+                if fresh.reload == nil { (fresh.reload, fresh.refreshSeconds) = (views[i].view.reload, views[i].view.refreshSeconds) }
+                if fresh.search == nil { fresh.search = views[i].view.search }
+                views[i].view = fresh
+            }
+            if isTop { refreshTopView() }
         }
         if i == views.count - 1 { scheduleRefresh() }
     }
@@ -605,6 +638,15 @@ final class LauncherViewController: NSViewController {
     private func stopRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        searchTimer?.invalidate()
+        searchTimer = nil
+    }
+
+    private func scheduleSearch() {
+        searchTimer?.invalidate()
+        searchTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadTopView() }
+        }
     }
 
     /// The list, the grid or the detail text, for the mode.
@@ -698,6 +740,7 @@ final class LauncherViewController: NSViewController {
         entry.arguments = values
         endArguments()
         if mode == .search, let key = Row.plugin(entry).learnKey { ranking?.record(query: query, key: key) }
+        leaveActions()
         onPluginItem?(entry)
     }
 
@@ -776,7 +819,7 @@ final class LauncherViewController: NSViewController {
                     PluginService.Entry(pluginID: top.pluginID, pluginName: top.pluginName, item: $0.element, index: $0.offset)
                 }
                 var shown = entries
-                if !text.isEmpty {
+                if !text.isEmpty, top.view.search == nil { // with `search`, the script already picked them
                     let found = FuzzyMatcher.scoredSearch(text, in: items.enumerated().map { $0.element.searchItem(id: $0.offset) },
                                                           limit: PluginOutput.maxItems)
                     shown = found.map { entries[$0.item.id] }
@@ -1086,7 +1129,7 @@ final class LauncherViewController: NSViewController {
             case .calc?, .transform?: list.append(H(key: "↵", label: "Copy"))
             case .plugin(let e)?:
                 let i = e.item
-                list.append(H(key: "↵", label: e.ask != nil ? "Ask" : i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
+                list.append(H(key: "↵", label: e.ask != nil ? "Ask" : Self.enterLabel(i)))
             case .command(let c)? where c.kind == .toggleAutoInstall || c.kind == .toggleExpansion || c.kind == .toggleOpenAtLogin
                 || c.kind == .toggleDiagnostics: list.append(H(key: "↵", label: c.accessory == "On" ? "Turn off" : "Turn on"))
             case nil, .header?: break
@@ -1095,6 +1138,7 @@ final class LauncherViewController: NSViewController {
             if selectedRow != nil { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
             if let first = actions.first { list.append(H(key: "⌘↵", label: first.name)) }
             if case .project? = selectedRow { list.append(H(key: "⌘K", label: "Tasks & actions")) }
+            else if case .plugin(let e)? = selectedRow, let n = e.item.actions?.count { list.append(H(key: "⌘K", label: "\(n) actions")) }
             else { list.append(H(key: "⌘K", label: "Actions")) }
             if let item = selectedRow.flatMap(modItem(for:)), let k = modKeys.first(where: { $0.key.applies(to: item) }) {
                 list.append(H(key: k.key.key.symbols, label: k.key.name))
@@ -1113,7 +1157,8 @@ final class LauncherViewController: NSViewController {
             } else {
                 if case .plugin(let e)? = selectedRow {
                     let i = e.item
-                    list.append(H(key: "↵", label: i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
+                    list.append(H(key: "↵", label: Self.enterLabel(i)))
+                    if let n = i.actions?.count, views.last?.isActions != true { list.append(H(key: "⌘K", label: "\(n) actions")) }
                     if i.paste != nil, i.copy != nil { list.append(H(key: "⌘C", label: "Copy")) }
                     if layout == .list { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
                 }
@@ -1127,6 +1172,15 @@ final class LauncherViewController: NSViewController {
     }
 
     // MARK: - Selection & activation
+
+    /// What ↵ does to a plugin item, for the footer: its own field, else its first action's title.
+    private static func enterLabel(_ i: PluginItem) -> String {
+        if i.open != nil { return "Open" }
+        if i.paste != nil { return "Paste" }
+        if i.copy != nil { return "Copy" }
+        if i.run != nil { return "Run" }
+        return i.actions?.first?.title ?? "Run"
+    }
 
     private var selectedRow: Row? {
         let i = layout == .grid ? grid.selected : tableView.selectedRow
@@ -1164,13 +1218,20 @@ final class LauncherViewController: NSViewController {
             onCopyText?(text)
             return
         }
-        guard let row = selectedRow else { return }
+        guard let selected = selectedRow else { return }
+        var row = selected
+        if case .plugin(let e) = row, e.ask == nil, let first = e.item.actions?.first,
+           e.item.open == nil, e.item.paste == nil, e.item.copy == nil, e.item.run == nil {
+            // Nothing of its own to do: ↵ does its first action (asking for its fields first).
+            row = .plugin(PluginService.Entry(pluginID: e.pluginID, pluginName: e.pluginName, item: first))
+        }
         if case .plugin(let e) = row, !e.item.fields.isEmpty {
             beginArguments(e)
             return
         }
-        if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
+        if case .search = mode, let key = selected.learnKey { ranking?.record(query: query, key: key) }
         let item = modItem(for: row)
+        if case .plugin = row { leaveActions() }
         activate(row, query: query)
         if let item { onChoose?(item) }
     }
@@ -1240,8 +1301,13 @@ final class LauncherViewController: NSViewController {
         }
         let digit = HotkeyBinding.digitKeyCodes.firstIndex(of: keyCode).flatMap { $0 == 0 ? nil : $0 }
         let inActions = if case .actions = mode { true } else { false }
+        if mods == [.command], keyCode == kVK_ANSI_K, !inActions, argumentEntry == nil, views.last?.isActions != true,
+           case .plugin(let e)? = selectedRow, e.item.actions?.isEmpty == false {
+            presentActions(for: e)
+            return true
+        }
         if mode == .view, mods == [.command] || mods == [] {
-            // A view has no actions; ⌘C copies a detail's text.
+            // A view has no ⌘K list of its own (an item's `actions` open above); ⌘C copies a detail's text.
             if layout == .detail, mods == [.command], keyCode == kVK_ANSI_C,
                searchField.currentEditor()?.selectedRange.length ?? 0 == 0, let text = views.last?.view.text {
                 onCopyText?(text)
@@ -1339,6 +1405,7 @@ final class LauncherViewController: NSViewController {
 
     /// The file whose icon a row shows (beyond `Row.path`): a copied file's first path.
     private func iconPath(_ row: Row) -> String? {
+        if case .plugin(let e) = row { return PluginIcon.appPath(e.item.icon) }
         guard case .clip(let item) = row, let c = clip(item.id), c.kind == .files else { return nil }
         return c.paths.first
     }
@@ -1348,6 +1415,7 @@ extension LauncherViewController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard (obj.object as? NSTextField) === searchField else { return }
         runSearch()
+        if mode == .view, views.last?.view.search != nil { scheduleSearch() }
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -1463,7 +1531,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
         case .plugin(let e):
             let image = PluginIcon.image(e.item.icon, directory: pluginDirectory(e.pluginID))
-            show(image == nil ? e.item.icon ?? "puzzlepiece.extension" : "puzzlepiece.extension", image: image, e.item.title,
+            let symbol = PluginIcon.appPath(e.item.icon) != nil ? "app" : e.item.icon ?? "puzzlepiece.extension"
+            show(image == nil ? symbol : "puzzlepiece.extension", image: image, e.item.title,
                  detail: e.item.subtitle ?? "", tagged(e.item.label ?? e.pluginName, title: e.item.title))
         }
         return cell

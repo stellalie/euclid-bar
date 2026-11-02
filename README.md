@@ -56,7 +56,7 @@ with `euclid-bar --plugin add <name>`:
 
 | Plugin | What you get |
 |---|---|
-| `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI |
+| `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI; ⌘K copies, approves or comments; `gh <words>` searches as you type |
 | `bitbucket` *(plugin)* | Your open PRs, PRs waiting on your review, your repos (Cloud and Data Center) |
 | `jira` *(plugin)* | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
 | `linear` *(plugin)* | Linear issues assigned to you |
@@ -506,6 +506,11 @@ Icons can be SF Symbols, emoji, image files or an app (`/Applications/Safari.app
 **Live views, no state.** Add `"reload":"./list.sh","refresh_seconds":3` to the header and Euclid
 reruns the script to keep the view current: on a timer, after an action, and when you come back to
 it. Your filter and selection stay put. That's how `kill-process` and `docker` stay live.
+A row can carry `actions` (⌘K lists them, ↵ runs one), and a view with `"search":"./find.sh"`
+hands what you type to the script, for searches only it can do (`github`: `gh fix login`).
+
+**Port a Raycast extension.** Paste the prompt from [AGENTS.md](https://lgtm.ninja/euclid/plugins/AGENTS.md)
+("Port a Raycast extension") into Claude Code or Codex with the extension's GitHub link.
 
 ```sh
 echo '{"view":"grid","title":"Emoji","columns":8}'

@@ -91,14 +91,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginDirectory = { [unowned plugins] id in plugins.plugin(id: id)?.directory }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
-        content.onReloadView = { [weak self] command, pluginID, viewID in
-            self?.plugins.run(command, pluginID: pluginID, arguments: nil) { [weak self] result in
+        content.onReloadView = { [weak self] command, pluginID, viewID, query in
+            // A search gets what you typed as $1 and may print just rows.
+            self?.plugins.run(command, pluginID: pluginID, arguments: query.map { [$0] }, rows: query != nil) { [weak self] result in
                 guard let self else { return }
                 switch result {
                 case .success(let r):
-                    self.content.viewReloaded(viewID, with: r.view)
+                    self.content.viewReloaded(viewID, with: r.view, query: query)
                 case .failure(let failure):
-                    self.content.viewReloaded(viewID, with: nil)
+                    self.content.viewReloaded(viewID, with: nil, query: query)
                     if !failure.stillRunning { self.content.notice = "⚠︎ Refresh failed (\(failure.description))" }
                 }
             }
@@ -308,6 +309,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             hide()
         } else if let run = item.run {
             runPluginCommand(run, pluginID: entry.pluginID, label: item.title, arguments: entry.arguments)
+        } else if let first = item.actions?.first {
+            // Nothing of its own to do: ↵ does its first action.
+            activate(PluginService.Entry(pluginID: entry.pluginID, pluginName: entry.pluginName, item: first))
         }
     }
 

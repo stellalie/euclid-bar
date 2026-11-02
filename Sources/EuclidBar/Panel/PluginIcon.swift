@@ -19,10 +19,11 @@ enum PluginIcon {
         switch kind {
         case .symbol: return nil
         case .file(let path):
+            // An app bundle (`/Applications/Safari.app`) shows the app's own icon, loaded off the main
+            // thread like app rows' (nil until then: the row shows the "app" symbol and is redrawn).
+            if path.hasSuffix(".app") { return IconCache.shared.icon(forPath: path) }
             if let cached = images[path] { return cached }
-            // An app bundle (`/Applications/Safari.app`) shows the app's own icon.
-            let bundle = path.hasSuffix(".app") && FileManager.default.fileExists(atPath: path)
-            guard let image = bundle ? NSWorkspace.shared.icon(forFile: path) : NSImage(contentsOfFile: path) else { return nil }
+            guard let image = NSImage(contentsOfFile: path) else { return nil }
             if images.count > 500 { images.removeAll() }
             images[path] = image
             return image
@@ -32,6 +33,13 @@ enum PluginIcon {
             images[key] = image
             return image
         }
+    }
+
+    /// An `icon` that is an app bundle's path, expanded: its icon comes from `IconCache`.
+    static func appPath(_ icon: String?) -> String? {
+        guard let icon, icon.hasSuffix(".app") else { return nil }
+        let path = (icon as NSString).expandingTildeInPath
+        return path.hasPrefix("/") ? path : nil
     }
 
     /// Whether `icon` is a symbol name (or nothing we can draw), so callers can fall back to a symbol.
