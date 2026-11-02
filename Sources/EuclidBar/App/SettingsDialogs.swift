@@ -46,7 +46,11 @@ enum SettingsDialogs {
                              + (lines.count > 15 ? "\n… and \(lines.count - 15) more lines" : ""))
                 continue
             }
-            let lines = file.removed.map { "− \($0)" } + file.added.map { "+ \($0)" }
+            // Without trailing comments: the setting is what changed, and long ones wrap.
+            func code(_ line: String) -> String {
+                line.replacingOccurrences(of: #"\s{2,}#.*$"#, with: "", options: .regularExpression)
+            }
+            let lines = file.removed.map { "− \(code($0))" } + file.added.map { "+ \(code($0))" }
             let limit = 12
             parts.append(lines.isEmpty ? "\(head): only comments or layout"
                          : "\(head)\n" + lines.prefix(limit).joined(separator: "\n") + (lines.count > limit ? "\n… and \(lines.count - limit) more" : ""))
@@ -120,7 +124,11 @@ enum SettingsDialogs {
             ("settings-4-rejected", alert("Nothing changed", rejected(rejection), buttons: rejectedButtons),
              "A broken reply writes nothing, and gives a note for the AI"),
         ]
+        let rep = IconRenderer.image(pixels: 256) // no app bundle when rendering, so no app icon
+        let icon = NSImage(size: NSSize(width: 64, height: 64))
+        icon.addRepresentation(rep)
         for (name, alert, caption) in steps {
+            alert.icon = icon
             alert.layout()
             guard let view = alert.window.contentView else { continue }
             try write(snapshot(view), name, caption)
