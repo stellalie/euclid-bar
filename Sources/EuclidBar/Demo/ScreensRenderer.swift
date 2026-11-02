@@ -212,11 +212,7 @@ enum ScreensRenderer {
         vc.theme = Theme(Appearance())
 
         // Plugin views, typed arguments and --pick (after the themes, so earlier shot numbers stay put).
-        let emoji = (PluginGuide.examples["emoji"]?.first { $0.name == "emoji.tsv" }?.text ?? "")
-            .split(separator: "\n").prefix(400).map { line -> PluginItem in
-                let f = line.split(separator: "\t").map(String.init)
-                return PluginItem(title: f[1], subtitle: f.count > 2 ? f[2] : nil, copy: f[0], paste: f[0], icon: f[0], id: f[0])
-            }
+        let emoji = sampleEmoji()
         vc.demoSetQuery("")
         vc.present(PluginView(layout: .grid, title: "Emoji", placeholder: "Search emoji…", columns: 8, items: emoji),
                    pluginID: "emoji", pluginName: "Emoji")
@@ -224,14 +220,7 @@ enum ScreensRenderer {
         try type("heart", caption: "Typing filters the grid")
         try step("Typing filters the grid", hold: 1.6, name: "view-grid-filter")
         vc.prepareForShow()
-        vc.present(PluginView(layout: .detail, title: "Weather", text: """
-            Weather for Sydney
-                \\  /       Partly cloudy
-              _ /"".-.     22 °C
-                \\_(   ).   ↗ 11 km/h
-                /(___(__)  10 km
-                           0.0 mm
-            """, code: true), pluginID: "raycast", pluginName: "Raycast scripts")
+        vc.present(PluginView(layout: .detail, title: "Weather", text: sampleWeather, code: true), pluginID: "raycast", pluginName: "Raycast scripts")
         try step("raycast plugin: a fullOutput script command, shown as a detail view", hold: 2.0, name: "view-detail")
         vc.prepareForShow()
         let weather = PluginItem(title: "Weather", subtitle: "Web", run: "./run.sh weather.sh", icon: "🌤", label: "Script", arguments: [
@@ -258,6 +247,25 @@ enum ScreensRenderer {
     }
 
     // MARK: - Sample data
+
+    /// The emoji plugin's grid, from its own data.
+    static func sampleEmoji() -> [PluginItem] {
+        (PluginGuide.examples["emoji"]?.first { $0.name == "emoji.tsv" }?.text ?? "")
+            .split(separator: "\n").prefix(400).map { line -> PluginItem in
+                let f = line.split(separator: "\t").map(String.init)
+                return PluginItem(title: f[1], subtitle: f.count > 2 ? f[2] : nil, copy: f[0], paste: f[0], icon: f[0], id: f[0])
+            }
+    }
+
+    /// A Raycast fullOutput script's page.
+    static let sampleWeather = """
+        Weather for Sydney
+            \\  /       Partly cloudy
+          _ /"".-.     22 °C
+            \\_(   ).   ↗ 11 km/h
+            /(___(__)  10 km
+                       0.0 mm
+        """
 
     static func wire(_ vc: LauncherViewController, clips: ClipHistory) {
         let pages = DemoRenderer.samplePages()
