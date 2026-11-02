@@ -69,6 +69,9 @@ with `euclid-bar --plugin add <name>`:
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
 | `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
+| `raycast` *(plugin)* | Runs your Raycast script commands: each is a row, `rc <name> <args>` runs one. Modes silent, compact, fullOutput and inline; typed arguments; confirmation |
+| `emoji` *(plugin)* | An emoji grid; `emoji heart` lists matches. `↵` pastes |
+| `volume` *(plugin)* | Volume Up, Down and Mute rows, `vol 40`, and Set Volume with a dropdown |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -486,6 +489,25 @@ click = 'ghostty-run tab npx -y ccusage@latest daily'
 A script prints rows like `{"title":"Fix login","subtitle":"acme/web · #412","open":"https://…"}`;
 `↵` opens, pastes, copies or runs whatever the row says.
 
+**Everything is a script, including the screens.** A row's `run` can print what to do next:
+`{"notice":"Volume 40%"}` in the footer, or a header like `{"view":"grid","title":"Emoji"}` and
+then items, to open a **list**, a **grid** (emoji, images) or a **detail** page of text. A row can
+ask for up to 3 **typed arguments** (text, password, dropdown) in the search bar before it runs.
+Icons can be SF Symbols, emoji or image files.
+
+```sh
+echo '{"view":"grid","title":"Emoji","columns":8}'
+echo '{"title":"grinning face","icon":"😀","paste":"😀"}'
+```
+
+**dmenu for the Mac.** `euclid-bar --pick` opens the panel on any list piped into it and prints
+your choice: `git branch --format='%(refname:short)' | euclid-bar --pick --prompt Branch | xargs git switch`.
+`--grid` shows tiles.
+
+**Raycast script commands work as they are.** `euclid-bar --plugin add raycast`, then put scripts
+in `~/.config/euclid/raycast` (or clone [raycast/script-commands](https://github.com/raycast/script-commands)
+and point `[plugin.raycast] folders` at it).
+
 **Let your AI write them.** Euclid keeps the whole format in `~/.config/euclid/plugins/AGENTS.md`.
 Ask Claude Code or Codex "make me a Euclid plugin that shows my Vercel deploys": it writes the
 folder, checks it with `--try-plugin`, and it shows up in the bar on save.
@@ -496,6 +518,7 @@ euclid-bar --plugin add linear      # Linear issues assigned to you
 euclid-bar --plugin add slack       # jump to channels; `slack <words>` searches messages
 euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
 euclid-bar --plugin add currency    # `100 usd to eur`; also define, contacts, shortcuts
+euclid-bar --plugin add raycast     # your Raycast script commands; also emoji, volume
 euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
 euclid-bar --try-plugin github      # run it once and print what the bar would show
 ```

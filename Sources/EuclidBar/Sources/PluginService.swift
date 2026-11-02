@@ -12,6 +12,10 @@ final class PluginService {
         let item: PluginItem
         /// An `on_enter` answer's “Ask” row: ↵ runs it with this input.
         var ask: String? = nil
+        /// Its position in the view it's shown in (`--pick` prints that line).
+        var index: Int? = nil
+        /// What you filled into its fields: `$1`–`$3` for its `run`.
+        var arguments: [String]? = nil
     }
 
     struct BadgeState: Equatable {
@@ -280,12 +284,29 @@ final class PluginService {
         }
     }
 
-    /// `run` on an item, `click` on a badge, both in the plugin's folder.
-    func runCommand(_ command: String, pluginID: String, completion: @escaping @Sendable (Result<Void, CommandRunner.Failure>) -> Void) {
+    /// `run` on an item, `click` on a badge, both in the plugin's folder, with an item's fields
+    /// as `$1`–`$3`. Gives back what it printed (effects, maybe a view); one still running after
+    /// 60 s keeps going on its own (`Failure.stillRunning`).
+    func run(_ command: String, pluginID: String, arguments: [String]?,
+             completion: @escaping @MainActor (Result<PluginResult, PluginRunner.Failure>) -> Void) {
         guard let p = plugin(id: pluginID) else { return }
-        CommandRunner.runInBackground(shell: shell, command: command, query: "", pathPrefix: binDirectory,
-                                      directory: p.directory, baseEnvironment: mergedEnvironment.merging(p.environment) { $1 },
-                                      completion: completion)
+        let shell = shell, env = mergedEnvironment, bin = binDirectory, log = log
+        Task.detached(priority: .userInitiated) {
+            let result: Result<PluginResult, PluginRunner.Failure>
+            do {
+                let data = try await PluginRunner.output(of: command, plugin: p, arguments: arguments, shell: shell, pathPrefix: bin,
+                                                         environment: env, timeout: PluginTiming.key, keepRunning: true)
+                result = .success(PluginResult.parse(data))
+            } catch let failure as PluginRunner.Failure {
+                result = .failure(failure)
+            } catch {
+                result = .failure(PluginRunner.Failure(String(describing: error)))
+            }
+            if case .failure(let f) = result, !f.stillRunning {
+                log.error("run \(p.id, privacy: .public): \(f.description, privacy: .public)")
+            }
+            await MainActor.run { completion(result) }
+        }
     }
 
     /// `$EUCLID_BAR` is this app's binary, so a plugin can call `"$EUCLID_BAR" --ai`.

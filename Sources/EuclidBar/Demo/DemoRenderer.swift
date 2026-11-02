@@ -103,6 +103,27 @@ enum DemoRenderer {
         shot(.panel(caption: "Give any app, action or snippet its own hotkey", key: "⌃⌥T"), 1.8)
         vc.badges = []
 
+        // 6b. The mini UI kit: a script prints a view header and its rows, and that's the screen.
+        let emojiRow = PluginService.Entry(pluginID: "emoji", pluginName: "Emoji", item: PluginItem(
+            title: "Emoji", subtitle: "Pick from every emoji", run: "./grid.sh", icon: "😀", label: "Plugin"))
+        let emojiItems = [emojiRow.item.searchItem(id: 0)]
+        vc.pluginProvider = { emojiItems }
+        vc.pluginEntry = { $0 == 0 ? emojiRow : nil }
+        let kitCaption = "Scripts draw screens too: a grid, a list, a page, input fields"
+        vc.demoSetQuery("")
+        type("emoji", caption: kitCaption)
+        shot(.panel(caption: kitCaption, key: nil), 0.5)
+        vc.present(PluginView(layout: .grid, title: "Emoji", placeholder: "Search emoji…", columns: 8,
+                              items: ScreensRenderer.sampleEmoji()), pluginID: "emoji", pluginName: "Emoji")
+        shot(.panel(caption: kitCaption, key: "↵"), 1.1)
+        type("party", caption: kitCaption)
+        shot(.panel(caption: kitCaption, key: nil), 1.0)
+        vc.prepareForShow()
+        vc.present(PluginView(layout: .detail, title: "Weather", text: ScreensRenderer.sampleWeather, code: true),
+                   pluginID: "raycast", pluginName: "Raycast scripts")
+        shot(.panel(caption: "Your Raycast script commands run as they are", key: nil), 1.8)
+        vc.prepareForShow()
+
         // 7. Config
         shot(.config(caption: "Every action is a shell command in config.toml. Bring any CLI"), 3.6)
 

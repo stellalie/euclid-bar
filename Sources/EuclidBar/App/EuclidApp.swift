@@ -8,6 +8,7 @@ enum EuclidApp {
     private static let delegate = AppDelegate()
 
     static func main() {
+        if let i = CommandLine.arguments.firstIndex(of: "--pick") { exit(PickCommand.run(Array(CommandLine.arguments.dropFirst(i + 1)))) }
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
         if CommandLine.arguments.contains("--mcp") { exit(AgentServer.run()) }
         if let i = CommandLine.arguments.firstIndex(of: "--ai") { exit(AppleAI.run(Array(CommandLine.arguments.dropFirst(i + 1)))) }

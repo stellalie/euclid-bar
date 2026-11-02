@@ -32,6 +32,12 @@ public enum PluginGuide {
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
         "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true)],
+        "raycast": [("plugin.toml", raycastManifest, false), ("list.sh", raycastList, true), ("scan.awk", raycastScan, false),
+                    ("run.sh", raycastRun, true)],
+        "emoji": [("plugin.toml", emojiManifest, false), ("items.sh", emojiItems, true), ("grid.sh", emojiGrid, true),
+                  ("find.sh", emojiFind, true), ("emoji.tsv", emojiData + "\n", false)],
+        "volume": [("plugin.toml", volumeManifest, false), ("items.sh", volumeItems, true), ("find.sh", volumeFind, true),
+                   ("set.sh", volumeSet, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -660,14 +666,64 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 | `paste` | `↵` pastes this text into the app you were in |
 | `copy` | `↵` copies this text (and `⌘C` copies it) |
 | `run` | `↵` runs this shell command in the plugin folder |
-| `icon` | SF Symbol name, e.g. `arrow.triangle.pull` |
+| `icon` | SF Symbol name (`arrow.triangle.pull`), an emoji (`🌤`) or an image file path (`~/pics/a.png`, or relative to the plugin folder) |
 | `label` | Shown on the right; default: the plugin's name |
 | `preview` | Text for the preview pane (`→`) |
 | `id` | Stable identity, so Euclid learns what you pick; default: `open`, then `title` |
 | `suggest` | `true` = also shown when the search box is empty (3 per plugin) |
+| `arguments` | Up to 3 fields to fill in before `run` runs (see below) |
 
 `↵` does the first of `open`, `paste`, `copy`, `run` that is set. All fields are strings except
-`suggest`. Print errors to stderr and exit non-zero: Euclid shows the first stderr line.
+`suggest` and `arguments`. Print errors to stderr and exit non-zero: Euclid shows the first stderr line.
+
+### Arguments: ask before running
+
+An item with `run` can ask for up to 3 values first. `↵` shows the fields in the search bar
+(`tab` moves between them, `↵` runs, `esc` cancels); the values reach `run` as `$1`–`$3` and
+`$EUCLID_ARG_1`–`3`. Same format as a Raycast script's `@raycast.argument1`:
+
+```json
+{"title":"Weather","run":"./weather.sh","arguments":[
+  {"type":"text","placeholder":"City"},
+  {"type":"dropdown","placeholder":"Units","optional":true,"data":[{"title":"Metric","value":"m"},{"title":"US","value":"u"}]}]}
+```
+
+`type` is `text` (default), `password` (hidden as you type) or `dropdown` (pick one of `data`;
+the script gets its `value`). `optional: true` fields may stay empty.
+
+### What `run` prints: effects and views
+
+When `↵` runs an item's `run` (or you click a badge), Euclid reads what it prints, like a key's
+output (see Mods below): `{"notice":"Volume 40%"}` shows in the footer with the panel still
+open, `{"copy":…}`, `{"paste":…}`, `{"open":…}` and `{"show":…}` work too. It waits up to 1 s
+with the panel open; a slower command keeps going in the background and its effects still apply.
+
+A script can also open a view in the panel by printing a header line first:
+
+```sh
+echo '{"view":"grid","title":"Emoji","placeholder":"Search emoji…","columns":8}'
+echo '{"title":"grinning face","icon":"😀","paste":"😀"}'     # items, as a source prints them
+```
+
+| View | Shows |
+|---|---|
+| `list` | The item lines after the header, as rows. Typing filters them. |
+| `grid` | The same, as tiles: big `icon` (emoji, image or symbol) with the title under it. `columns`: 3–10, default 6. |
+| `detail` | Everything printed after the header, as text to read; `"code":true` for monospaced output. `↵` or `⌘C` copies it. |
+
+`esc` goes back. Items in a view work like any item, so a `run` can open another view
+(a confirm step, a drill-down).
+
+### dmenu: pick from any list
+
+`euclid-bar --pick` reads lines from stdin, opens the panel to pick one and prints it
+(exit 1 if you press `esc`). Lines can be plain text or JSON items (for icons and subtitles);
+the chosen line is printed exactly as it came in. `--grid` shows tiles, `--prompt "Branch"`
+sets the placeholder.
+
+```sh
+git branch --format='%(refname:short)' | euclid-bar --pick --prompt Branch | xargs git switch
+```
 
 ## What scripts get
 
@@ -750,5 +806,12 @@ change them:
 - `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
   ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default, or the `claude`, `codex` or
   `gemini` CLI you're logged into (an `on_enter` answer and `[[key]]`s).
+- `raycast`: runs Raycast script commands from a folder (default `~/.config/euclid/raycast`):
+  each script is a row, `rc <name> <args>` runs one with arguments. Reads `@raycast.title`, `mode`
+  (silent, compact, fullOutput, inline), `argument1`–`3`, `needsConfirmation`, `icon`,
+  `packageName` and `currentDirectoryPath`. Clone github.com/raycast/script-commands and pick some
+  (a source, an answer, views and arguments).
+- `emoji`: “Emoji” opens a grid of every emoji; `emoji heart` lists matches. ↵ pastes (a grid view).
+- `volume`: Volume Up / Down / Mute rows, `vol 40`, and Set Volume with a dropdown (effects and arguments).
 """#
 }

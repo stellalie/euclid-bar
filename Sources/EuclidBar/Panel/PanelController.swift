@@ -45,6 +45,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var appObserver: NSObjectProtocol?
     /// The app you're in, for `open` hooks (`frontmostApplication` goes stale in an accessory app).
     private var frontApp = (name: "", id: "")
+    /// The item `run` the panel is waiting on (up to 1 s) before it hides.
+    private var waitingRun: UUID?
 
     init(clipboard: ClipboardService, config: ConfigService, history: HistoryService) {
         self.clipboard = clipboard
@@ -86,6 +88,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginProvider = { [unowned plugins] in plugins.items }
         content.pluginEntry = { [unowned plugins] id in plugins.entry(id: id) }
         content.pluginAnswer = { [unowned plugins] text in plugins.answer(text) }
+        content.pluginDirectory = { [unowned plugins] id in plugins.plugin(id: id)?.directory }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
         plugins.onAnswers = { [weak self] text, entries, reveal in self?.content.setPluginAnswers(entries, for: text, reveal: reveal) }
@@ -292,7 +295,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             Paster.copy(text)
             hide()
         } else if let run = item.run {
-            runPluginCommand(run, pluginID: entry.pluginID, label: item.title)
+            runPluginCommand(run, pluginID: entry.pluginID, label: item.title, arguments: entry.arguments)
         }
     }
 
@@ -312,6 +315,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 plugins.present(text, pluginName: pluginName, pluginID: pluginID, query: content.query)
             }
             if let open = e.open {
+                hide()
                 let expanded = (open as NSString).expandingTildeInPath
                 if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
                 else if let url = URL(string: open) { NSWorkspace.shared.open(url) }
@@ -326,14 +330,41 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func clickBadge(pluginID: String) {
         guard let click = plugins.plugin(id: pluginID)?.badge?.click else { return }
-        runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID)
+        runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID, arguments: nil)
     }
 
-    private func runPluginCommand(_ command: String, pluginID: String, label: String) {
-        hide()
-        plugins.runCommand(command, pluginID: pluginID) { [weak self] result in
-            guard case .failure(let failure) = result else { return }
-            DispatchQueue.main.async { self?.content.notice = "⚠︎ “\(label)” failed (\(failure.description))" }
+    /// An item's `run` (or a badge's `click`). The panel waits up to 1 s for it, so what it prints
+    /// lands in the open panel: a view opens, a notice shows in the footer (↵ again repeats it).
+    /// Anything else, or a slower command, closes the panel; its effects still apply when it's done.
+    private func runPluginCommand(_ command: String, pluginID: String, label: String, arguments: [String]?) {
+        let token = UUID()
+        waitingRun = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.waitingRun == token else { return }
+            self.waitingRun = nil
+            self.hide()
+        }
+        let name = plugins.plugin(id: pluginID)?.name ?? pluginID
+        plugins.run(command, pluginID: pluginID, arguments: arguments) { [weak self] result in
+            guard let self else { return }
+            let waited = self.waitingRun == token
+            if waited { self.waitingRun = nil }
+            switch result {
+            case .failure(let failure) where failure.stillRunning:
+                return
+            case .failure(let failure):
+                self.content.notice = "⚠︎ “\(label)” failed (\(failure.description))"
+            case .success(let r):
+                var effects = r.effects
+                if let problem = r.problems.first { effects.append(PluginEffect(notice: "⚠︎ \(problem)")) }
+                let staysOpen = r.view != nil || effects.contains { $0.show != nil || $0.notice != nil }
+                if waited, !staysOpen { self.hide() }
+                if !effects.isEmpty { self.apply(effects, from: name, pluginID: pluginID) }
+                if let view = r.view {
+                    if !self.panel.isVisible { self.show() }
+                    self.content.present(view, pluginID: pluginID, pluginName: name)
+                }
+            }
         }
     }
 

@@ -50,6 +50,10 @@ final class LauncherViewController: NSViewController {
     var pluginEntry: (Int) -> PluginService.Entry? = { _ in nil }
     /// Starts plugin answers for the query; results come back through `setPluginAnswers`.
     var pluginAnswer: ((String) -> Void)?
+    /// A plugin's folder, for icons given as relative image paths.
+    var pluginDirectory: (String) -> String? = { _ in nil }
+    /// `euclid-bar --pick`: the panel is only a view; `esc` on it closes instead of going back to search.
+    var standalone = false
     /// Plugin badges on the search bar.
     var badges: [PluginService.BadgeState] = [] { didSet { if isViewLoaded, badges != oldValue { updateBadges() } } }
     var clip: (Int) -> Clip? = { _ in nil }
@@ -92,8 +96,26 @@ final class LauncherViewController: NSViewController {
         case search
         /// ⌘K list. Remembers the query (actions run on it) and the clip that was selected.
         case actions(query: String, clipID: Int?)
+        /// A plugin's view (`views.last`): a list, a grid or text to read.
+        case view
     }
     private var mode = Mode.search
+
+    /// Views a plugin opened, newest last; `esc` goes back one.
+    private struct ViewState {
+        let view: PluginView
+        let pluginID: String
+        let pluginName: String
+        /// What the search box had under it, to put back.
+        let under: String
+    }
+    private var views: [ViewState] = []
+    private var layout: PluginView.Layout? { mode == .view ? views.last?.view.layout : nil }
+
+    /// An item's fields, shown in the search row while you fill them in.
+    private var argumentEntry: PluginService.Entry?
+    private var argumentFields: [NSTextField] = []
+    private var argumentSavedText = ""
     /// The project ⌘K was pressed on, and what it can run.
     private var projectTasks: (name: String, tasks: [ProjectTask])?
 
@@ -119,6 +141,9 @@ final class LauncherViewController: NSViewController {
     private let searchField = NSTextField()
     private let modeLabel = NSTextField(labelWithString: "")
     private let badgeStack = NSStackView()
+    private let argumentStack = NSStackView()
+    private let grid = GridView()
+    private let gridScroll = NSScrollView()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
     private let emptyLabel = NSTextField(labelWithString: "")
@@ -128,6 +153,8 @@ final class LauncherViewController: NSViewController {
     private let preview = PreviewView()
     private let previewDivider = NSBox()
     private var listTrailing: NSLayoutConstraint!
+    /// A detail view: the list gives its width to the text.
+    private var listCollapsed: NSLayoutConstraint!
 
     /// Space above and below the list: search field and footer.
     private static let chrome: CGFloat = 60 + 34
@@ -170,6 +197,10 @@ final class LauncherViewController: NSViewController {
         badgeStack.spacing = 6
         badgeStack.setHuggingPriority(.required, for: .horizontal)
         badgeStack.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        argumentStack.orientation = .horizontal
+        argumentStack.spacing = 6
+        argumentStack.setHuggingPriority(.required, for: .horizontal)
+        argumentStack.isHidden = true
 
         let divider = NSBox()
         divider.boxType = .separator
@@ -194,6 +225,19 @@ final class LauncherViewController: NSViewController {
         scrollView.contentInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         scrollView.automaticallyAdjustsContentInsets = false
 
+        grid.autoresizingMask = [.width]
+        grid.image = { [weak self] e in PluginIcon.image(e.item.icon, directory: self?.pluginDirectory(e.pluginID)) }
+        grid.onSelect = { [weak self] i in self?.select(row: i) }
+        grid.onActivate = { [weak self] i in
+            self?.select(row: i)
+            self?.activateSelection()
+        }
+        gridScroll.documentView = grid
+        gridScroll.drawsBackground = false
+        gridScroll.hasVerticalScroller = true
+        gridScroll.autohidesScrollers = true
+        gridScroll.isHidden = true
+
         let footerDivider = NSBox()
         footerDivider.boxType = .separator
         footer.font = .systemFont(ofSize: 11)
@@ -215,15 +259,19 @@ final class LauncherViewController: NSViewController {
         preview.isHidden = true
         previewDivider.isHidden = true
 
-        for v in [searchField, badgeStack, modeLabel, divider, scrollView, emptyLabel, footerDivider, footer, hints, stats, preview, previewDivider] {
+        for v in [searchField, argumentStack, badgeStack, modeLabel, divider, scrollView, gridScroll, emptyLabel, footerDivider, footer, hints,
+                  stats, preview, previewDivider] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
         listTrailing = scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor)
+        listCollapsed = scrollView.widthAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
             searchField.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
-            searchField.trailingAnchor.constraint(equalTo: badgeStack.leadingAnchor, constant: -8),
+            searchField.trailingAnchor.constraint(equalTo: argumentStack.leadingAnchor, constant: -8),
+            argumentStack.trailingAnchor.constraint(equalTo: badgeStack.leadingAnchor, constant: -8),
+            argumentStack.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
             badgeStack.trailingAnchor.constraint(equalTo: modeLabel.leadingAnchor, constant: -8),
             badgeStack.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
 
@@ -241,6 +289,10 @@ final class LauncherViewController: NSViewController {
             scrollView.widthAnchor.constraint(equalToConstant: Self.size.width).withPriority(.init(490)),
             listTrailing,
             scrollView.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
+            gridScroll.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            gridScroll.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor),
+            gridScroll.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            gridScroll.trailingAnchor.constraint(equalTo: content.trailingAnchor),
 
             previewDivider.topAnchor.constraint(equalTo: divider.bottomAnchor),
             previewDivider.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
@@ -289,6 +341,7 @@ final class LauncherViewController: NSViewController {
         emptyLabel.textColor = theme.muted
         hints.theme = theme
         preview.theme = theme
+        grid.theme = theme
         updatePreview()
         tableView.reloadData()
         if !rows.isEmpty { select(row: max(tableView.selectedRow, 0)) }
@@ -375,13 +428,16 @@ final class LauncherViewController: NSViewController {
 
     /// Called right before the panel is shown: fresh search, focused field.
     func prepareForShow() {
+        endArguments()
         setPreview(open: false)
+        views = []
         enterSearchMode(query: "")
         view.window?.makeFirstResponder(searchField)
     }
 
     func didHide() {
         notice = nil
+        endArguments()
         setPreview(open: false)
     }
 
@@ -410,11 +466,15 @@ final class LauncherViewController: NSViewController {
     }
     var demoRowCount: Int { rows.filter { !$0.isHeader }.count }
     func demoTogglePreview() { setPreview(open: !previewOpen) }
+    /// ↵ on the selected result, as if pressed (renders the argument fields).
+    func demoActivate() { activateSelection() }
 
     // MARK: - Modes
 
     private func enterSearchMode(query: String) {
         mode = .search
+        views = []
+        applyLayout()
         searchField.stringValue = query
         setPlaceholder("Search apps, projects, files, clipboard, history…")
         modeLabel.stringValue = ""
@@ -432,6 +492,8 @@ final class LauncherViewController: NSViewController {
         }
         let query = searchField.stringValue
         mode = .actions(query: query, clipID: clipID)
+        views = []
+        applyLayout()
         searchField.stringValue = ""
         setPlaceholder("Filter actions…")
         modeLabel.stringValue = query.isEmpty ? "Actions" : "Actions · “\(query)”"
@@ -442,6 +504,135 @@ final class LauncherViewController: NSViewController {
     var query: String {
         if case .actions(let q, _) = mode { return q }
         return searchField.stringValue
+    }
+
+    // MARK: - Plugin views
+
+    /// A script printed a view: show it on top of whatever is open (`esc` comes back here).
+    func present(_ view: PluginView, pluginID: String, pluginName: String) {
+        endArguments()
+        setPreview(open: false)
+        let under = mode == .view ? searchField.stringValue : query
+        if case .actions = mode { mode = .search }
+        views.append(ViewState(view: view, pluginID: pluginID, pluginName: pluginName, under: under))
+        showTopView(text: "")
+    }
+
+    private func showTopView(text: String) {
+        guard let top = views.last else { return }
+        mode = .view
+        applyLayout()
+        searchField.stringValue = text
+        let fallback = top.view.layout == .detail ? "" : "Filter \(top.view.title.isEmpty ? top.pluginName : top.view.title)…"
+        setPlaceholder(top.view.placeholder ?? fallback)
+        modeLabel.stringValue = top.view.title.isEmpty ? top.pluginName : top.view.title
+        runSearch()
+        searchField.currentEditor()?.moveToEndOfDocument(nil)
+    }
+
+    /// `esc` in a view: back to the one under it, or to the search you came from.
+    private func popView() {
+        guard let top = views.popLast() else { return }
+        if views.isEmpty {
+            if standalone { onClose?(); return }
+            enterSearchMode(query: top.under)
+        } else {
+            showTopView(text: top.under)
+        }
+    }
+
+    /// The list, the grid or the detail text, for the mode.
+    private func applyLayout() {
+        let layout = self.layout
+        scrollView.isHidden = layout == .grid || layout == .detail
+        gridScroll.isHidden = layout != .grid
+        if layout == .detail {
+            previewOpen = false
+            listTrailing.isActive = false
+            listCollapsed.isActive = true
+            preview.isHidden = false
+            previewDivider.isHidden = true
+            if let top = views.last {
+                preview.show(.text(title: top.view.title, facts: [], body: top.view.text, code: top.view.code))
+            }
+        } else {
+            listCollapsed.isActive = false
+            if !previewOpen {
+                listTrailing.isActive = true
+                preview.isHidden = true
+                previewDivider.isHidden = true
+                preview.clear()
+            }
+        }
+        if layout == .grid, let top = views.last { grid.columns = top.view.columns }
+    }
+
+    // MARK: - Arguments
+
+    /// ↵ on an item with `arguments`: show its fields in the search row; ↵ again runs it with them.
+    private func beginArguments(_ entry: PluginService.Entry) {
+        endArguments()
+        argumentEntry = entry
+        argumentSavedText = searchField.stringValue
+        searchField.stringValue = entry.item.title
+        searchField.isEditable = false
+        for arg in entry.item.fields {
+            let field: NSTextField
+            switch arg.type {
+            case .password: field = NSSecureTextField()
+            case .dropdown:
+                let combo = NSComboBox()
+                combo.addItems(withObjectValues: arg.data.map(\.title))
+                combo.completes = true
+                combo.numberOfVisibleItems = 10
+                combo.delegate = self
+                field = combo
+            case .text: field = NSTextField()
+            }
+            field.placeholderString = arg.placeholder.isEmpty ? (arg.optional ? "optional" : nil) : arg.placeholder
+            field.font = .systemFont(ofSize: 13)
+            if !(field is NSComboBox) { field.bezelStyle = .roundedBezel }
+            field.delegate = self
+            field.translatesAutoresizingMaskIntoConstraints = false
+            field.widthAnchor.constraint(equalToConstant: arg.type == .dropdown ? 150 : 140).isActive = true
+            argumentStack.addArrangedSubview(field)
+            argumentFields.append(field)
+        }
+        for (i, f) in argumentFields.enumerated() { f.nextKeyView = argumentFields[(i + 1) % argumentFields.count] }
+        argumentStack.isHidden = false
+        view.window?.makeFirstResponder(argumentFields.first)
+        updateFooter()
+    }
+
+    private func endArguments() {
+        guard argumentEntry != nil else { return }
+        argumentEntry = nil
+        argumentFields = []
+        argumentStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        argumentStack.isHidden = true
+        searchField.isEditable = true
+        searchField.stringValue = argumentSavedText
+        view.window?.makeFirstResponder(searchField)
+        searchField.currentEditor()?.moveToEndOfDocument(nil)
+        updateFooter()
+    }
+
+    /// ↵ in the fields: run with them, or point at the first one that can't be used yet.
+    private func submitArguments() {
+        guard var entry = argumentEntry else { return }
+        var values: [String] = []
+        for (arg, field) in zip(entry.item.fields, argumentFields) {
+            guard let v = arg.value(for: field.stringValue) else {
+                NSSound.beep()
+                view.window?.makeFirstResponder(field)
+                return
+            }
+            values.append(v)
+        }
+        entry.arguments = values
+        endArguments()
+        if mode == .search, let key = Row.plugin(entry).learnKey { ranking?.record(query: query, key: key) }
+        onPluginItem?(entry)
     }
 
     // MARK: - Search
@@ -506,13 +697,39 @@ final class LauncherViewController: NSViewController {
             searched += actions.count
             emptyLabel.stringValue = actions.isEmpty && clipID == nil && projectTasks == nil
                 ? "No actions yet — add [[action]] blocks to config.toml" : "No matching actions"
+
+        case .view:
+            fileSearch?("")
+            contentSearch?("")
+            pluginAnswer?("")
+            rows = []
+            if let top = views.last, top.view.layout != .detail {
+                let items = top.view.items
+                searched = items.count
+                let entries = items.enumerated().map {
+                    PluginService.Entry(pluginID: top.pluginID, pluginName: top.pluginName, item: $0.element, index: $0.offset)
+                }
+                var shown = entries
+                if !text.isEmpty {
+                    let found = FuzzyMatcher.scoredSearch(text, in: items.enumerated().map { $0.element.searchItem(id: $0.offset) },
+                                                          limit: PluginOutput.maxItems)
+                    shown = found.map { entries[$0.item.id] }
+                }
+                rows = shown.map { Row.plugin($0) }
+                if top.view.layout == .grid {
+                    grid.entries = shown
+                    grid.selected = 0
+                    grid.scroll(.zero)
+                }
+                emptyLabel.stringValue = items.isEmpty ? "Nothing here" : "No matches"
+            }
         }
 
         tableView.reloadData()
         select(row: 0)
-        emptyLabel.isHidden = !rows.isEmpty
+        emptyLabel.isHidden = !rows.isEmpty || layout == .detail
         let elapsed = ContinuousClock.now - start
-        lastStats = Self.stats(items: searched, elapsed: elapsed)
+        lastStats = layout == .detail ? "" : Self.stats(items: searched, elapsed: elapsed)
         updateFooter()
         notifySize()
         tableView.displayIfNeeded()
@@ -525,7 +742,7 @@ final class LauncherViewController: NSViewController {
         let (s, atto) = elapsed.components
         let ms = Double(s) * 1000 + Double(atto) / 1e15
         let time = ms < 10 ? String(format: "%.2f ms", ms) : String(format: "%.0f ms", ms)
-        return "\(items.formatted()) items · \(time)"
+        return "\(items.formatted()) \(items == 1 ? "item" : "items") · \(time)"
     }
 
     /// Async hits go last, so they never push the instant rows around. The one exception:
@@ -701,7 +918,7 @@ final class LauncherViewController: NSViewController {
     /// Just tall enough for the rows (up to the full size); full size and wider with the preview.
     private var preferredSize: NSSize {
         let width = Self.size.width + (previewOpen ? Self.previewWidth : 0)
-        if previewOpen { return NSSize(width: width, height: Self.size.height) }
+        if previewOpen || layout == .grid || layout == .detail { return NSSize(width: width, height: Self.size.height) }
         let list = rows.isEmpty ? 64 : rows.reduce(0) { $0 + height(of: $1) } + 8
         return NSSize(width: width, height: min(Self.chrome + list, Self.size.height))
     }
@@ -713,7 +930,7 @@ final class LauncherViewController: NSViewController {
     // MARK: - Preview
 
     private func setPreview(open: Bool) {
-        guard open != previewOpen else { return }
+        guard open != previewOpen, !(open && (layout == .grid || layout == .detail)) else { return }
         previewOpen = open
         preview.isHidden = !open
         previewDivider.isHidden = !open
@@ -824,18 +1041,44 @@ final class LauncherViewController: NSViewController {
             hints.set(list)
         case .actions:
             hints.set([H(key: "↵", label: "Run"), H(key: "1–9", label: "Run"), H(key: "esc", label: "Back")])
+        case .view:
+            var list: [H] = []
+            if layout == .detail {
+                list = [H(key: "↵", label: "Copy"), H(key: "esc", label: "Back")]
+            } else {
+                if case .plugin(let e)? = selectedRow {
+                    let i = e.item
+                    list.append(H(key: "↵", label: i.open != nil ? "Open" : i.paste != nil ? "Paste" : i.copy != nil ? "Copy" : "Run"))
+                    if i.paste != nil, i.copy != nil { list.append(H(key: "⌘C", label: "Copy")) }
+                    if layout == .list { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
+                }
+                list.append(H(key: "esc", label: standalone && views.count == 1 ? "Close" : "Back"))
+            }
+            hints.set(list)
+        }
+        if argumentEntry != nil {
+            hints.set([H(key: "tab", label: "Next field"), H(key: "↵", label: "Run"), H(key: "esc", label: "Cancel")])
         }
     }
 
     // MARK: - Selection & activation
 
     private var selectedRow: Row? {
-        rows.indices.contains(tableView.selectedRow) ? rows[tableView.selectedRow] : nil
+        let i = layout == .grid ? grid.selected : tableView.selectedRow
+        return rows.indices.contains(i) ? rows[i] : nil
     }
+
+    private var selectedIndex: Int { layout == .grid ? grid.selected : tableView.selectedRow }
 
     /// Select `row`, or the nearest result in `direction` when it's a header.
     private func select(row: Int, direction: Int = 1) {
-        guard !rows.isEmpty else { return }
+        guard !rows.isEmpty else { updateFooter(); return }
+        if layout == .grid {
+            grid.selected = max(0, min(row, rows.count - 1))
+            grid.scrollToSelected()
+            updateFooter()
+            return
+        }
         var r = max(0, min(row, rows.count - 1))
         while rows.indices.contains(r), rows[r].isHeader { r += direction }
         if !rows.indices.contains(r) { // ran off the end: go the other way
@@ -852,7 +1095,15 @@ final class LauncherViewController: NSViewController {
     }
 
     @objc private func activateSelection() {
+        if layout == .detail, let text = views.last?.view.text {
+            onCopyText?(text)
+            return
+        }
         guard let row = selectedRow else { return }
+        if case .plugin(let e) = row, !e.item.fields.isEmpty {
+            beginArguments(e)
+            return
+        }
         if case .search = mode, let key = row.learnKey { ranking?.record(query: query, key: key) }
         let item = modItem(for: row)
         activate(row, query: query)
@@ -915,8 +1166,25 @@ final class LauncherViewController: NSViewController {
 
     private func handleKey(keyCode: Int, mods: NSEvent.ModifierFlags, window: ObjectIdentifier?) -> Bool {
         guard let own = view.window, window == ObjectIdentifier(own) else { return false }
+        if argumentEntry != nil {
+            switch (mods, keyCode) {
+            case ([], kVK_Return), ([], kVK_ANSI_KeypadEnter): submitArguments(); return true
+            case ([], kVK_Escape): endArguments(); return true
+            default: return false // typing, tab
+            }
+        }
         let digit = HotkeyBinding.digitKeyCodes.firstIndex(of: keyCode).flatMap { $0 == 0 ? nil : $0 }
         let inActions = if case .actions = mode { true } else { false }
+        if mode == .view, mods == [.command] || mods == [] {
+            // A view has no actions; ⌘C copies a detail's text.
+            if layout == .detail, mods == [.command], keyCode == kVK_ANSI_C,
+               searchField.currentEditor()?.selectedRange.length ?? 0 == 0, let text = views.last?.view.text {
+                onCopyText?(text)
+                return true
+            }
+            if keyCode == kVK_ANSI_K || keyCode == kVK_Return || digit != nil, mods == [.command] { return true }
+        }
+        if standalone, mods == [.command], keyCode == kVK_ANSI_K { return true }
 
         switch (mods, keyCode) {
         case (.command, kVK_ANSI_K):
@@ -1012,28 +1280,50 @@ final class LauncherViewController: NSViewController {
 }
 
 extension LauncherViewController: NSTextFieldDelegate {
-    func controlTextDidChange(_ obj: Notification) { runSearch() }
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === searchField else { return }
+        runSearch()
+    }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        guard control === searchField else { return false } // an argument field: tab, typing
+        if layout == .grid {
+            let step = switch selector {
+            case #selector(NSResponder.moveUp(_:)): -grid.columns
+            case #selector(NSResponder.moveDown(_:)): grid.columns
+            case #selector(NSResponder.moveLeft(_:)): -1
+            case #selector(NSResponder.moveRight(_:)): 1
+            default: 0
+            }
+            if step != 0 {
+                let next = grid.selected + step
+                if rows.indices.contains(next) { select(row: next) }
+                return true
+            }
+        }
         switch selector {
-        case #selector(NSResponder.moveUp(_:)): select(row: tableView.selectedRow - 1, direction: -1)
-        case #selector(NSResponder.moveDown(_:)): select(row: tableView.selectedRow + 1, direction: 1)
+        case #selector(NSResponder.moveUp(_:)): select(row: selectedIndex - 1, direction: -1)
+        case #selector(NSResponder.moveDown(_:)): select(row: selectedIndex + 1, direction: 1)
         case #selector(NSResponder.moveRight(_:)):
             // → at the end of the text opens the preview; anywhere else it moves the caret.
             let r = textView.selectedRange()
-            guard !previewOpen, case .search = mode, selectedRow != nil, r.length == 0, r.location == (textView.string as NSString).length
+            guard !previewOpen, mode == .search || layout == .list, selectedRow != nil, r.length == 0,
+                  r.location == (textView.string as NSString).length
             else { return false }
             setPreview(open: true)
         case #selector(NSResponder.insertNewline(_:)): activateSelection()
         case #selector(NSResponder.cancelOperation(_:)):
             if previewOpen { setPreview(open: false) }
             else if case .actions = mode { enterSearchMode(query: query) }
+            else if mode == .view { popView() }
             else { onClose?() }
         default: return false
         }
         return true
     }
 }
+
+extension LauncherViewController: NSComboBoxDelegate {}
 
 extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
@@ -1107,8 +1397,9 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .command(let c):
             show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
         case .plugin(let e):
-            show(e.item.icon ?? "puzzlepiece.extension", e.item.title, detail: e.item.subtitle ?? "",
-                 tagged(e.item.label ?? e.pluginName, title: e.item.title))
+            let image = PluginIcon.image(e.item.icon, directory: pluginDirectory(e.pluginID))
+            show(image == nil ? e.item.icon ?? "puzzlepiece.extension" : "puzzlepiece.extension", image: image, e.item.title,
+                 detail: e.item.subtitle ?? "", tagged(e.item.label ?? e.pluginName, title: e.item.title))
         }
         return cell
     }
