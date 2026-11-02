@@ -65,6 +65,31 @@ import Testing
         #expect(plain.refreshSeconds == nil)
     }
 
+    @Test func itemActionsDecode() throws {
+        let nested = (1...25).map { #"{"title":"A\#($0)","run":"./a.sh \#($0)","actions":[{"title":"deeper"}]}"# }.joined(separator: ",")
+        let line = #"{"title":"PR #42","open":"https://x","actions":[\#(nested)]}"#
+        let item = try #require(PluginOutput.parse(Data(line.utf8)).items.first)
+        let actions = try #require(item.actions)
+        #expect(actions.count == PluginItem.maxActions)
+        #expect(actions.first?.run == "./a.sh 1")
+        #expect(actions.allSatisfy { $0.actions == nil }) // one level only
+        #expect(PluginItem(title: "x", actions: []).actions == nil)
+    }
+
+    @Test func searchViewsAndBareRows() throws {
+        let view = try #require(PluginResult.parse(Data(#"{"view":"list","search":"./find.sh","refresh_seconds":30}"#.utf8)).view)
+        #expect(view.search == "./find.sh")
+        #expect(view.reload == nil)
+        #expect(view.refreshSeconds == 30) // a search can refresh too, with what's typed
+        #expect(PluginResult.parse(Data(#"{"view":"detail","search":"./find.sh"}"#.utf8)).view?.search == nil)
+        // What a search prints: rows with no header.
+        let rows = "{\"title\":\"one\"}\nnope\n{\"title\":\"two\"}\n"
+        let r = PluginResult.parse(Data(rows.utf8), rows: true)
+        #expect(r.view?.items.map(\.title) == ["one", "two"])
+        #expect(r.problems == ["line 2: not a JSON object"])
+        #expect(PluginResult.parse(Data(rows.utf8)).view == nil) // only when asked
+    }
+
     // MARK: - Arguments
 
     @Test func raycastStyleArgumentsDecode() throws {
@@ -131,18 +156,19 @@ import Testing
     struct Installed {
         let dir: URL
         let plugin: Plugin
-        func run(_ command: String, query: String = "", arguments: [String]? = nil, env: [String: String] = [:]) async throws -> String {
+        func run(_ command: String, query: String = "", arguments: [String]? = nil, env: [String: String] = [:],
+                 bin: URL? = nil) async throws -> String {
             let data = try await PluginRunner.output(of: command, plugin: plugin, query: query, arguments: arguments, shell: "/bin/zsh",
-                                                     pathPrefix: nil,
+                                                     pathPrefix: bin?.path,
                                                      environment: ProcessInfo.processInfo.environment.merging(env) { $1 },
                                                      timeout: .seconds(20))
             return String(decoding: data, as: UTF8.self)
         }
 
         /// ↵ on `item`: its `run`, read as the panel reads it.
-        func activate(_ item: PluginItem, arguments: [String]? = nil) async throws -> PluginResult {
+        func activate(_ item: PluginItem, arguments: [String]? = nil, bin: URL? = nil) async throws -> PluginResult {
             guard let run = item.run else { throw PluginRunner.Failure("\(item.title) has no run") }
-            return PluginResult.parse(Data(try await self.run(run, arguments: arguments).utf8))
+            return PluginResult.parse(Data(try await self.run(run, arguments: arguments, bin: bin).utf8))
         }
     }
 
@@ -331,8 +357,7 @@ import Testing
               start|stop|restart) echo "$2" ;;
             esac
             """#)
-        let env = ["PATH": bin.path + ":" + (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")]
-        func open(_ command: String) async throws -> PluginResult { PluginResult.parse(Data(try await dk.run(command, env: env).utf8)) }
+        func open(_ command: String) async throws -> PluginResult { PluginResult.parse(Data(try await dk.run(command, bin: bin).utf8)) }
 
         let list = try #require(try await open("./containers.sh").view)
         #expect(list.reload == "./containers.sh")
@@ -355,10 +380,59 @@ import Testing
         #expect(try await open("./act.sh start bbb222").effects.first?.notice == "Started")
         #expect(try await open("./act.sh stop aaa111").effects.first?.notice == "Stopping…")
         // Ids go into commands, so only hex is accepted.
-        await #expect(throws: PluginRunner.Failure.self) { _ = try await dk.run("./container.sh 'a;b'", env: env) }
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await dk.run("./container.sh 'a;b'", bin: bin) }
 
-        // No docker at all: one clear line.
-        let none = ["PATH": "/usr/bin:/bin"]
-        await #expect(throws: PluginRunner.Failure.self) { _ = try await dk.run("./containers.sh", env: none) }
+        // Docker not running: one clear line.
+        let down = dk.dir.appendingPathComponent("down")
+        try script(down, "docker", "#!/bin/sh\necho 'Cannot connect to the Docker daemon' >&2\nexit 1\n")
+        do {
+            _ = try await dk.run("./containers.sh", bin: down)
+            Issue.record("expected a failure")
+        } catch let failure as PluginRunner.Failure {
+            #expect(failure.description.contains("Docker isn't running: Cannot connect to the Docker daemon"))
+        }
+    }
+
+    /// The `github` example against a fake `gh` that answers with canned JSON through the real `jq`.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func githubActionsAndSearch() async throws {
+        let gh = try install("github")
+        defer { try? FileManager.default.removeItem(at: gh.dir) }
+        let bin = gh.dir.appendingPathComponent("bin")
+        try script(bin, "gh", #"""
+            #!/bin/sh
+            echo "$*" >> "$(dirname "$0")/calls"
+            [ "$1" = search ] || exit 0
+            while [ $# -gt 0 ]; do [ "$1" = --jq ] && filter=$2; [ "$1" = -- ] && words=$2; shift; done
+            printf '[{"number":42,"title":"Fix login","url":"https://github.com/acme/web/pull/42","repository":{"nameWithOwner":"acme/web"},"isPullRequest":true,"state":"open"},{"number":7,"title":"Crash","url":"https://github.com/acme/web/issues/7","repository":{"nameWithOwner":"acme/web"},"isPullRequest":false,"state":"open"}]' |
+              jq -r "$filter"
+            """#)
+        
+        let rows = PluginOutput.parse(Data(try await gh.run("./items.sh", bin: bin).utf8)).items
+        #expect(rows.first?.run == "./search.sh open")
+        let pr = try #require(rows.dropFirst().first)
+        #expect(pr.actions?.map(\.title) == ["Copy URL", "Approve", "Comment…"])
+        #expect(pr.actions?[1].run == "./search.sh approve 'https://github.com/acme/web/pull/42'")
+        #expect(pr.actions?[2].fields.count == 1)
+
+        let opened = try await gh.activate(try #require(rows.first), bin: bin)
+        let view = try #require(opened.view)
+        #expect(view.search == "./search.sh rows")
+        #expect(view.items.map(\.title) == ["Fix login", "Crash"])
+        #expect(view.items.last?.actions?.map(\.title) == ["Copy URL", "Comment…"]) // no Approve on an issue
+
+        // What the view runs as you type: `./search.sh rows "$@"`, rows only.
+        let found = PluginResult.parse(Data(try await gh.run("./search.sh rows", arguments: ["login bug"], bin: bin).utf8), rows: true)
+        #expect(found.view?.items.count == 2)
+        let calls = try String(contentsOf: bin.appendingPathComponent("calls"), encoding: .utf8)
+        #expect(calls.contains("-- login bug"))
+        #expect(calls.contains("-- involves:@me is:open")) // before you type
+
+        // An action with an argument: the comment is passed as text.
+        let comment = try #require(pr.actions?[2])
+        let done = try await gh.activate(comment, arguments: ["LGTM $(whoami)"], bin: bin)
+        #expect(done.effects.first?.notice == "Commented")
+        let after = try String(contentsOf: bin.appendingPathComponent("calls"), encoding: .utf8)
+        #expect(after.contains("issue comment https://github.com/acme/web/pull/42 --body LGTM $(whoami)"))
     }
 }

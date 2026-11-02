@@ -287,7 +287,7 @@ final class PluginService {
     /// `run` on an item, `click` on a badge, both in the plugin's folder, with an item's fields
     /// as `$1`–`$3`. Gives back what it printed (effects, maybe a view); one still running after
     /// 60 s keeps going on its own (`Failure.stillRunning`).
-    func run(_ command: String, pluginID: String, arguments: [String]?,
+    func run(_ command: String, pluginID: String, arguments: [String]?, rows: Bool = false,
              completion: @escaping @MainActor (Result<PluginResult, PluginRunner.Failure>) -> Void) {
         guard let p = plugin(id: pluginID) else { return }
         let shell = shell, env = mergedEnvironment, bin = binDirectory, log = log
@@ -296,7 +296,7 @@ final class PluginService {
             do {
                 let data = try await PluginRunner.output(of: command, plugin: p, arguments: arguments, shell: shell, pathPrefix: bin,
                                                          environment: env, timeout: PluginTiming.key, keepRunning: true)
-                result = .success(PluginResult.parse(data))
+                result = .success(PluginResult.parse(data, rows: rows))
             } catch let failure as PluginRunner.Failure {
                 result = .failure(failure)
             } catch {

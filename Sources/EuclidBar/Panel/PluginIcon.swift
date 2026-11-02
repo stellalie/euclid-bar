@@ -1,4 +1,5 @@
 import AppKit
+import UniformTypeIdentifiers
 
 /// A plugin item's `icon` that isn't an SF Symbol: an image file (absolute, `~/…`, or relative to
 /// the plugin's folder) or an emoji, drawn as an image. Symbols return nil: the cell draws those itself.
@@ -20,9 +21,16 @@ enum PluginIcon {
         case .symbol: return nil
         case .file(let path):
             if let cached = images[path] { return cached }
-            // An app bundle (`/Applications/Safari.app`) shows the app's own icon.
-            let bundle = path.hasSuffix(".app") && FileManager.default.fileExists(atPath: path)
-            guard let image = bundle ? NSWorkspace.shared.icon(forFile: path) : NSImage(contentsOfFile: path) else { return nil }
+            // An app bundle (`/Applications/Safari.app`) shows the app's own icon, or a plain app
+            // icon when it isn't there (an app that moved), never an empty tile.
+            let image: NSImage
+            if path.hasSuffix(".app") {
+                image = FileManager.default.fileExists(atPath: path)
+                    ? NSWorkspace.shared.icon(forFile: path) : NSWorkspace.shared.icon(for: .applicationBundle)
+            } else {
+                guard let file = NSImage(contentsOfFile: path) else { return nil }
+                image = file
+            }
             if images.count > 500 { images.removeAll() }
             images[path] = image
             return image

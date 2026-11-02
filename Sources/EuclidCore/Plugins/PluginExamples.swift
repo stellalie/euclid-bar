@@ -2267,7 +2267,8 @@ echo '{"title":"Docker Containers","subtitle":"Running and stopped containers","
 
     static let dockerContainers = #"""
 #!/bin/sh
-# Every container, running ones first, as a live list (reloads every 3 s). ↵ opens its actions.
+# Every container, running ones first, as a live list (reloads every 3 s). ↵ opens its page;
+# ⌘K has the same actions right on the list.
 set -eu
 command -v docker >/dev/null 2>&1 || { echo "needs the docker CLI: install Docker Desktop, OrbStack or colima" >&2; exit 1; }
 if ! out=$(docker ps -a --format '{{.State}}	{{.ID}}	{{json .Names}}	{{json .Image}}	{{json .Status}}' 2>&1); then
@@ -2279,8 +2280,14 @@ printf '%s\n' "$out" | awk -F '\t' '
 function inner(j) { return substr(j, 2, length(j) - 2) }   # a JSON string without its quotes
 {
   icon = $1 == "running" ? "🟢" : $1 == "paused" || $1 == "restarting" ? "🟡" : "⚪️"
-  row = sprintf("{\"title\":%s,\"subtitle\":\"%s · %s\",\"icon\":\"%s\",\"run\":\"./container.sh %s\",\"id\":\"docker:%s\"}",
-                $3, inner($4), inner($5), icon, $2, $2)
+  id = $2
+  if ($1 == "running")
+    acts = "{\"title\":\"Logs\",\"run\":\"./logs.sh " id "\",\"icon\":\"doc.text\"},{\"title\":\"Open Shell\",\"run\":\"./shell.sh " id "\",\"icon\":\"terminal\"},{\"title\":\"Restart\",\"run\":\"./act.sh restart " id "\",\"icon\":\"arrow.clockwise\"},{\"title\":\"Stop\",\"run\":\"./act.sh stop " id "\",\"icon\":\"stop.fill\"}"
+  else
+    acts = "{\"title\":\"Start\",\"run\":\"./act.sh start " id "\",\"icon\":\"play.fill\"},{\"title\":\"Logs\",\"run\":\"./logs.sh " id "\",\"icon\":\"doc.text\"}"
+  acts = acts ",{\"title\":\"Copy ID\",\"copy\":\"" id "\",\"icon\":\"doc.on.doc\"}"
+  row = sprintf("{\"title\":%s,\"subtitle\":\"%s · %s\",\"icon\":\"%s\",\"run\":\"./container.sh %s\",\"id\":\"docker:%s\",\"actions\":[%s]}",
+                $3, inner($4), inner($5), icon, id, id, acts)
   if ($1 == "running") print row; else rest = rest row "\n"
 }
 END { printf "%s", rest }'

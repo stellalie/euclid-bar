@@ -265,6 +265,16 @@ enum ScreensRenderer {
         vc.present(PluginView(layout: .list, title: "Containers", placeholder: "Filter containers…", items: containers,
                               reload: "./containers.sh", refreshSeconds: 3), pluginID: "docker", pluginName: "Docker")
         try step("docker plugin: containers, live; ↵ opens logs, a shell, its port, start, stop, restart", hold: 2.0, name: "live-docker")
+        let webActions = [
+            PluginItem(title: "Logs", run: "./logs.sh a1", icon: "doc.text"),
+            PluginItem(title: "Open Shell", run: "./shell.sh a1", icon: "terminal"),
+            PluginItem(title: "Restart", run: "./act.sh restart a1", icon: "arrow.clockwise"),
+            PluginItem(title: "Stop", run: "./act.sh stop a1", icon: "stop.fill"),
+            PluginItem(title: "Copy ID", copy: "a1", icon: "doc.on.doc"),
+        ]
+        vc.present(PluginView(layout: .list, title: "web", placeholder: "Actions for web…", items: webActions),
+                   pluginID: "docker", pluginName: "Docker", isActions: true)
+        try step("⌘K on a row: its own actions (an item's \"actions\"); ↵ runs one and goes back", hold: 2.0, name: "item-actions")
         vc.prepareForShow()
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
