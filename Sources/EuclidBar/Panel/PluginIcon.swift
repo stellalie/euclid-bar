@@ -1,5 +1,4 @@
 import AppKit
-import UniformTypeIdentifiers
 
 /// A plugin item's `icon` that isn't an SF Symbol: an image file (absolute, `~/…`, or relative to
 /// the plugin's folder) or an emoji, drawn as an image. Symbols return nil: the cell draws those itself.
@@ -20,17 +19,11 @@ enum PluginIcon {
         switch kind {
         case .symbol: return nil
         case .file(let path):
+            // An app bundle (`/Applications/Safari.app`) shows the app's own icon, loaded off the main
+            // thread like app rows' (nil until then: the row shows the "app" symbol and is redrawn).
+            if path.hasSuffix(".app") { return IconCache.shared.icon(forPath: path) }
             if let cached = images[path] { return cached }
-            // An app bundle (`/Applications/Safari.app`) shows the app's own icon, or a plain app
-            // icon when it isn't there (an app that moved), never an empty tile.
-            let image: NSImage
-            if path.hasSuffix(".app") {
-                image = FileManager.default.fileExists(atPath: path)
-                    ? NSWorkspace.shared.icon(forFile: path) : NSWorkspace.shared.icon(for: .applicationBundle)
-            } else {
-                guard let file = NSImage(contentsOfFile: path) else { return nil }
-                image = file
-            }
+            guard let image = NSImage(contentsOfFile: path) else { return nil }
             if images.count > 500 { images.removeAll() }
             images[path] = image
             return image
@@ -40,6 +33,13 @@ enum PluginIcon {
             images[key] = image
             return image
         }
+    }
+
+    /// An `icon` that is an app bundle's path, expanded: its icon comes from `IconCache`.
+    static func appPath(_ icon: String?) -> String? {
+        guard let icon, icon.hasSuffix(".app") else { return nil }
+        let path = (icon as NSString).expandingTildeInPath
+        return path.hasPrefix("/") ? path : nil
     }
 
     /// Whether `icon` is a symbol name (or nothing we can draw), so callers can fall back to a symbol.

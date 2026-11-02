@@ -1405,6 +1405,7 @@ final class LauncherViewController: NSViewController {
 
     /// The file whose icon a row shows (beyond `Row.path`): a copied file's first path.
     private func iconPath(_ row: Row) -> String? {
+        if case .plugin(let e) = row { return PluginIcon.appPath(e.item.icon) }
         guard case .clip(let item) = row, let c = clip(item.id), c.kind == .files else { return nil }
         return c.paths.first
     }
@@ -1530,7 +1531,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             show(c.symbol, c.title, detail: c.detail, c.accessory.isEmpty ? "Command" : c.accessory)
         case .plugin(let e):
             let image = PluginIcon.image(e.item.icon, directory: pluginDirectory(e.pluginID))
-            show(image == nil ? e.item.icon ?? "puzzlepiece.extension" : "puzzlepiece.extension", image: image, e.item.title,
+            let symbol = PluginIcon.appPath(e.item.icon) != nil ? "app" : e.item.icon ?? "puzzlepiece.extension"
+            show(image == nil ? symbol : "puzzlepiece.extension", image: image, e.item.title,
                  detail: e.item.subtitle ?? "", tagged(e.item.label ?? e.pluginName, title: e.item.title))
         }
         return cell
