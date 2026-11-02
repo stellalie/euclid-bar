@@ -729,7 +729,7 @@ final class LauncherViewController: NSViewController {
         select(row: 0)
         emptyLabel.isHidden = !rows.isEmpty || layout == .detail
         let elapsed = ContinuousClock.now - start
-        lastStats = Self.stats(items: searched, elapsed: elapsed)
+        lastStats = layout == .detail ? "" : Self.stats(items: searched, elapsed: elapsed)
         updateFooter()
         notifySize()
         tableView.displayIfNeeded()
@@ -742,7 +742,7 @@ final class LauncherViewController: NSViewController {
         let (s, atto) = elapsed.components
         let ms = Double(s) * 1000 + Double(atto) / 1e15
         let time = ms < 10 ? String(format: "%.2f ms", ms) : String(format: "%.0f ms", ms)
-        return "\(items.formatted()) items · \(time)"
+        return "\(items.formatted()) \(items == 1 ? "item" : "items") · \(time)"
     }
 
     /// Async hits go last, so they never push the instant rows around. The one exception:
