@@ -23,10 +23,12 @@ public struct PluginItem: Equatable, Sendable, Decodable {
     public var id: String?
     /// Also list it when the search box is empty (at most 3 per plugin).
     public var suggest: Bool?
+    /// Up to 3 fields to fill in before ↵ runs it; their values reach `run` as `$1`–`$3`.
+    public var arguments: [PluginArgument]?
 
     public init(title: String, subtitle: String? = nil, open: String? = nil, copy: String? = nil, paste: String? = nil,
                 run: String? = nil, icon: String? = nil, label: String? = nil, preview: String? = nil,
-                id: String? = nil, suggest: Bool? = nil) {
+                id: String? = nil, suggest: Bool? = nil, arguments: [PluginArgument]? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.open = open
@@ -38,12 +40,98 @@ public struct PluginItem: Equatable, Sendable, Decodable {
         self.preview = preview
         self.id = id
         self.suggest = suggest
+        self.arguments = arguments.map { Array($0.prefix(PluginArgument.max)) }
     }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, subtitle, open, copy, paste, run, icon, label, preview, id, suggest, arguments
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(title: try c.decode(String.self, forKey: .title),
+                  subtitle: try c.decodeIfPresent(String.self, forKey: .subtitle),
+                  open: try c.decodeIfPresent(String.self, forKey: .open),
+                  copy: try c.decodeIfPresent(String.self, forKey: .copy),
+                  paste: try c.decodeIfPresent(String.self, forKey: .paste),
+                  run: try c.decodeIfPresent(String.self, forKey: .run),
+                  icon: try c.decodeIfPresent(String.self, forKey: .icon),
+                  label: try c.decodeIfPresent(String.self, forKey: .label),
+                  preview: try c.decodeIfPresent(String.self, forKey: .preview),
+                  id: try c.decodeIfPresent(String.self, forKey: .id),
+                  suggest: try c.decodeIfPresent(Bool.self, forKey: .suggest),
+                  arguments: try c.decodeIfPresent([PluginArgument].self, forKey: .arguments))
+    }
+
+    /// Fields to fill in before ↵ runs it (only with `run`).
+    public var fields: [PluginArgument] { run == nil ? [] : arguments ?? [] }
 
     public var key: String { id ?? open ?? title }
 
     public func searchItem(id: Int) -> SearchItem {
         SearchItem(id: id, title: title, subtitle: subtitle ?? "", searchText: "\(title) \(subtitle ?? "")")
+    }
+}
+
+/// A field an item asks for before it runs, like a Raycast script's `@raycast.argument1`:
+///
+///     {"type":"text","placeholder":"City"}
+///     {"type":"dropdown","placeholder":"Unit","data":[{"title":"Celsius","value":"c"}]}
+public struct PluginArgument: Equatable, Sendable, Decodable {
+    public static let max = 3
+
+    public enum Kind: String, Equatable, Sendable, Decodable {
+        case text, password, dropdown
+    }
+
+    public struct Choice: Equatable, Sendable, Decodable {
+        public var title: String
+        public var value: String
+
+        public init(title: String, value: String) {
+            self.title = title
+            self.value = value
+        }
+
+        private enum CodingKeys: String, CodingKey { case title, value }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let value = try c.decode(String.self, forKey: .value)
+            self.init(title: try c.decodeIfPresent(String.self, forKey: .title) ?? value, value: value)
+        }
+    }
+
+    public var type: Kind
+    public var placeholder: String
+    /// Optional fields may be left empty (they're passed as "").
+    public var optional: Bool
+    /// A dropdown's choices: the field shows `title`, the script gets `value`.
+    public var data: [Choice]
+
+    public init(type: Kind = .text, placeholder: String = "", optional: Bool = false, data: [Choice] = []) {
+        self.type = type
+        self.placeholder = placeholder
+        self.optional = optional
+        self.data = data
+    }
+
+    private enum CodingKeys: String, CodingKey { case type, placeholder, optional, data }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(type: try c.decodeIfPresent(Kind.self, forKey: .type) ?? .text,
+                  placeholder: try c.decodeIfPresent(String.self, forKey: .placeholder) ?? "",
+                  optional: try c.decodeIfPresent(Bool.self, forKey: .optional) ?? false,
+                  data: try c.decodeIfPresent([Choice].self, forKey: .data) ?? [])
+    }
+
+    /// What the script gets for `typed`: a dropdown's value for the title you picked (or typed),
+    /// nil when it can't run like this (a required field is empty, or no such choice).
+    public func value(for typed: String) -> String? {
+        let t = typed.trimmingCharacters(in: .whitespaces)
+        if t.isEmpty { return optional ? "" : nil }
+        guard type == .dropdown, !data.isEmpty else { return typed }
+        return (data.first { $0.title.caseInsensitiveCompare(t) == .orderedSame }
+            ?? data.first { $0.value.caseInsensitiveCompare(t) == .orderedSame })?.value
     }
 }
 
@@ -69,7 +157,7 @@ public enum PluginOutput {
                 }
                 guard json["title"] is String else { problems.append("line \(n + 1): missing \"title\""); continue }
                 guard let item = try? decoder.decode(PluginItem.self, from: Data(line.utf8)) else {
-                    problems.append("line \(n + 1): a field has the wrong type (all are strings, suggest is true/false)"); continue
+                    problems.append("line \(n + 1): a field has the wrong type (all are strings, suggest is true/false, arguments a list)"); continue
                 }
                 items.append(item)
                 if items.count == maxItems { problems.append("stopped at \(maxItems) items"); break }

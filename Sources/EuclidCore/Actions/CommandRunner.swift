@@ -40,7 +40,8 @@ public enum CommandRunner {
         return s.addingPercentEncoding(withAllowedCharacters: allowed) ?? s
     }
 
-    public static func makeProcess(shell: String, command: String, query: String, clip: String? = nil,
+    /// `arguments`: `$1`, `$2`… (default: the query as `$1`).
+    public static func makeProcess(shell: String, command: String, query: String, arguments: [String]? = nil, clip: String? = nil,
                                    pathPrefix: String? = nil, directory: String? = nil,
                                    baseEnvironment: [String: String] = ProcessInfo.processInfo.environment) -> Process {
         let p = Process()
@@ -53,7 +54,7 @@ public enum CommandRunner {
             env["EUCLID_BIN"] = pathPrefix
             script = "PATH=\"$EUCLID_BIN:$PATH\"\n" + command
         }
-        p.arguments = ["-l", "-c", script, "euclid", query] // $0 = euclid, $1 = query
+        p.arguments = ["-l", "-c", script, "euclid"] + (arguments ?? [query]) // $0 = euclid, $1 = query
         p.environment = env
         p.currentDirectoryURL = directory.map { URL(fileURLWithPath: $0) } ?? FileManager.default.homeDirectoryForCurrentUser
         p.standardInput = FileHandle.nullDevice

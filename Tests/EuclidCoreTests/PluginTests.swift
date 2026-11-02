@@ -131,7 +131,7 @@ import Testing
         #expect(items[0].suggest == true && items[0].key == "https://x/412")
         #expect(items[1].key == "Copy me")
         #expect(problems == ["line 3: not a JSON object", "line 4: missing \"title\"",
-                             "line 5: a field has the wrong type (all are strings, suggest is true/false)"])
+                             "line 5: a field has the wrong type (all are strings, suggest is true/false, arguments a list)"])
         let array = PluginOutput.parse(Data(#"[{"title":"A"},{"title":"B","open":"/tmp"}]"#.utf8))
         #expect(array.items.map(\.title) == ["A", "B"] && array.problems.isEmpty)
     }
@@ -228,11 +228,11 @@ import Testing
             #expect(issues.isEmpty, "\(name): \(issues)")
             for file in PluginGuide.examples[name]! where file.executable { // valid shell, at least
                 let check = Process()
-                check.executableURL = URL(fileURLWithPath: "/bin/sh")
+                check.executableURL = URL(fileURLWithPath: file.text.hasPrefix("#!/bin/bash") ? "/bin/bash" : "/bin/sh")
                 check.arguments = ["-n", folder.appendingPathComponent(file.name).path]
                 try check.run()
                 check.waitUntilExit()
-                #expect(check.terminationStatus == 0, "\(name)/\(file.name) isn't valid sh")
+                #expect(check.terminationStatus == 0, "\(name)/\(file.name) isn't valid shell")
             }
         }
         #expect(throws: PluginRunner.Failure.self) { try PluginGuide.installExample("github", in: dir) }

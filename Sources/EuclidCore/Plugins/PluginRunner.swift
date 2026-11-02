@@ -10,6 +10,8 @@ public enum PluginRunner {
         public let description: String
         /// The command the shell couldn't find (`gh`), when that's why it failed.
         public var missingCommand: String?
+        /// `keepRunning` and it outlived the timeout: it goes on, its output unread.
+        public var stillRunning = false
         public init(_ description: String, missingCommand: String? = nil) {
             self.description = description
             self.missingCommand = missingCommand
@@ -36,14 +38,19 @@ public enum PluginRunner {
     /// Output past this is dropped.
     static let maxOutput = 4 << 20
 
-    public static func output(of command: String, plugin: Plugin, query: String = "", shell: String,
+    /// `arguments` (an item's fields) replace the query as `$1`, `$2`…
+    /// `keepRunning`: past `timeout`, stop waiting (throws `stillRunning`) but don't kill it:
+    /// an item's `run` may start something long on purpose.
+    public static func output(of command: String, plugin: Plugin, query: String = "", arguments: [String]? = nil, shell: String,
                               pathPrefix: String?, environment: [String: String] = ProcessInfo.processInfo.environment,
-                              timeout: Duration) async throws -> Data {
+                              timeout: Duration, keepRunning: Bool = false) async throws -> Data {
+        let args = arguments ?? (query.isEmpty ? [] : [query])
         // `"$@"`: the text reaches the command as its argument, so `run = "./tz.sh"` sees it as $1.
-        let line = query.isEmpty ? command : command + #" "$@""#
-        let p = CommandRunner.makeProcess(shell: shell, command: line, query: query, pathPrefix: pathPrefix,
-                                          directory: plugin.directory,
-                                          baseEnvironment: environment.merging(plugin.environment) { $1 })
+        let line = args.isEmpty ? command : command + #" "$@""#
+        var env = environment.merging(plugin.environment) { $1 }
+        for (i, a) in (arguments ?? []).enumerated() { env["EUCLID_ARG_\(i + 1)"] = a }
+        let p = CommandRunner.makeProcess(shell: shell, command: line, query: query, arguments: args, pathPrefix: pathPrefix,
+                                          directory: plugin.directory, baseEnvironment: env)
         let out = Pipe(), err = Pipe()
         p.standardOutput = out
         p.standardError = err
@@ -59,7 +66,7 @@ public enum PluginRunner {
                 reads.leave()
             }
         }
-        let stopped = Flag()
+        let stopped = Flag(), detached = Flag(), resumed = Flag()
         @Sendable func stop() {
             guard p.isRunning, !stopped.isSet else { return }
             stopped.set()
@@ -73,11 +80,15 @@ public enum PluginRunner {
 
         let status: Int32 = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (done: CheckedContinuation<Int32, Error>) in
+                @Sendable func finish(_ result: Result<Int32, Error>) {
+                    guard !resumed.testAndSet() else { return }
+                    done.resume(with: result)
+                }
                 p.terminationHandler = { proc in
                     let status = proc.terminationStatus
                     // A stopped run's leftovers could keep the pipes open; its output is unused anyway.
-                    if stopped.isSet { done.resume(returning: status); return }
-                    reads.notify(queue: .global()) { done.resume(returning: status) }
+                    if stopped.isSet { finish(.success(status)); return }
+                    reads.notify(queue: .global()) { finish(.success(status)) }
                 }
                 // Reading starts first, so a run that ends at once is still waited for.
                 drain(out, into: stdout)
@@ -85,17 +96,29 @@ public enum PluginRunner {
                 do { try p.run() } catch {
                     try? out.fileHandleForWriting.close() // ends the reads
                     try? err.fileHandleForWriting.close()
-                    done.resume(throwing: Failure("can't start \(shell): \(error.localizedDescription)"))
+                    finish(.failure(Failure("can't start \(shell): \(error.localizedDescription)")))
                     return
                 }
                 let (s, atto) = timeout.components
-                DispatchQueue.global().asyncAfter(deadline: .now() + Double(s) + Double(atto) / 1e18) { stop() }
+                DispatchQueue.global().asyncAfter(deadline: .now() + Double(s) + Double(atto) / 1e18) {
+                    if keepRunning {
+                        detached.set()
+                        finish(.success(-1))
+                    } else {
+                        stop()
+                    }
+                }
             }
         } onCancel: {
             stop()
         }
 
         try Task.checkCancellation()
+        if detached.isSet {
+            var f = Failure("still running after \(timeout.formatted(.units(allowed: [.seconds, .milliseconds])))")
+            f.stillRunning = true
+            throw f
+        }
         if stopped.isSet { throw Failure("took longer than \(timeout.formatted(.units(allowed: [.seconds, .milliseconds])))") }
         guard status == 0 else {
             if status == 127, let missing = missingCommand(in: stderr.string) {
@@ -113,5 +136,7 @@ final class Flag: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
     func set() { lock.lock(); value = true; lock.unlock() }
+    /// Sets it; true if it was already set.
+    func testAndSet() -> Bool { lock.lock(); defer { lock.unlock() }; let was = value; value = true; return was }
     var isSet: Bool { lock.lock(); defer { lock.unlock() }; return value }
 }
