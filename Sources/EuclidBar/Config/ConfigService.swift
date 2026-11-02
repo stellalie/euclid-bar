@@ -98,19 +98,6 @@ final class ConfigService {
         return nil
     }
 
-    /// Write an AI's checked reply (Apply Settings from Clipboard), then reload.
-    /// Returns the backup that `restore` puts back.
-    func apply(_ review: SettingsChange.Review) throws -> URL {
-        defer { reload() }
-        return try SettingsChange.apply(review, directory: paths.configDirectory, backups: paths.configBackupsDirectory)
-    }
-
-    /// Put a backup back (Undo, Restore Previous Settings), then reload.
-    func restore(_ backup: URL) throws {
-        defer { reload() }
-        try SettingsChange.restore(backup, directory: paths.configDirectory)
-    }
-
     private func scheduleReload() {
         pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in

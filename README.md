@@ -206,14 +206,12 @@ Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-yo
 
 **Change it in plain words, with any AI.** Search `settings` in Euclid:
 
-1. **Change Settings with AI…** copies a prompt (rules, the commented reference, your config.toml).
-   Paste it into ChatGPT, Copilot, Claude or any AI chat and say what you want.
-2. **Apply Settings from Clipboard** reads the AI's reply. It can change config.toml and add plugins,
-   `bin/` scripts and themes. Only paths inside `~/.config/euclid` are written. The whole reply is
-   loaded in a scratch copy first: any problem and nothing is saved, with a note to paste back to the AI.
-   You see every changed line and every script before you approve, then get Undo.
-3. **Fix Settings with AI…** (when the footer shows a problem) and **Restore Previous Settings…**
-   (backups in `~/Library/Application Support/Euclid/config-backups`).
+1. **Change Settings with AI…** shows a prompt with a Copy button. Paste it into ChatGPT, Copilot,
+   Claude or any AI chat: the AI reads the [docs](https://lgtm.ninja/euclid/docs/), asks what you'd
+   like, suggests what Euclid can do, and replies with your whole config.toml.
+2. Paste that in **Edit Config…** and save. Euclid applies it at once; a problem shows in the footer
+   and the last good settings stay.
+3. **Fix Settings with AI…** (when the footer shows a problem) gives a prompt with the problems.
 
 Euclid calls no AI itself. Coding agents (Claude Code, Codex) can edit the files directly:
 `~/.config/euclid/AGENTS.md` is the settings guide, `plugins/AGENTS.md` the plugin one.
@@ -284,7 +282,8 @@ channel      = "stable"                       # "dev": a build of every change, 
 [startup]
 open_at_login = true                          # start Euclid at login (also a menu toggle)
 
-[privacy]                                     # asked once on first launch, both unticked
+[privacy]                                     # one menu toggle, Share Anonymous Diagnostics, sets both;
+                                              # asked once on first launch, unticked
 crash_reports = false                         # true: send crashes and internal errors so they get fixed
                                               # (stack + versions only; copies in ~/Library/Logs/Euclid/Reports)
 usage_ping    = false                         # true: a daily anonymous "in use" ping (random ID + versions),
@@ -447,8 +446,6 @@ claude mcp add euclid -- /Applications/Euclid.app/Contents/MacOS/euclid-bar --mc
 command = "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
 args    = ["--mcp"]
 ```
-
-Menu bar 🧠 › **Connect Claude Code or Codex (MCP)…** copies the Claude command for you.
 
 | Tool | What it does |
 |---|---|

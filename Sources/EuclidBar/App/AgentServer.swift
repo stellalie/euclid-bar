@@ -5,12 +5,6 @@ import EuclidCore
 /// search what Euclid indexed. Runs as its own process next to the app; reads the same files.
 @MainActor
 enum AgentServer {
-    /// What to paste in a terminal to connect Claude Code.
-    static var claudeSetupCommand: String {
-        let binary = Bundle.main.executablePath ?? "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
-        return "claude mcp add euclid -- '\(binary.replacingOccurrences(of: "'", with: #"'\''"#))' --mcp"
-    }
-
     static func run() -> Int32 {
         let paths = EuclidPaths()
         // Read-only: never write a default config.toml from here; the app does that on first launch.

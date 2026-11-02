@@ -14,8 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var licensing: Licensing!
     private var statusItem: NSStatusItem!
     private var autoInstallItem: NSMenuItem!
-    private var crashReportsItem: NSMenuItem!
-    private var usagePingItem: NSMenuItem!
+    private var diagnosticsItem: NSMenuItem!
     private var expansionItem: NSMenuItem!
     private var openAtLoginItem: NSMenuItem!
     private var licenceHeader: NSMenuItem!
@@ -85,33 +84,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.show()
     }
 
-    /// Offer crash reports and the usage ping, both unticked: nothing is sent unless you tick them.
+    /// Offer anonymous diagnostics (crash reports + the daily usage ping) in one unticked box:
+    /// nothing is sent unless you tick it.
     private func askAboutReports() {
         let settings = config.current.config
         guard !settings.crashReports || !settings.usagePing else { return }
 
-        let crash = NSButton(checkboxWithTitle: "Send crash reports: the crashed code's stack and versions", target: nil, action: nil)
-        let ping = NSButton(checkboxWithTitle: "Send a daily usage ping: a random install ID and versions", target: nil, action: nil)
-        crash.state = settings.crashReports ? .on : .off
-        ping.state = settings.usagePing ? .on : .off
-        let boxes = NSStackView(views: [crash, ping])
-        boxes.orientation = .vertical
-        boxes.alignment = .leading
-        boxes.setFrameSize(boxes.fittingSize)
+        let box = NSButton(checkboxWithTitle: "Share anonymous diagnostics", target: nil, action: nil)
+        box.state = .off
+        box.sizeToFit()
 
         let alert = NSAlert()
         alert.messageText = "Help make Euclid better?"
-        alert.informativeText = "Both are anonymous: never your searches, clipboard, files or config. "
-            + "Change them any time in the menu bar icon, or under [privacy] in config.toml."
-        alert.accessoryView = boxes
+        alert.informativeText = "If Euclid crashes, send the crashed code's stack and versions. Once a day, send a random "
+            + "install ID and versions so installs can be counted. Never your searches, clipboard, files or config. "
+            + "Change it any time in the menu bar icon, or under [privacy] in config.toml."
+        alert.accessoryView = box
         alert.addButton(withTitle: "Continue")
         NSApp.activate()
         alert.runModal()
-        for (key, box, current) in [("crash_reports", crash, settings.crashReports), ("usage_ping", ping, settings.usagePing)] {
-            let on = box.state == .on
-            if on != current, let problem = config.set(key, to: on, in: "privacy") {
-                perfLog.error("can't save [privacy] \(key, privacy: .public): \(problem, privacy: .public)")
-            }
+        if box.state == .on, let problem = setDiagnostics(true) {
+            perfLog.error("can't save [privacy]: \(problem, privacy: .public)")
         }
     }
 
@@ -126,9 +119,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         history.configure(enabled: settings.historyEnabled, browsers: settings.historyBrowsers, limit: settings.historyLimit)
         updater.apply(settings.updates)
         CrashReporter.shared.apply(enabled: settings.crashReports, channel: settings.updates.channel)
-        crashReportsItem.state = settings.crashReports ? .on : .off
         UsagePinger.shared.apply(enabled: settings.usagePing, channel: settings.updates.channel)
-        usagePingItem.state = settings.usagePing ? .on : .off
+        // A dash when only one key is on (set by hand in config.toml).
+        diagnosticsItem.state = settings.crashReports && settings.usagePing ? .on
+            : settings.crashReports || settings.usagePing ? .mixed : .off
         autoInstallItem.state = settings.updates.autoInstall ? .on : .off
         if let problem = LoginItem.apply(settings.openAtLogin) { CrashReporter.error("login-item", problem) }
         panel.configDidChange()
@@ -142,10 +136,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
             + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled)]
             + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled)] : [])
-            + [.crashReports(enabled: settings.crashReports),
-               .usagePing(enabled: settings.usagePing), .connectAgents]
-            + AppCommand.settingsWithAI(problems: config.loadError != nil || !config.current.issues.isEmpty,
-                                        canRestore: SettingsChange.latestBackup(in: config.paths.configBackupsDirectory) != nil)
+            + [.diagnostics(crashReports: settings.crashReports, usagePing: settings.usagePing)]
+            + AppCommand.settingsWithAI(problems: config.loadError != nil || !config.current.issues.isEmpty)
         openAtLoginItem.state = LoginItem.isEnabled ? .on : .off
         openAtLoginItem.isEnabled = LoginItem.isAvailable
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
@@ -181,8 +173,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Change Settings with AI…", action: #selector(changeSettingsWithAI), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Apply Settings from Clipboard", action: #selector(applySettings), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
         expansionItem = menu.addItem(withTitle: "Expand Snippet Keywords", action: #selector(toggleExpansion), keyEquivalent: "")
         expansionItem.target = self
@@ -199,12 +189,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         autoInstallItem = menu.addItem(withTitle: "Install Updates Automatically", action: #selector(toggleAutoInstall), keyEquivalent: "")
         autoInstallItem.target = self
         autoInstallItem.toolTip = "[updates] auto_install in config.toml"
-        crashReportsItem = menu.addItem(withTitle: "Send Crash Reports", action: #selector(toggleCrashReports), keyEquivalent: "")
-        crashReportsItem.target = self
-        crashReportsItem.toolTip = "Stack and versions only, never your data: [privacy] crash_reports in config.toml"
-        usagePingItem = menu.addItem(withTitle: "Send Anonymous Usage Ping", action: #selector(toggleUsagePing), keyEquivalent: "")
-        usagePingItem.target = self
-        usagePingItem.toolTip = "Once a day: a random install ID and versions, so installs can be counted: [privacy] usage_ping in config.toml"
+        diagnosticsItem = menu.addItem(withTitle: "Share Anonymous Diagnostics", action: #selector(toggleDiagnostics), keyEquivalent: "")
+        diagnosticsItem.target = self
+        diagnosticsItem.toolTip = "Crash reports and a daily install ping; never your data: "
+            + "[privacy] crash_reports and usage_ping in config.toml"
 
         let licenceSeparator = NSMenuItem.separator()
         licenceSeparator.isHidden = !licensing.isEnabled
@@ -235,15 +223,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Open Euclid": "magnifyingglass",
             "Edit Config…": "gearshape",
             "Change Settings with AI…": "wand.and.stars",
-            "Apply Settings from Clipboard": "doc.on.clipboard",
-            "Connect Claude Code or Codex (MCP)…": "link",
             "Clear Clipboard History…": "trash",
             "Expand Snippet Keywords": "text.cursor",
             "Open at Login": "person.crop.circle",
             "Check for Updates…": "arrow.down.circle",
             "Install Updates Automatically": "arrow.triangle.2.circlepath",
-            "Send Crash Reports": "ladybug",
-            "Send Anonymous Usage Ping": "chart.bar",
+            "Share Anonymous Diagnostics": "stethoscope",
             "Buy Licence…": "cart",
             "Enter Licence Key…": "key",
             "Send Feedback…": "exclamationmark.bubble",
@@ -294,24 +279,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.runModal()
     }
 
-    /// Flips `[privacy] crash_reports`.
-    @objc private func toggleCrashReports() {
-        guard let problem = config.set("crash_reports", to: !config.current.config.crashReports, in: "privacy") else { return }
+    /// One switch for `[privacy] crash_reports` and `usage_ping`: on only when both are, so a
+    /// half-on config (one key set by hand) turns both on with the first click.
+    @objc private func toggleDiagnostics() {
+        let settings = config.current.config
+        guard let problem = setDiagnostics(!(settings.crashReports && settings.usagePing)) else { return }
         let alert = NSAlert()
-        alert.messageText = "Couldn't change crash reports"
+        alert.messageText = "Couldn't change anonymous diagnostics"
         alert.informativeText = problem
         NSApp.activate()
         alert.runModal()
     }
 
-    /// Flips `[privacy] usage_ping`.
-    @objc private func toggleUsagePing() {
-        guard let problem = config.set("usage_ping", to: !config.current.config.usagePing, in: "privacy") else { return }
-        let alert = NSAlert()
-        alert.messageText = "Couldn't change the usage ping"
-        alert.informativeText = problem
-        NSApp.activate()
-        alert.runModal()
+    /// Writes both `[privacy]` keys; returns the first problem, if any.
+    private func setDiagnostics(_ on: Bool) -> String? {
+        config.set("crash_reports", to: on, in: "privacy") ?? config.set("usage_ping", to: on, in: "privacy")
     }
 
     /// Flips what macOS has now (it may differ from config.toml if switched in System Settings), and saves it to
@@ -351,60 +333,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             toggleExpansion()
         case .toggleOpenAtLogin:
             toggleOpenAtLogin()
-        case .toggleCrashReports:
-            toggleCrashReports()
-        case .toggleUsagePing:
-            toggleUsagePing()
+        case .toggleDiagnostics:
+            toggleDiagnostics()
         case .buyLicence:
             panel.hide()
             buyLicence()
         case .enterLicence:
             panel.hide()
             enterLicence()
-        case .connectAgents:
-            panel.hide()
-            connectAgents()
         case .changeSettingsWithAI:
             panel.hide()
             changeSettingsWithAI()
-        case .applySettings:
-            panel.hide()
-            applySettings()
-        case .copyPluginGuide:
-            panel.hide()
-            copyPluginGuide()
         case .fixSettings:
             panel.hide()
             fixSettings()
-        case .restoreSettings:
-            panel.hide()
-            restoreSettings()
         case .permissions:
             guard !missingPermissions().isEmpty else { NSSound.beep(); return }
             panel.hide()
             openPermissions()
         }
-    }
-
-    /// Explain the MCP server and copy the command that connects Claude Code to it.
-    @objc private func connectAgents() {
-        let alert = NSAlert()
-        alert.messageText = "Connect your coding agents"
-        let shared = AgentTools.Source.allCases.filter(config.current.config.agentShare.contains).map(\.rawValue)
-        alert.informativeText = """
-            Euclid can answer your agents over MCP: they search your \(shared.isEmpty ? "(nothing shared)" : shared.joined(separator: ", ")) \
-            on this Mac. Choose what with [agents] share in config.toml.
-
-            Claude Code: paste the copied command in a terminal.
-            Codex: add to ~/.codex/config.toml:
-            [mcp_servers.euclid]
-            command = "\(Bundle.main.executablePath ?? "euclid-bar")"
-            args = ["--mcp"]
-            """
-        alert.addButton(withTitle: "Copy Claude Code Command")
-        alert.addButton(withTitle: "Close")
-        NSApp.activate()
-        if alert.runModal() == .alertFirstButtonReturn { Paster.copy(AgentServer.claudeSetupCommand) }
     }
 
     /// Opens config.toml with `editor` (an app or a command), or the default text editor.
@@ -447,69 +394,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var configText: String? { try? String(contentsOf: config.paths.configFile, encoding: .utf8) }
 
-    private func tell(_ title: String, _ text: String, buttons: [String] = ["OK"]) -> NSApplication.ModalResponse {
-        let alert = SettingsDialogs.alert(title, text, buttons: buttons)
-        NSApp.activate()
-        return alert.runModal()
-    }
-
-    /// Copy a prompt with the rules, the reference and the user's config.toml for any AI chat.
+    /// A prompt for any AI chat: the AI reads the docs, asks what you want, and replies with a
+    /// whole config.toml for Edit Config.
     @objc private func changeSettingsWithAI() {
-        Paster.copy(SettingsGuide.prompt(current: configText ?? DefaultConfig.text))
-        _ = tell(SettingsDialogs.promptCopied.title, SettingsDialogs.promptCopied.text)
-    }
-
-    @objc private func copyPluginGuide() {
-        let guide = (try? String(contentsOf: config.paths.pluginsDirectory.appendingPathComponent("AGENTS.md"), encoding: .utf8))
-            ?? PluginGuide.guide
-        Paster.copy(SettingsGuide.pluginPrompt(guide: guide))
-        _ = tell("Plugin guide copied", "Paste it into the same AI chat. Then copy its reply and choose Apply Settings from Clipboard.")
+        showPrompt(SettingsDialogs.change, SettingsGuide.prompt(current: configText ?? DefaultConfig.text))
     }
 
     /// The footer's problems and the user's file, for any AI chat.
     @objc private func fixSettings() {
         let problems = config.loadError.map { [$0.description] } ?? config.current.issues.map(\.message)
         guard !problems.isEmpty else {
-            _ = tell("No problems", "Your settings load without problems.")
+            let alert = SettingsDialogs.alert("No problems", "Your settings load without problems.")
+            NSApp.activate()
+            alert.runModal()
             return
         }
-        Paster.copy(SettingsGuide.fixPrompt(problems, current: configText ?? ""))
-        _ = tell("Problems copied", "Paste them into any AI chat. Then copy its whole reply and choose Apply Settings from Clipboard.")
+        showPrompt(SettingsDialogs.fix, SettingsGuide.fixPrompt(problems, current: configText ?? ""))
     }
 
-    /// Check the AI's reply on the clipboard, show what it changes, and save it (with Undo).
-    @objc private func applySettings() {
-        let reply = NSPasteboard.general.string(forType: .string) ?? ""
-        switch SettingsChange.review(reply, directory: config.paths.configDirectory) {
-        case .failure(let rejection):
-            guard case .problems(let problems) = rejection else { _ = tell("Nothing changed", rejection.description); return }
-            let answer = tell("Nothing changed", SettingsDialogs.rejected(rejection), buttons: SettingsDialogs.rejectedButtons)
-            if answer == .alertFirstButtonReturn { Paster.copy(SettingsGuide.fixPrompt(problems)) }
-        case .success(let review):
-            guard tell(SettingsDialogs.confirmTitle, SettingsDialogs.summary(of: review), buttons: SettingsDialogs.confirmButtons) == .alertFirstButtonReturn else { return }
-            let backup: URL
-            do { backup = try config.apply(review) } catch {
-                _ = tell("Couldn't save settings", error.localizedDescription)
-                return
-            }
-            updateLicence() // Restore now has something to restore
-            let answer = tell(SettingsDialogs.applied.title, SettingsDialogs.applied.text, buttons: SettingsDialogs.appliedButtons)
-            if answer == .alertSecondButtonReturn { restore(backup) }
+    /// Shows the prompt; Copy Prompt copies it, Edit Config… opens the file to paste the reply in.
+    private func showPrompt(_ dialog: (title: String, text: String), _ prompt: String) {
+        let alert = SettingsDialogs.promptAlert(dialog, prompt)
+        NSApp.activate()
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: Paster.copy(prompt)
+        case .alertSecondButtonReturn: editConfig()
+        default: break
         }
-    }
-
-    @objc private func restoreSettings() {
-        guard let backup = SettingsChange.latestBackup(in: config.paths.configBackupsDirectory) else {
-            _ = tell("Nothing to restore", "Restore puts back the settings from before your last Apply Settings from Clipboard.")
-            return
-        }
-        guard tell("Restore previous settings?", "Puts back your settings from before the change saved \(backup.lastPathComponent), "
-                   + "and removes plugins and scripts that change added.", buttons: ["Restore", "Cancel"]) == .alertFirstButtonReturn else { return }
-        restore(backup)
-    }
-
-    private func restore(_ backup: URL) {
-        do { try config.restore(backup) } catch { _ = tell("Couldn't restore settings", error.localizedDescription) }
-        updateLicence()
     }
 }

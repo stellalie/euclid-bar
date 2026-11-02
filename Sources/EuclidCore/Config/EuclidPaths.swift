@@ -20,8 +20,6 @@ public struct EuclidPaths: Sendable {
     public var contentDatabase: URL { dataDirectory.appendingPathComponent("content.sqlite") }
     /// Trial start and licence key.
     public var licenceFile: URL { dataDirectory.appendingPathComponent("licence.json") }
-    /// What each Apply Settings from Clipboard replaced, one folder per apply (Undo, Restore Previous Settings).
-    public var configBackupsDirectory: URL { dataDirectory.appendingPathComponent("config-backups") }
     /// Copied images, one PNG per clip, named by content hash.
     public var clipImagesDirectory: URL { dataDirectory.appendingPathComponent("clip-images") }
 

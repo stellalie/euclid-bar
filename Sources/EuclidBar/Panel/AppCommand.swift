@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleOpenAtLogin, toggleCrashReports, toggleUsagePing, buyLicence, enterLicence, connectAgents, permissions, changeSettingsWithAI, applySettings, copyPluginGuide, fixSettings, restoreSettings }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleOpenAtLogin, toggleDiagnostics, buyLicence, enterLicence, permissions, changeSettingsWithAI, fixSettings }
     let kind: Kind
     let title: String
     var detail = ""
@@ -10,22 +10,13 @@ struct AppCommand: Equatable {
     /// Right-hand label: "On"/"Off" for a toggle.
     var accessory = ""
 
-    static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
-                                          detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
-
-    /// Vibe-coded settings: copy a prompt for any AI chat, then apply its reply.
-    /// `problems`: the config has issues (adds Fix). `canRestore`: a backup exists (adds Restore).
-    static func settingsWithAI(problems: Bool, canRestore: Bool) -> [AppCommand] {
+    /// Vibe-coded settings: a prompt for any AI chat, whose reply you paste in Edit Config.
+    /// `problems`: the config has issues (adds Fix).
+    static func settingsWithAI(problems: Bool) -> [AppCommand] {
         [AppCommand(kind: .changeSettingsWithAI, title: "Change Settings with AI…",
-                    detail: "Copies a prompt for ChatGPT, Copilot, Claude or any AI chat", symbol: "wand.and.stars"),
-         AppCommand(kind: .applySettings, title: "Apply Settings from Clipboard",
-                    detail: "Paste back the AI's reply · checked before saving, with Undo", symbol: "doc.on.clipboard"),
-         AppCommand(kind: .copyPluginGuide, title: "Copy Plugin Guide for AI",
-                    detail: "When the AI asks for it: new things in the bar need a plugin", symbol: "puzzlepiece.extension")]
+                    detail: "A prompt for ChatGPT, Copilot, Claude or any AI chat", symbol: "wand.and.stars")]
         + (problems ? [AppCommand(kind: .fixSettings, title: "Fix Settings with AI…",
-                                  detail: "Copies the problems and your config.toml for any AI chat", symbol: "wrench.and.screwdriver")] : [])
-        + (canRestore ? [AppCommand(kind: .restoreSettings, title: "Restore Previous Settings…",
-                                    detail: "Undo the last Apply Settings from Clipboard", symbol: "arrow.uturn.backward")] : [])
+                                  detail: "A prompt with the problems and your config.toml, for any AI chat", symbol: "wrench.and.screwdriver")] : [])
     }
 
     /// Every permission Euclid uses, in one row: ↵ opens the pane for the first one missing.
@@ -46,16 +37,12 @@ struct AppCommand: Equatable {
                    symbol: "person.crop.circle", accessory: enabled ? "On" : "Off")
     }
 
-    /// Opt-in crash and error reports (`[privacy] crash_reports`).
-    static func crashReports(enabled: Bool) -> AppCommand {
-        AppCommand(kind: .toggleCrashReports, title: "Send Crash Reports", detail: "Stack and versions only, never your data · [privacy] crash_reports",
-                   symbol: "ladybug", accessory: enabled ? "On" : "Off")
-    }
-
-    /// Opt-in daily anonymous ping (`[privacy] usage_ping`).
-    static func usagePing(enabled: Bool) -> AppCommand {
-        AppCommand(kind: .toggleUsagePing, title: "Send Anonymous Usage Ping", detail: "Random install ID and versions, once a day · [privacy] usage_ping",
-                   symbol: "chart.bar", accessory: enabled ? "On" : "Off")
+    /// Opt-in crash reports and daily usage ping as one switch (`[privacy] crash_reports`, `usage_ping`).
+    static func diagnostics(crashReports: Bool, usagePing: Bool) -> AppCommand {
+        let accessory = crashReports && usagePing ? "On" : crashReports || usagePing ? "Partly on" : "Off"
+        return AppCommand(kind: .toggleDiagnostics, title: "Share Anonymous Diagnostics",
+                          detail: "Crash reports and a daily install ping, never your data · [privacy]",
+                          symbol: "stethoscope", accessory: accessory)
     }
 
     /// The update commands for the current `[updates]` settings.
