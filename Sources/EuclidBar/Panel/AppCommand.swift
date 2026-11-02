@@ -43,7 +43,7 @@ struct AppCommand: Equatable {
     /// Start at login (`[startup] open_at_login`), as macOS has it now.
     static func openAtLogin(enabled: Bool) -> AppCommand {
         AppCommand(kind: .toggleOpenAtLogin, title: "Open at Login", detail: "Start Euclid when you log in · [startup] open_at_login",
-                   symbol: "power", accessory: enabled ? "On" : "Off")
+                   symbol: "person.crop.circle", accessory: enabled ? "On" : "Off")
     }
 
     /// Opt-in crash and error reports (`[privacy] crash_reports`).
