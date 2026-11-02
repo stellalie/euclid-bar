@@ -225,8 +225,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// macOS 26 shows icons beside menu items, but only guesses them for standard actions,
-    /// so custom items like "Send Feedback…" were left blank. Give every action item its own
-    /// symbol; checkmark toggles keep none, like the system menus. Older macOS shows no icons.
+    /// so custom items like "Send Feedback…" were left blank. Give every item its own symbol,
+    /// toggles included: their checkmark then sits in the gutter left of the icon and every
+    /// title starts in one column. Toggle symbols match the panel's (AppCommand). Older macOS
+    /// shows no icons.
     private static func addMenuIcons(to menu: NSMenu) {
         guard #available(macOS 26, *) else { return }
         let symbols: [String: String] = [
@@ -236,7 +238,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             "Apply Settings from Clipboard": "doc.on.clipboard",
             "Connect Claude Code or Codex (MCP)…": "link",
             "Clear Clipboard History…": "trash",
+            "Expand Snippet Keywords": "text.cursor",
+            "Open at Login": "person.crop.circle",
             "Check for Updates…": "arrow.down.circle",
+            "Install Updates Automatically": "arrow.triangle.2.circlepath",
+            "Send Crash Reports": "ladybug",
+            "Send Anonymous Usage Ping": "chart.bar",
             "Buy Licence…": "cart",
             "Enter Licence Key…": "key",
             "Send Feedback…": "exclamationmark.bubble",
