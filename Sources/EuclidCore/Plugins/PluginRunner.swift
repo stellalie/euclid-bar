@@ -48,8 +48,17 @@ public enum PluginRunner {
         p.standardOutput = out
         p.standardError = err
         let stdout = CappedBuffer(limit: maxOutput), stderr = CappedBuffer(limit: 4096)
-        out.fileHandleForReading.readabilityHandler = { stdout.append($0.availableData) }
-        err.fileHandleForReading.readabilityHandler = { stderr.append($0.availableData) }
+        // Read both pipes to the end on their own threads (so a big output never fills a pipe and
+        // stalls the script), and return only once both reads are done. A readabilityHandler
+        // could still be appending its last chunk after exit, which lost the whole output.
+        let reads = DispatchGroup()
+        @Sendable func drain(_ pipe: Pipe, into buffer: CappedBuffer) {
+            reads.enter()
+            DispatchQueue.global().async {
+                while case let d = pipe.fileHandleForReading.availableData, !d.isEmpty { buffer.append(d) }
+                reads.leave()
+            }
+        }
         let stopped = Flag()
         @Sendable func stop() {
             guard p.isRunning, !stopped.isSet else { return }
@@ -65,17 +74,17 @@ public enum PluginRunner {
         let status: Int32 = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (done: CheckedContinuation<Int32, Error>) in
                 p.terminationHandler = { proc in
-                    out.fileHandleForReading.readabilityHandler = nil
-                    err.fileHandleForReading.readabilityHandler = nil
-                    if !stopped.isSet { // a stopped run's leftovers could block the read; they're unused anyway
-                        stdout.append(out.fileHandleForReading.readDataToEndOfFile())
-                        stderr.append(err.fileHandleForReading.readDataToEndOfFile())
-                    }
-                    done.resume(returning: proc.terminationStatus)
+                    let status = proc.terminationStatus
+                    // A stopped run's leftovers could keep the pipes open; its output is unused anyway.
+                    if stopped.isSet { done.resume(returning: status); return }
+                    reads.notify(queue: .global()) { done.resume(returning: status) }
                 }
+                // Reading starts first, so a run that ends at once is still waited for.
+                drain(out, into: stdout)
+                drain(err, into: stderr)
                 do { try p.run() } catch {
-                    out.fileHandleForReading.readabilityHandler = nil
-                    err.fileHandleForReading.readabilityHandler = nil
+                    try? out.fileHandleForWriting.close() // ends the reads
+                    try? err.fileHandleForWriting.close()
                     done.resume(throwing: Failure("can't start \(shell): \(error.localizedDescription)"))
                     return
                 }

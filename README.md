@@ -201,6 +201,20 @@ action). Read it, tweak it, or drop your own scripts next to it. Using herdr? Co
 typo never breaks the app: the last good config stays active and the error shows in the panel footer.
 Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-your-team).
 
+**Change it in plain words, with any AI.** Search `settings` in Euclid:
+
+1. **Change Settings with AI…** copies a prompt (rules, the commented reference, your config.toml).
+   Paste it into ChatGPT, Copilot, Claude or any AI chat and say what you want.
+2. **Apply Settings from Clipboard** reads the AI's reply. It can change config.toml and add plugins,
+   `bin/` scripts and themes. Only paths inside `~/.config/euclid` are written. The whole reply is
+   loaded in a scratch copy first: any problem and nothing is saved, with a note to paste back to the AI.
+   You see every changed line and every script before you approve, then get Undo.
+3. **Fix Settings with AI…** (when the footer shows a problem) and **Restore Previous Settings…**
+   (backups in `~/Library/Application Support/Euclid/config-backups`).
+
+Euclid calls no AI itself. Coding agents (Claude Code, Codex) can edit the files directly:
+`~/.config/euclid/AGENTS.md` is the settings guide, `plugins/AGENTS.md` the plugin one.
+
 <details open>
 <summary><b>Full reference</b></summary>
 

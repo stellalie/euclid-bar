@@ -188,6 +188,18 @@ enum ScreensRenderer {
         try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
         vc.modKeys = []
 
+        vc.commands += AppCommand.settingsWithAI(problems: true, canRestore: true)
+        vc.demoSetQuery("")
+        try type("settings", caption: "Change settings in plain words with any AI chat, checked before saving")
+        try step("Change settings in plain words with any AI chat, checked before saving", hold: 2.0, name: "settings-ai")
+
+        try SettingsDialogs.renderFlow(to: dir, snapshot: DemoRenderer.snapshot) { image, name, caption in
+            var size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+            let room: CGFloat = 540 // above the caption
+            if size.height > room { size = NSSize(width: (size.width * room / size.height).rounded(), height: room) }
+            try writePNG(compose(image, size: size, caption: caption), to: dir.appendingPathComponent("\(name).png"))
+        }
+
         // Every built-in theme, last so the numbers of the shots above stay put.
         for name in Themes.names.dropFirst() {
             var look = Appearance()

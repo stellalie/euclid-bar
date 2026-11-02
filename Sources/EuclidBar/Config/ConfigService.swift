@@ -31,10 +31,10 @@ final class ConfigService {
 
     /// One line for the footer when something needs attention, else nil.
     var problemSummary: String? {
-        if let loadError { return "⚠︎ \(loadError) — using last good config" }
+        if let loadError { return "⚠︎ \(loadError) — using last good config · search “fix” to fix it with AI" }
         guard let first = current.issues.first else { return nil }
-        let more = current.issues.count > 1 ? " (+\(current.issues.count - 1) more: --check-config)" : ""
-        return "⚠︎ config: \(first.message)\(more)"
+        let more = current.issues.count > 1 ? " (+\(current.issues.count - 1) more)" : ""
+        return "⚠︎ config: \(first.message)\(more) · search “fix” to fix it with AI"
     }
 
     func startWatching() {
@@ -96,6 +96,19 @@ final class ConfigService {
         }
         reload()
         return nil
+    }
+
+    /// Write an AI's checked reply (Apply Settings from Clipboard), then reload.
+    /// Returns the backup that `restore` puts back.
+    func apply(_ review: SettingsChange.Review) throws -> URL {
+        defer { reload() }
+        return try SettingsChange.apply(review, directory: paths.configDirectory, backups: paths.configBackupsDirectory)
+    }
+
+    /// Put a backup back (Undo, Restore Previous Settings), then reload.
+    func restore(_ backup: URL) throws {
+        defer { reload() }
+        try SettingsChange.restore(backup, directory: paths.configDirectory)
     }
 
     private func scheduleReload() {
