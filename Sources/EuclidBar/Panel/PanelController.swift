@@ -91,6 +91,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginDirectory = { [unowned plugins] id in plugins.plugin(id: id)?.directory }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
+        content.onReloadView = { [weak self] command, pluginID, viewID in
+            self?.plugins.run(command, pluginID: pluginID, arguments: nil) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let r):
+                    self.content.viewReloaded(viewID, with: r.view)
+                case .failure(let failure):
+                    self.content.viewReloaded(viewID, with: nil)
+                    if !failure.stillRunning { self.content.notice = "⚠︎ Refresh failed (\(failure.description))" }
+                }
+            }
+        }
         plugins.onAnswers = { [weak self] text, entries, reveal in self?.content.setPluginAnswers(entries, for: text, reveal: reveal) }
         plugins.onChange = { [weak self] in
             guard let self else { return }
@@ -363,6 +375,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 if let view = r.view {
                     if !self.panel.isVisible { self.show() }
                     self.content.present(view, pluginID: pluginID, pluginName: name)
+                } else if self.panel.isVisible {
+                    self.content.reloadTopView() // a live view shows what the run changed
                 }
             }
         }

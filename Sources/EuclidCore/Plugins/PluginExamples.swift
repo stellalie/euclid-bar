@@ -2165,4 +2165,193 @@ case $level in
 esac
 """#
 
+    // MARK: - kill-process
+
+    static let killManifest = #"""
+name = "Kill Process"
+description = "Your running processes, busiest first, live. ↵ quits one, ↵ again force-quits it. `kill <name>` finds one."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 1440
+
+[answer]                  # `kill chrome`
+run    = './list.sh rows "$1"'
+prefix = "kill"
+"""#
+
+    static let killItems = #"""
+#!/bin/sh
+echo '{"title":"Kill Process","subtitle":"Running processes, busiest first","run":"./list.sh","icon":"xmark.octagon","id":"kill-process:list"}'
+"""#
+
+    static let killList = #"""
+#!/bin/sh
+# ./list.sh            a live list of your processes, busiest first (it reloads every 3 s and after a kill)
+# ./list.sh rows <q>   just the rows whose name has <q>, for `kill <q>`
+# Each row's ↵ runs ./kill.sh <pid>. Apps show their own icon.
+set -eu
+mode=${1:-view} query=${2:-}
+if [ "$mode" = view ]; then
+  echo '{"view":"list","title":"Processes","placeholder":"Filter processes…","reload":"./list.sh","refresh_seconds":3}'
+fi
+ps -U "$(id -u)" -o pid=,pcpu=,rss=,comm= | sort -k2,2nr | awk -v me="$$" -v mode="$mode" -v q="$query" '
+function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\t/, " ", s); return s }
+function size(kb) { return kb >= 1048576 ? sprintf("%.1f GB", kb / 1048576) : sprintf("%d MB", kb / 1024) }
+{
+  pid = $1; cpu = $2; kb = $3
+  path = $0; sub(/^[ \t]*[0-9]+[ \t]+[0-9.,]+[ \t]+[0-9]+[ \t]+/, "", path)
+  if (pid == me || path == "") next
+  icon = "gearshape"; name = path
+  if (match(path, /.*\.app\/Contents\/MacOS\//)) {          # an app: name it and show its icon
+    app = substr(path, 1, RLENGTH - 16); icon = app
+    name = app; sub(/.*\//, "", name); sub(/\.app$/, "", name)
+  } else {
+    sub(/.*\//, "", name)
+  }
+  if (name ~ /^(ps|sort|awk|list\.sh|loginwindow|euclid-bar|Euclid)$/) next   # this script, and what logs you out
+  if (q != "" && index(tolower(name), tolower(q)) == 0) next
+  gsub(/,/, ".", cpu)
+  printf "{\"title\":\"%s\",\"subtitle\":\"%.1f%% CPU · %s · PID %d\",\"icon\":\"%s\",\"run\":\"./kill.sh %d\",\"id\":\"pid:%d\"}\n",
+    esc(name), cpu, size(kb), pid, esc(icon), pid, pid
+  if (++n == (mode == "view" ? 300 : 8)) exit
+}'
+"""#
+
+    static let killKill = #"""
+#!/bin/sh
+# ./kill.sh <pid>: asks the process to quit (TERM). ↵ again within a minute force-quits it (KILL).
+set -eu
+pid=${1:-}
+case $pid in ''|*[!0-9]*) echo "usage: kill.sh <pid>" >&2; exit 64 ;; esac
+alive() { case $(ps -p "$pid" -o stat= 2>/dev/null) in ''|Z*) return 1 ;; esac; }  # a zombie has quit too
+alive || { echo '{"notice":"It already quit"}'; exit 0; }
+name=$(ps -p "$pid" -o comm=)
+name=$(printf '%s' "${name##*/}" | sed 's/\\/\\\\/g; s/"/\\"/g')
+mark="${TMPDIR:-/tmp}/euclid-kill-$pid"
+if [ -f "$mark" ] && [ $(( $(date +%s) - $(cat "$mark") )) -lt 60 ]; then
+  kill -KILL "$pid"
+  rm -f "$mark"
+  echo "{\"notice\":\"Force-quit $name\"}"
+  exit 0
+fi
+kill -TERM "$pid"
+sleep 0.5
+if alive; then
+  date +%s > "$mark"
+  echo "{\"notice\":\"Asked $name to quit · ↵ again force-quits it\"}"
+else
+  echo "{\"notice\":\"Quit $name\"}"
+fi
+"""#
+
+    // MARK: - docker
+
+    static let dockerManifest = #"""
+name = "Docker"
+description = "Your containers, live: logs, a shell, open its port, start, stop and restart. Needs the docker CLI (Docker Desktop, OrbStack or colima)."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 1440
+
+[settings]
+terminal = ""   # how Open Shell opens a terminal: empty = Ghostty if you have it, else Terminal;
+                # or a command that runs its arguments, e.g. "ghostty-run window"
+"""#
+
+    static let dockerItems = #"""
+#!/bin/sh
+echo '{"title":"Docker Containers","subtitle":"Running and stopped containers","run":"./containers.sh","icon":"shippingbox","id":"docker:containers"}'
+"""#
+
+    static let dockerContainers = #"""
+#!/bin/sh
+# Every container, running ones first, as a live list (reloads every 3 s). ↵ opens its actions.
+set -eu
+command -v docker >/dev/null 2>&1 || { echo "needs the docker CLI: install Docker Desktop, OrbStack or colima" >&2; exit 1; }
+if ! out=$(docker ps -a --format '{{.State}}	{{.ID}}	{{json .Names}}	{{json .Image}}	{{json .Status}}' 2>&1); then
+  echo "Docker isn't running: $(printf '%s\n' "$out" | head -n 1)" >&2; exit 1
+fi
+echo '{"view":"list","title":"Containers","placeholder":"Filter containers…","reload":"./containers.sh","refresh_seconds":3}'
+[ -n "$out" ] || exit 0
+printf '%s\n' "$out" | awk -F '\t' '
+function inner(j) { return substr(j, 2, length(j) - 2) }   # a JSON string without its quotes
+{
+  icon = $1 == "running" ? "🟢" : $1 == "paused" || $1 == "restarting" ? "🟡" : "⚪️"
+  row = sprintf("{\"title\":%s,\"subtitle\":\"%s · %s\",\"icon\":\"%s\",\"run\":\"./container.sh %s\",\"id\":\"docker:%s\"}",
+                $3, inner($4), inner($5), icon, $2, $2)
+  if ($1 == "running") print row; else rest = rest row "\n"
+}
+END { printf "%s", rest }'
+"""#
+
+    static let dockerContainer = #"""
+#!/bin/sh
+# ./container.sh <id>: what you can do with one container, live (reloads every 3 s).
+set -eu
+id=${1:-}
+case $id in ''|*[!0-9a-f]*) echo "usage: container.sh <container id>" >&2; exit 64 ;; esac
+info=$(docker inspect --format '{{.State.Status}}	{{json .Name}}' "$id" 2>&1) || { echo "no container $id: $info" >&2; exit 1; }
+state=${info%%	*} name=${info#*	}
+name=$(printf '%s' "$name" | sed 's/^"\//"/')
+echo "{\"view\":\"list\",\"title\":$name,\"placeholder\":\"$state · Filter actions…\",\"reload\":\"./container.sh $id\",\"refresh_seconds\":3}"
+row() { echo "{\"title\":\"$1\",\"icon\":\"$2\",\"run\":\"$3\",\"id\":\"docker:$id:$1\"}"; }
+if [ "$state" = running ]; then
+  row "Logs" "doc.text" "./logs.sh $id"
+  row "Open Shell" "terminal" "./shell.sh $id"
+  docker port "$id" 2>/dev/null | sed -n 's/.*:\([0-9][0-9]*\)$/\1/p' | sort -un | head -n 3 | while read -r port; do
+    echo "{\"title\":\"Open localhost:$port\",\"icon\":\"safari\",\"open\":\"http://localhost:$port\",\"id\":\"docker:$id:port:$port\"}"
+  done
+  row "Restart" "arrow.clockwise" "./act.sh restart $id"
+  row "Stop" "stop.fill" "./act.sh stop $id"
+else
+  row "Start" "play.fill" "./act.sh start $id"
+  row "Logs" "doc.text" "./logs.sh $id"
+fi
+echo "{\"title\":\"Copy ID\",\"icon\":\"doc.on.doc\",\"copy\":\"$id\",\"id\":\"docker:$id:copy\"}"
+"""#
+
+    static let dockerLogs = #"""
+#!/bin/sh
+# ./logs.sh <id>: its last 200 log lines, newest first, live (reloads every 2 s).
+set -eu
+id=${1:-}
+case $id in ''|*[!0-9a-f]*) echo "usage: logs.sh <container id>" >&2; exit 64 ;; esac
+echo "{\"view\":\"detail\",\"title\":\"Logs · newest first\",\"code\":true,\"reload\":\"./logs.sh $id\",\"refresh_seconds\":2}"
+docker logs --tail 200 "$id" 2>&1 | { tail -r 2>/dev/null || tac; }
+"""#
+
+    static let dockerAct = #"""
+#!/bin/sh
+# ./act.sh start|stop|restart <id>. Start waits, so you see why it failed; stop and restart can
+# take a while (the container gets time to shut down), so they go on in the background.
+set -eu
+verb=${1:-} id=${2:-}
+case $id in ''|*[!0-9a-f]*) echo "usage: act.sh start|stop|restart <container id>" >&2; exit 64 ;; esac
+case $verb in
+  start)   docker start "$id" >/dev/null; echo '{"notice":"Started"}' ;;
+  stop)    nohup docker stop "$id" >/dev/null 2>&1 & echo '{"notice":"Stopping…"}' ;;
+  restart) nohup docker restart "$id" >/dev/null 2>&1 & echo '{"notice":"Restarting…"}' ;;
+  *) echo "usage: act.sh start|stop|restart <container id>" >&2; exit 64 ;;
+esac
+"""#
+
+    static let dockerShell = #"""
+#!/bin/sh
+# ./shell.sh <id>: a terminal with a shell inside the container (bash if it has it).
+set -eu
+id=${1:-}
+case $id in ''|*[!0-9a-f]*) echo "usage: shell.sh <container id>" >&2; exit 64 ;; esac
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  $term docker exec -it "$id" sh -c 'command -v bash >/dev/null && exec bash || exec sh'
+else
+  osascript -e "tell application \"Terminal\" to do script \"docker exec -it $id sh -c 'command -v bash >/dev/null && exec bash || exec sh'\"" \
+            -e 'tell application "Terminal" to activate' >/dev/null
+fi
+"""#
 }
