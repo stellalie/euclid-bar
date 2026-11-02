@@ -150,7 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func missingPermissions() -> [Permissions.Need] {
         Permissions.missing(.init(accessibility: Paster.isTrusted, expansionEnabled: config.current.config.expansionEnabled,
-                                  safariBlocked: history.safariBlocked, safariRequested: history.safariRequested))
+                                  safariBlocked: history.safariBlocked, safariRequested: history.safariRequested,
+                                  blockedBrowsers: history.blockedBrowsers))
     }
 
     /// Open System Settings at the first missing permission (and add Euclid to the Accessibility list).
