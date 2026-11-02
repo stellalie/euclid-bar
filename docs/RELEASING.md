@@ -21,6 +21,12 @@ The bundle is `Euclid.app`; the binary inside stays `euclid-bar` (the CLI name).
 `CFBundleIdentifier` (`dev.euclid.Euclid`): Sparkle finds the new app in the update zip by it, and
 installs it at the old path, so copies installed as `euclid-bar.app` keep that folder name.
 
+**Homebrew.** After a stable release, `scripts/bump-cask.sh` sets `version` and `sha256` in
+`Casks/euclid.rb` in euclid-bar-releases, which doubles as the tap (`brew tap stellalie/euclid
+https://github.com/stellalie/euclid-bar-releases`). Dev builds don't touch it. The cask says
+`auto_updates true`, so `brew upgrade` leaves the update to Sparkle. If the bump step fails, the
+release is already out; re-run it by hand: `GH_TOKEN=… scripts/bump-cask.sh 1.4.1 Euclid-1.4.1.zip`.
+
 The tag sets the app version (`CFBundleVersion`), and Sparkle only offers versions newer than the
 installed one, so tags must keep going up.
 

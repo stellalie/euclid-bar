@@ -142,6 +142,15 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 ## Install
 
+**Homebrew** (also puts the `euclid-bar` CLI on your `PATH`):
+
+```sh
+brew tap stellalie/euclid https://github.com/stellalie/euclid-bar-releases
+brew install --cask stellalie/euclid/euclid
+```
+
+Then press **`⌥Space`**. Euclid updates itself, so `brew upgrade` skips it. Or by hand:
+
 1. **Download** `Euclid-<version>.dmg` from
    [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
    macOS 14+). It's signed and notarized, so it opens without warnings.
