@@ -4,7 +4,7 @@
 // Reports aren't stored here: no IPs, no logs beyond Cloudflare's defaults.
 // Also takes the opt-in daily usage ping (`[privacy] usage_ping = true`): see pings.js.
 
-import { STATS_TITLE, statsMarkdown, validatePing } from "./pings.js";
+import { STATS_TITLE, countryOf, statsMarkdown, validatePing } from "./pings.js";
 
 export const LABEL = "crash-report";
 const MAX_BODY = 64_000;
@@ -60,7 +60,7 @@ async function ping(request, env) {
   } catch (e) {
     return text(`Bad ping: ${e.message}`, 400);
   }
-  await pings(env, "/record", p);
+  await pings(env, "/record", { ping: p, country: countryOf(request) });
   return new Response(null, { status: 204 });
 }
 

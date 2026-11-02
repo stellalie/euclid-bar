@@ -1,6 +1,6 @@
 // Euclid's opt-in daily usage ping (`[privacy] usage_ping = true`): a random install ID and versions.
 // Stored in one SQLite Durable Object; an hourly cron writes the counts to a GitHub issue.
-// No IPs are stored. Daily rows older than KEEP_DAYS are deleted; per install only first/last day is kept.
+// No IPs are stored; the country comes from Cloudflare's `request.cf.country`, never from the app. Daily rows older than KEEP_DAYS are deleted; per install only first/last day is kept.
 
 export const KEEP_DAYS = 90;
 export const STATS_TITLE = "Install stats (opt-in usage ping)";
@@ -24,6 +24,12 @@ export function osMajor(os) {
   return os.match(/^macOS \d+/)?.[0] ?? "other";
 }
 
+/** Cloudflare's two-letter country code for the request ("XX"/"T1" included), or null. */
+export function countryOf(request) {
+  const c = request.cf?.country;
+  return typeof c === "string" && /^[A-Z0-9]{2}$/.test(c) ? c : null;
+}
+
 export function utcDay(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -37,13 +43,18 @@ export class PingStore {
   constructor(sql) {
     this.sql = sql;
     sql.exec(`CREATE TABLE IF NOT EXISTS pings (id TEXT, day TEXT, app TEXT, channel TEXT, os TEXT, arch TEXT, PRIMARY KEY (id, day))`);
+    const cols = sql.exec(`PRAGMA table_info(pings)`).toArray().map((c) => c.name);
+    if (!cols.includes("country")) sql.exec(`ALTER TABLE pings ADD COLUMN country TEXT`);
     sql.exec(`CREATE TABLE IF NOT EXISTS installs (id TEXT PRIMARY KEY, first_day TEXT, last_day TEXT)`);
     sql.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`);
   }
 
   /** One row per install per day; the first ping of the day wins. */
-  record(p, day) {
-    this.sql.exec(`INSERT OR IGNORE INTO pings VALUES (?, ?, ?, ?, ?, ?)`, p.id, day, p.app, p.channel, osMajor(p.os), p.arch);
+  record(p, day, country = null) {
+    this.sql.exec(
+      `INSERT OR IGNORE INTO pings (id, day, app, channel, os, arch, country) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      p.id, day, p.app, p.channel, osMajor(p.os), p.arch, country,
+    );
     this.sql.exec(
       `INSERT INTO installs VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET last_day = MAX(last_day, excluded.last_day)`,
       p.id, day, day,
@@ -70,7 +81,7 @@ export class PingStore {
     }
     const since7 = daysBefore(today, 7);
     const by = (col) =>
-      rows(`SELECT ${col} AS name, COUNT(DISTINCT id) AS n FROM pings WHERE day > ? GROUP BY ${col} ORDER BY n DESC, name LIMIT 10`, since7);
+      rows(`SELECT COALESCE(${col}, '?') AS name, COUNT(DISTINCT id) AS n FROM pings WHERE day > ? GROUP BY ${col} ORDER BY n DESC, name LIMIT 10`, since7);
     return {
       today,
       installs: rows(`SELECT COUNT(*) AS n FROM installs`)[0].n,
@@ -82,6 +93,7 @@ export class PingStore {
       os: by("os"),
       channels: by("channel"),
       arch: by("arch"),
+      countries: by("country"),
     };
   }
 
@@ -114,6 +126,8 @@ export function statsMarkdown(s) {
     "",
     "| CPU | Installs |\n| --- | ---: |\n" + table(s.arch),
     "",
+    "| Country | Installs |\n| --- | ---: |\n" + table(s.countries),
+    "",
     `_Only counts people who turned on \`[privacy] usage_ping\` (off by default). Updated hourly by the reports Worker (server/reports); day ${s.today} is still in progress._`,
   ].join("\n");
 }
@@ -130,7 +144,7 @@ export class Pings {
     const today = utcDay(new Date());
     switch (pathname) {
       case "/record":
-        this.store.record(body, today);
+        this.store.record(body.ping, today, body.country);
         return Response.json({ ok: true });
       case "/stats":
         this.store.prune(today);
