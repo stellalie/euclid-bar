@@ -32,7 +32,11 @@ enum SettingsDialogs {
         let scroll = NSScrollView(frame: NSRect(origin: .zero, size: size))
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
-        let text = NSTextView(frame: NSRect(origin: .zero, size: size))
+        // Sized to the area inside the border and scroller, so lines wrap instead of running under them.
+        let text = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        text.minSize = NSSize(width: 0, height: scroll.contentSize.height)
+        text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
         text.string = prompt
         text.isEditable = false
         text.isSelectable = true
