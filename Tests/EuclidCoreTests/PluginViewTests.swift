@@ -200,7 +200,8 @@ import Testing
         #expect(detail.layout == .detail)
         #expect(detail.title == "Weather")
         #expect(detail.code)
-        #expect(detail.text == "Weather for S%C3%A3o%20Paulo (m)\nsunny")
+        // macOS passes arguments decomposed (a + U+0303), Linux as typed: either encoding is right.
+        #expect(["Weather for S%C3%A3o%20Paulo (m)\nsunny", "Weather for Sa%CC%83o%20Paulo (m)\nsunny"].contains(detail.text))
 
         // needsConfirmation: a list view asking first; its Run item runs it for real.
         let asked = try await rc.activate(hi)

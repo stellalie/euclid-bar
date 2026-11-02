@@ -144,11 +144,13 @@ if [ "$(header needsConfirmation)" = true ] && [ -z "$EUCLID_CONFIRMED" ]; then
 fi
 
 # Arguments marked "percentEncoded" go in URL-encoded, as Raycast passes them.
-urlencode() {
-  local LC_ALL=C s=$1 out= c i
-  for ((i = 0; i < ${#s}; i++)); do
-    c=${s:i:1}
-    case $c in [a-zA-Z0-9.~_-]) out+=$c ;; *) out+=$(printf '%%%02X' "'$c") ;; esac
+urlencode() {  # byte by byte, so it's the same in any locale
+  local out= h
+  for h in $(printf '%s' "$1" | od -An -tx1 -v); do
+    case $h in
+      2d|2e|5f|7e|3[0-9]|4[1-9a-f]|5[0-9a]|6[1-9a-f]|7[0-9a]) out+=$(printf "\\x$h") ;;
+      *) out+=%$(printf '%s' "$h" | tr a-f A-F) ;;
+    esac
   done
   printf '%s' "$out"
 }
