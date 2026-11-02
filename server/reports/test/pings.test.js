@@ -105,3 +105,22 @@ test("a ping is stored and shows up in the stats issue", async () => {
   assert.match(issues[7].body, /\*\*2\*\* installs/);
   assert.equal(calls.filter((c) => c.method === "POST").length, 1);
 });
+
+test("stores the request's country, never the IP, and counts installs by country", async () => {
+  const req = new Request("https://reports.lgtm.ninja/v1/ping", { method: "POST", body: JSON.stringify(ping) });
+  Object.defineProperty(req, "cf", { value: { country: "US" } });
+  assert.equal((await worker.fetch(req, env)).status, 204);
+  await post(other); // no request.cf (e.g. local dev): unknown country
+  await publishStats(env);
+  assert.match(issues[7].body, /\| Country \| Installs \|\n\| --- \| ---: \|\n\| \? \| 1 \|\n\| US \| 1 \|/);
+});
+
+test("adds the country column to a store made before it existed", () => {
+  const sql = fakeSQL();
+  sql.exec(`CREATE TABLE pings (id TEXT, day TEXT, app TEXT, channel TEXT, os TEXT, arch TEXT, PRIMARY KEY (id, day))`);
+  sql.exec(`INSERT INTO pings VALUES (?, ?, ?, ?, ?, ?)`, ping.id, "2026-10-30", "1.3.0", "stable", "macOS 15", "arm64");
+  const store = new PingStore(sql);
+  store.record(other, "2026-10-31", "AU");
+  new PingStore(sql); // second start: no duplicate ALTER
+  assert.deepEqual(store.stats("2026-10-31").countries, [{ name: "?", n: 1 }, { name: "AU", n: 1 }]);
+});
