@@ -150,6 +150,22 @@ import Testing
         #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("plugins").path))
     }
 
+    @Test func defaultConfigWithABadgePluginPasses() throws {
+        // The reply --render-screens shows.
+        let dir = try folder(DefaultConfig.text)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let edited = DefaultConfig.text.replacingOccurrences(of: #"theme      = "default""#, with: #"theme      = "nord""#)
+            .replacingOccurrences(of: #"open  = 'open "$1"'"#, with: #"open  = 'code "$1"'"#)
+        let reply = "File: `config.toml`\n```toml\n\(edited)\n```\nFile: `plugins/weather/plugin.toml`\n```toml\n"
+            + "name = \"Weather\"\ndescription = \"x\"\n\n[badge]\nrun = \"./now.sh\"\nicon = \"cloud.sun\"\nrefresh_minutes = 30\n```\n"
+            + "File: `plugins/weather/now.sh`\n```sh\n#!/bin/zsh\ncurl -s 'https://wttr.in/?format=%c%t'\n```\n"
+        let review = try SettingsChange.review(reply, directory: dir).get()
+        #expect(review.files[0].removed.count == 2 && review.files[0].added.count == 2)
+        let bad = edited.replacingOccurrences(of: #"density    = "comfortable""#, with: #"density    = "huge""#)
+        guard case .problems(let p) = rejection(bad, in: dir) else { Issue.record("bad density"); return }
+        #expect(p.count == 1)
+    }
+
     @Test func flagsAReplyWithOnlyTheChangedPart() throws {
         let dir = try folder(DefaultConfig.text)
         defer { try? FileManager.default.removeItem(at: dir) }

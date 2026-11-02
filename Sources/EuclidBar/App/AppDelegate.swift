@@ -441,10 +441,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var configText: String? { try? String(contentsOf: config.paths.configFile, encoding: .utf8) }
 
     private func tell(_ title: String, _ text: String, buttons: [String] = ["OK"]) -> NSApplication.ModalResponse {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.informativeText = text
-        for b in buttons { alert.addButton(withTitle: b) }
+        let alert = SettingsDialogs.alert(title, text, buttons: buttons)
         NSApp.activate()
         return alert.runModal()
     }
@@ -452,17 +449,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Copy a prompt with the rules, the reference and the user's config.toml for any AI chat.
     @objc private func changeSettingsWithAI() {
         Paster.copy(SettingsGuide.prompt(current: configText ?? DefaultConfig.text))
-        _ = tell("Prompt copied", """
-            1. Paste it into ChatGPT, Copilot, Claude or any AI chat, and type what you want at the end, \
-            e.g. “use the Nord theme and open my projects in VS Code”.
-            2. Copy the AI's whole reply.
-            3. In Euclid, search “settings” and choose Apply Settings from Clipboard. \
-            You'll see every change before anything is saved.
-
-            If the AI asks for the plugin guide, choose Copy Plugin Guide for AI and paste that too.
-
-            The prompt includes your config.toml. If you put anything private in it, look it over first.
-            """)
+        _ = tell(SettingsDialogs.promptCopied.title, SettingsDialogs.promptCopied.text)
     }
 
     @objc private func copyPluginGuide() {
@@ -489,20 +476,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch SettingsChange.review(reply, directory: config.paths.configDirectory) {
         case .failure(let rejection):
             guard case .problems(let problems) = rejection else { _ = tell("Nothing changed", rejection.description); return }
-            let answer = tell("Nothing changed", rejection.description
-                              + "\n\nCopy a note for the AI, paste it into the same chat, then apply its new reply.",
-                              buttons: ["Copy Note for the AI", "Close"])
+            let answer = tell("Nothing changed", SettingsDialogs.rejected(rejection), buttons: SettingsDialogs.rejectedButtons)
             if answer == .alertFirstButtonReturn { Paster.copy(SettingsGuide.fixPrompt(problems)) }
         case .success(let review):
-            guard tell("Apply these changes?", Self.summary(of: review), buttons: ["Apply", "Cancel"]) == .alertFirstButtonReturn else { return }
+            guard tell(SettingsDialogs.confirmTitle, SettingsDialogs.summary(of: review), buttons: SettingsDialogs.confirmButtons) == .alertFirstButtonReturn else { return }
             let backup: URL
             do { backup = try config.apply(review) } catch {
                 _ = tell("Couldn't save settings", error.localizedDescription)
                 return
             }
             updateLicence() // Restore now has something to restore
-            let answer = tell("Settings applied", "They're live now. Search “restore” to put the previous ones back any time.",
-                              buttons: ["OK", "Undo"])
+            let answer = tell(SettingsDialogs.applied.title, SettingsDialogs.applied.text, buttons: SettingsDialogs.appliedButtons)
             if answer == .alertSecondButtonReturn { restore(backup) }
         }
     }
@@ -520,30 +504,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func restore(_ backup: URL) {
         do { try config.restore(backup) } catch { _ = tell("Couldn't restore settings", error.localizedDescription) }
         updateLicence()
-    }
-
-    /// Each file with its changed lines ("− theme = …" / "+ theme = …"), scripts called out.
-    private static func summary(of review: SettingsChange.Review) -> String {
-        var parts: [String] = []
-        for file in review.files {
-            let head = "\(file.path)\(file.isNew ? " (new)" : "")"
-            if file.isScript {
-                parts.append("\(head): a script that runs on your Mac\n" + file.text.split(separator: "\n", omittingEmptySubsequences: false)
-                    .prefix(15).joined(separator: "\n") + (file.text.split(separator: "\n").count > 15 ? "\n…" : ""))
-                continue
-            }
-            let lines = file.removed.map { "− \($0)" } + file.added.map { "+ \($0)" }
-            let limit = 12
-            parts.append(lines.isEmpty ? "\(head): only comments or layout"
-                         : "\(head)\n" + lines.prefix(limit).joined(separator: "\n") + (lines.count > limit ? "\n… and \(lines.count - limit) more" : ""))
-        }
-        if review.looksPartial {
-            parts.append("⚠︎ This removes a lot from config.toml. AI chats sometimes send only the changed part: "
-                         + "if that's what happened, cancel and ask for the complete file.")
-        }
-        if review.files.contains(where: \.isScript) {
-            parts.append("Scripts can do anything your account can. Apply only if you asked for them.")
-        }
-        return parts.joined(separator: "\n\n")
     }
 }
