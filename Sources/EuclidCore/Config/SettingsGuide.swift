@@ -2,9 +2,8 @@ import Foundation
 
 /// Settings anyone can change by asking an AI ("make the bar bigger", "show my Jira issues"),
 /// with the files in `~/.config/euclid` still the one source of truth. Euclid calls no AI itself:
-/// - `prompt(current:)` is what "Change Settings with AI…" copies, for any AI chat;
-///   `pluginPrompt` adds the plugin guide when the AI asks for it.
-/// - `SettingsChange` checks and applies the reply ("Apply Settings from Clipboard").
+/// - `prompt(current:)` is what "Change Settings with AI…" shows, to copy into any AI chat. The AI
+///   reads the docs, asks what you want, and replies with a whole config.toml to paste in Edit Config.
 /// - `guide` is `<config>/AGENTS.md`, for coding agents that edit the files directly.
 public enum SettingsGuide {
     static let marker = "<!-- Written by Euclid; it's replaced on update. Put your own notes in another file. -->"
@@ -20,30 +19,17 @@ public enum SettingsGuide {
         try guide.write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// Where an AI reads what Euclid can do: every feature, setting and plugin.
+    public static let docsURL = "https://lgtm.ninja/euclid/docs/"
+    public static let pluginGuideURL = "https://lgtm.ninja/euclid/plugins/AGENTS.md"
+
     /// The rules any AI follows, chat or coding agent.
     static let rules = """
-        - Keep everything the user didn't ask to change, including their comments and order.
-        - Use only settings from the reference, plus `[plugin.<id>]` tables for a plugin's settings. Don't invent keys.
-        - Commands in `run` and scripts run on the user's Mac. Only add what they asked for, and say what each does.
+        - Keep everything I didn't ask to change, including my comments and order.
+        - Use only settings from the docs, plus `[plugin.<id>]` tables for a plugin's settings. Don't invent keys.
+        - Commands in `run` and scripts run on my Mac. Only add what I asked for, and say what each does.
         - Never put passwords or tokens in a file: read them from the Keychain (`security find-generic-password -s <service> -w`).
-        - If the request is unclear, or Euclid can't do it, say so instead of guessing.
-        """
-
-    /// How a chat reply carries files, so Apply Settings from Clipboard can find them.
-    static let replyFormat = """
-        - Reply with each file you change or add in full, never just the changed part, in its own code block.
-        - On the line right before each code block, write its path, like: File: `config.toml`
-          Paths are inside ~/.config/euclid: `config.toml`, `plugins/<id>/<file>`, `bin/<script>` or `themes/<name>.toml`.
-        - A script starts with a `#!` line, e.g. `#!/bin/zsh`, so Euclid makes it runnable.
-        - After the code blocks, say in one or two plain sentences what you changed.
-        """
-
-    /// What needs a plugin, in words a non-developer's request would use.
-    static let needsPlugin = """
-        - Things from another app or website in search, a reply to what's typed, a status badge on the bar, \
-        or a key that runs something on the selected result need a plugin or a script. If that's what I want \
-        and you don't have Euclid's plugin guide yet, don't guess the format: ask me for it. \
-        (I copy it in Euclid with "Copy Plugin Guide for AI".)
+        - If Euclid can't do something, say so instead of guessing.
         """
 
     public static let guide = """
@@ -66,9 +52,8 @@ public enum SettingsGuide {
         \(rules)
         - Don't touch `~/Library/Application Support/Euclid`: that's the app's own data, not settings.
 
-        No coding agent? In Euclid, search "settings" and choose Change Settings with AI…:
-        it copies a prompt for any AI chat, and Apply Settings from Clipboard checks the reply
-        (settings, plugins and scripts) before saving, with Undo.
+        No coding agent? In Euclid, search "settings" and choose Change Settings with AI…: it shows
+        a prompt for any AI chat, which replies with a whole config.toml to paste in Edit Config…
 
         ## Reference: every setting, with comments
 
@@ -78,79 +63,57 @@ public enum SettingsGuide {
 
         """
 
-    /// The prompt "Change Settings with AI…" copies: rules, the commented reference, the
-    /// user's file, and a last heading for them to finish with what they want.
+    /// The prompt "Change Settings with AI…" shows: what the AI should do, where the docs are,
+    /// and the user's config.toml, so its reply can be the whole file.
     public static func prompt(current: String) -> String {
-        let isDefault = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            == DefaultConfig.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // The default file already is the reference: don't send it twice (chats limit prompt length).
-        let reference = isDefault ? "" : """
-
-            ## Reference: every setting, with comments
-
-            ```toml
-            \(DefaultConfig.text)
-            ```
-
-            """
-        return """
-            You're helping me change the settings of Euclid, a search bar for my Mac. Its settings are \
-            text files in ~/.config/euclid, mainly config.toml. Below are the rules, \
-            \(isDefault ? "my current config.toml (its comments explain every setting)" : "a commented reference of every setting, my current config.toml"), \
-            and at the very end, what I want.
-
-            Rules:
-            \(replyFormat)
-            \(rules)
-            \(needsPlugin)
-
-            I'll copy your whole reply and choose "Apply Settings from Clipboard" in Euclid, which checks it before saving.
-            \(reference)
-            ## My current config.toml
-
-            ```toml
-            \(trimmed(current))
-            ```
-
-            ## What I want
-
-            """
-    }
-
-    /// "Copy Plugin Guide for AI": the plugin format, for the chat that asked for it.
-    public static func pluginPrompt(guide: String) -> String {
         """
-        Here's Euclid's plugin guide. Use it for what I asked, and reply the same way as before:
-        \(replyFormat)
+        You're helping me set up Euclid, a search bar for my Mac (menu bar icon, opens with a hotkey). \
+        All its settings are in one file, ~/.config/euclid/config.toml. My current file is at the end.
 
-        \(trimmed(guide.replacingOccurrences(of: marker + "\n", with: "")))
+        1. Read the docs: \(docsURL) (every feature and setting). If you can't open links, use the \
+        comments in my config.toml, which explain every setting.
+        2. Ask me what I'd like Euclid to do. Suggest 3 to 5 things it can do that would suit me, \
+        in plain words, e.g. a theme, apps or folders to search, snippets, web searches, a hotkey.
+        3. When I've chosen, reply with my whole config.toml in one code block, never just the changed part, \
+        and say in one or two sentences what changed. I'll open it from Euclid's menu bar icon \
+        (Edit Config…), replace everything with your version, and save. Euclid applies it at once and \
+        shows any problem at the bottom of its window.
+        4. Things from another app or website in search, or a status badge on the bar, need a plugin. \
+        Its format is at \(pluginGuideURL). Give me each file in full with the exact folder to save it in, \
+        inside ~/.config/euclid/plugins/.
+
+        Rules:
+        \(rules)
+
+        ## My current config.toml
+
+        ```toml
+        \(trimmed(current))
+        ```
+
         """
     }
 
-    /// What to send back to the AI when its reply (or the file as it is) has problems.
-    public static func fixPrompt(_ problems: [String], current: String? = nil) -> String {
-        var text = """
-            Euclid found problems in my settings:
-            \(problems.map { "- \($0)" }.joined(separator: "\n"))
+    /// "Fix Settings with AI…": the problems Euclid found and the file, for any AI chat.
+    public static func fixPrompt(_ problems: [String], current: String) -> String {
+        """
+        Euclid, a search bar for my Mac, found problems in its settings file ~/.config/euclid/config.toml:
+        \(problems.map { "- \($0)" }.joined(separator: "\n"))
 
-            Please fix them. Reply the same way as before:
-            \(replyFormat)
-            """
-        if let current {
-            text += """
+        Every setting is explained at \(docsURL). Please fix only these problems, then reply with my whole \
+        config.toml in one code block, never just the changed part, and say in one sentence what you fixed. \
+        I'll paste it over the file in Edit Config… and save.
 
+        Rules:
+        \(rules)
 
-                Rules:
-                \(rules)
+        ## My current config.toml
 
-                ## My current config.toml
+        ```toml
+        \(trimmed(current))
+        ```
 
-                ```toml
-                \(trimmed(current))
-                ```
-                """
-        }
-        return text + "\n"
+        """
     }
 
     private static func trimmed(_ s: String) -> String { s.hasSuffix("\n") ? String(s.dropLast()) : s }

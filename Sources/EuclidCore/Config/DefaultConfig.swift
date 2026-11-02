@@ -4,8 +4,8 @@ public enum DefaultConfig {
 # Euclid configuration. Changes apply on save, no restart needed
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
-# Rather say it in plain words? Search "settings" in Euclid: Change Settings with AI… copies
-# a prompt for any AI chat, and Apply Settings from Clipboard checks the reply before saving.
+# Rather say it in plain words? Search "settings" in Euclid: Change Settings with AI… gives you
+# a prompt for any AI chat, which replies with a whole config.toml to paste here.
 
 # Shared files (your team's actions, snippets, plugin settings) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.
@@ -90,9 +90,10 @@ check        = true              # look for a new version once a day
 auto_install = true              # download it in the background, install on quit
 channel      = "stable"          # "dev": a build of every change merged to main, for testing
 
-# Euclid asks about both of these once, on first launch. Your answer is saved here.
+# Euclid asks once, on first launch, with one unticked box for both. Your answer is saved here.
+# The menu's "Share Anonymous Diagnostics" switches both together.
 #
-# Send crash reports and internal errors to the Euclid developer, so they get fixed.
+# crash_reports: send crash reports and internal errors to the Euclid developer, so they get fixed.
 # Sent: app and macOS version, the crashed code's stack, the error message. Never your searches,
 # clipboard, files, config or anything that identifies you. A copy of each is kept in
 # ~/Library/Logs/Euclid/Reports, so you can read exactly what was sent.

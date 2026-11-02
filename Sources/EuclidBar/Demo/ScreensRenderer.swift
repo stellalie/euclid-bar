@@ -188,10 +188,10 @@ enum ScreensRenderer {
         try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
         vc.modKeys = []
 
-        vc.commands += AppCommand.settingsWithAI(problems: true, canRestore: true)
+        vc.commands += AppCommand.settingsWithAI(problems: true)
         vc.demoSetQuery("")
-        try type("settings", caption: "Change settings in plain words with any AI chat, checked before saving")
-        try step("Change settings in plain words with any AI chat, checked before saving", hold: 2.0, name: "settings-ai")
+        try type("settings", caption: "Change settings in plain words with any AI chat")
+        try step("Change settings in plain words with any AI chat", hold: 2.0, name: "settings-ai")
 
         try SettingsDialogs.renderFlow(to: dir, snapshot: DemoRenderer.snapshot) { image, name, caption in
             var size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
