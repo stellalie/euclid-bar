@@ -249,7 +249,7 @@ enum ScreensRenderer {
         let processes = [
             process("Safari", "38.2", "1.4 GB", 812, app: "/Applications/Safari.app"),
             process("node", "21.7", "512 MB", 4410),
-            process("Xcode", "9.3", "2.1 GB", 655, app: "/Applications/Xcode.app"),
+            process("Terminal", "9.3", "210 MB", 655, app: "/System/Applications/Utilities/Terminal.app"),
             process("Finder", "1.2", "98 MB", 402, app: "/System/Library/CoreServices/Finder.app"),
             process("mds_stores", "0.8", "64 MB", 311),
         ]
