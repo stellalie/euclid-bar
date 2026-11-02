@@ -30,6 +30,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             perfLog.error("can't install helper scripts: \(error.localizedDescription, privacy: .public)")
             CrashReporter.error("setup", "can't install helper scripts: \(error.localizedDescription)")
         }
+        do { try SettingsGuide.install(in: config.paths.configDirectory) } catch {
+            perfLog.error("can't write the settings guide: \(error.localizedDescription, privacy: .public)")
+            CrashReporter.error("setup", "can't write the settings guide: \(error.localizedDescription)")
+        }
         do { try PluginGuide.install(in: config.paths.pluginsDirectory) } catch {
             perfLog.error("can't write the plugin guide: \(error.localizedDescription, privacy: .public)")
             CrashReporter.error("setup", "can't write the plugin guide: \(error.localizedDescription)")
@@ -76,7 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(true, forKey: asked)
         askAboutReports()
         let hotkey = config.current.config.hotkey?.symbols ?? "⌥Space"
-        panel.welcome = "Welcome! Press \(hotkey) in any app to open Euclid. Settings: menu bar icon → Edit Config…"
+        panel.welcome = "Welcome! Press \(hotkey) in any app to open Euclid. Settings: menu bar icon → Edit Config…, or search “settings” to change them with AI"
         NSApp.activate()
         panel.show()
     }
@@ -140,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled)] : [])
             + [.crashReports(enabled: settings.crashReports),
                .usagePing(enabled: settings.usagePing), .connectAgents]
+            + AppCommand.settingsWithAI(problems: config.loadError != nil || !config.current.issues.isEmpty,
+                                        canRestore: SettingsChange.latestBackup(in: config.paths.configBackupsDirectory) != nil)
         openAtLoginItem.state = LoginItem.isEnabled ? .on : .off
         openAtLoginItem.isEnabled = LoginItem.isAvailable
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
@@ -174,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.autoenablesItems = false
         menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
+        menu.addItem(withTitle: "Change Settings with AI…", action: #selector(changeSettingsWithAI), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Apply Settings from Clipboard", action: #selector(applySettings), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Connect Claude Code or Codex (MCP)…", action: #selector(connectAgents), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
         expansionItem = menu.addItem(withTitle: "Expand Snippet Keywords", action: #selector(toggleExpansion), keyEquivalent: "")
@@ -224,6 +232,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let symbols: [String: String] = [
             "Open Euclid": "magnifyingglass",
             "Edit Config…": "gearshape",
+            "Change Settings with AI…": "wand.and.stars",
+            "Apply Settings from Clipboard": "doc.on.clipboard",
             "Connect Claude Code or Codex (MCP)…": "link",
             "Clear Clipboard History…": "trash",
             "Check for Updates…": "arrow.down.circle",
@@ -347,6 +357,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .connectAgents:
             panel.hide()
             connectAgents()
+        case .changeSettingsWithAI:
+            panel.hide()
+            changeSettingsWithAI()
+        case .applySettings:
+            panel.hide()
+            applySettings()
+        case .copyPluginGuide:
+            panel.hide()
+            copyPluginGuide()
+        case .fixSettings:
+            panel.hide()
+            fixSettings()
+        case .restoreSettings:
+            panel.hide()
+            restoreSettings()
         case .permissions:
             guard !missingPermissions().isEmpty else { NSSound.beep(); return }
             panel.hide()
@@ -409,5 +434,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Cancel")
         NSApp.activate()
         if alert.runModal() == .alertFirstButtonReturn { clipboard.clearAll() }
+    }
+
+    // MARK: Change settings with AI (any chat; Euclid calls no AI)
+
+    private var configText: String? { try? String(contentsOf: config.paths.configFile, encoding: .utf8) }
+
+    private func tell(_ title: String, _ text: String, buttons: [String] = ["OK"]) -> NSApplication.ModalResponse {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        for b in buttons { alert.addButton(withTitle: b) }
+        NSApp.activate()
+        return alert.runModal()
+    }
+
+    /// Copy a prompt with the rules, the reference and the user's config.toml for any AI chat.
+    @objc private func changeSettingsWithAI() {
+        Paster.copy(SettingsGuide.prompt(current: configText ?? DefaultConfig.text))
+        _ = tell("Prompt copied", """
+            1. Paste it into ChatGPT, Copilot, Claude or any AI chat, and type what you want at the end, \
+            e.g. “use the Nord theme and open my projects in VS Code”.
+            2. Copy the AI's whole reply.
+            3. In Euclid, search “settings” and choose Apply Settings from Clipboard. \
+            You'll see every change before anything is saved.
+
+            If the AI asks for the plugin guide, choose Copy Plugin Guide for AI and paste that too.
+
+            The prompt includes your config.toml. If you put anything private in it, look it over first.
+            """)
+    }
+
+    @objc private func copyPluginGuide() {
+        let guide = (try? String(contentsOf: config.paths.pluginsDirectory.appendingPathComponent("AGENTS.md"), encoding: .utf8))
+            ?? PluginGuide.guide
+        Paster.copy(SettingsGuide.pluginPrompt(guide: guide))
+        _ = tell("Plugin guide copied", "Paste it into the same AI chat. Then copy its reply and choose Apply Settings from Clipboard.")
+    }
+
+    /// The footer's problems and the user's file, for any AI chat.
+    @objc private func fixSettings() {
+        let problems = config.loadError.map { [$0.description] } ?? config.current.issues.map(\.message)
+        guard !problems.isEmpty else {
+            _ = tell("No problems", "Your settings load without problems.")
+            return
+        }
+        Paster.copy(SettingsGuide.fixPrompt(problems, current: configText ?? ""))
+        _ = tell("Problems copied", "Paste them into any AI chat. Then copy its whole reply and choose Apply Settings from Clipboard.")
+    }
+
+    /// Check the AI's reply on the clipboard, show what it changes, and save it (with Undo).
+    @objc private func applySettings() {
+        let reply = NSPasteboard.general.string(forType: .string) ?? ""
+        switch SettingsChange.review(reply, directory: config.paths.configDirectory) {
+        case .failure(let rejection):
+            guard case .problems(let problems) = rejection else { _ = tell("Nothing changed", rejection.description); return }
+            let answer = tell("Nothing changed", rejection.description
+                              + "\n\nCopy a note for the AI, paste it into the same chat, then apply its new reply.",
+                              buttons: ["Copy Note for the AI", "Close"])
+            if answer == .alertFirstButtonReturn { Paster.copy(SettingsGuide.fixPrompt(problems)) }
+        case .success(let review):
+            guard tell("Apply these changes?", Self.summary(of: review), buttons: ["Apply", "Cancel"]) == .alertFirstButtonReturn else { return }
+            let backup: URL
+            do { backup = try config.apply(review) } catch {
+                _ = tell("Couldn't save settings", error.localizedDescription)
+                return
+            }
+            updateLicence() // Restore now has something to restore
+            let answer = tell("Settings applied", "They're live now. Search “restore” to put the previous ones back any time.",
+                              buttons: ["OK", "Undo"])
+            if answer == .alertSecondButtonReturn { restore(backup) }
+        }
+    }
+
+    @objc private func restoreSettings() {
+        guard let backup = SettingsChange.latestBackup(in: config.paths.configBackupsDirectory) else {
+            _ = tell("Nothing to restore", "Restore puts back the settings from before your last Apply Settings from Clipboard.")
+            return
+        }
+        guard tell("Restore previous settings?", "Puts back your settings from before the change saved \(backup.lastPathComponent), "
+                   + "and removes plugins and scripts that change added.", buttons: ["Restore", "Cancel"]) == .alertFirstButtonReturn else { return }
+        restore(backup)
+    }
+
+    private func restore(_ backup: URL) {
+        do { try config.restore(backup) } catch { _ = tell("Couldn't restore settings", error.localizedDescription) }
+        updateLicence()
+    }
+
+    /// Each file with its changed lines ("− theme = …" / "+ theme = …"), scripts called out.
+    private static func summary(of review: SettingsChange.Review) -> String {
+        var parts: [String] = []
+        for file in review.files {
+            let head = "\(file.path)\(file.isNew ? " (new)" : "")"
+            if file.isScript {
+                parts.append("\(head): a script that runs on your Mac\n" + file.text.split(separator: "\n", omittingEmptySubsequences: false)
+                    .prefix(15).joined(separator: "\n") + (file.text.split(separator: "\n").count > 15 ? "\n…" : ""))
+                continue
+            }
+            let lines = file.removed.map { "− \($0)" } + file.added.map { "+ \($0)" }
+            let limit = 12
+            parts.append(lines.isEmpty ? "\(head): only comments or layout"
+                         : "\(head)\n" + lines.prefix(limit).joined(separator: "\n") + (lines.count > limit ? "\n… and \(lines.count - limit) more" : ""))
+        }
+        if review.looksPartial {
+            parts.append("⚠︎ This removes a lot from config.toml. AI chats sometimes send only the changed part: "
+                         + "if that's what happened, cancel and ask for the complete file.")
+        }
+        if review.files.contains(where: \.isScript) {
+            parts.append("Scripts can do anything your account can. Apply only if you asked for them.")
+        }
+        return parts.joined(separator: "\n\n")
     }
 }

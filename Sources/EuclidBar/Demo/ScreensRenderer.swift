@@ -188,6 +188,11 @@ enum ScreensRenderer {
         try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
         vc.modKeys = []
 
+        vc.commands += AppCommand.settingsWithAI(problems: true, canRestore: true)
+        vc.demoSetQuery("")
+        try type("settings", caption: "Change settings in plain words with any AI chat, checked before saving")
+        try step("Change settings in plain words with any AI chat, checked before saving", hold: 2.0, name: "settings-ai")
+
         // Every built-in theme, last so the numbers of the shots above stay put.
         for name in Themes.names.dropFirst() {
             var look = Appearance()

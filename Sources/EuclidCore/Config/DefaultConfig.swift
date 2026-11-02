@@ -4,6 +4,8 @@ public enum DefaultConfig {
 # Euclid configuration. Changes apply on save, no restart needed
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
+# Rather say it in plain words? Search "settings" in Euclid: Change Settings with AI… copies
+# a prompt for any AI chat, and Apply Settings from Clipboard checks the reply before saving.
 
 # Shared files (your team's actions, snippets, plugin settings) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.
