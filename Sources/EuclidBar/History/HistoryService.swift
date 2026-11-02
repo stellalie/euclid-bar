@@ -16,6 +16,8 @@ final class HistoryService {
     /// Safari without Full Disk Access is reported by `safariBlocked` instead, on the Permissions row.
     private(set) var problem: String?
     private(set) var safariBlocked = false
+    /// Other browsers whose history files macOS refused, shown on the Permissions row.
+    private(set) var blockedBrowsers: [String] = []
     /// `[history] browsers` names Safari, so its missing access is worth a footer line.
     var safariRequested: Bool { browsers?.contains("safari") ?? false }
     var onChange: (() -> Void)?
@@ -53,7 +55,7 @@ final class HistoryService {
 
     func reload() {
         guard enabled else {
-            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; safariBlocked = false; lastLoad = .now
+            entries = []; items = []; faviconData = [:]; faviconImages = [:]; problem = nil; safariBlocked = false; blockedBrowsers = []; lastLoad = .now
             onChange?()
             return
         }
@@ -69,6 +71,7 @@ final class HistoryService {
             // Safari is protected by Full Disk Access: the Permissions row covers it.
             let safariBlocked = errors.contains { $0.0.key == "safari" }
             let problem = BrowserHistory.problem(errors)
+            let blocked = BrowserHistory.blocked(errors)
             let elapsed = ContinuousClock.now - start
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
@@ -77,6 +80,7 @@ final class HistoryService {
                     self.faviconData = favicons
                     self.faviconImages = [:]
                     self.safariBlocked = safariBlocked
+                    self.blockedBrowsers = blocked
                     self.problem = problem
                     for (source, error) in errors {
                         self.log.error("history: can't read \(source.database.path, privacy: .public): \(String(describing: error), privacy: .public)")

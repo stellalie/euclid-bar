@@ -24,12 +24,16 @@ public enum Permissions {
         public var safariBlocked: Bool
         /// `[history] browsers` names Safari, so you asked for it.
         public var safariRequested: Bool
+        /// Other browsers whose history macOS refused (e.g. security software on a work Mac).
+        public var blockedBrowsers: [String]
 
-        public init(accessibility: Bool, expansionEnabled: Bool, safariBlocked: Bool, safariRequested: Bool) {
+        public init(accessibility: Bool, expansionEnabled: Bool, safariBlocked: Bool, safariRequested: Bool,
+                    blockedBrowsers: [String] = []) {
             self.accessibility = accessibility
             self.expansionEnabled = expansionEnabled
             self.safariBlocked = safariBlocked
             self.safariRequested = safariRequested
+            self.blockedBrowsers = blockedBrowsers
         }
     }
 
@@ -41,9 +45,11 @@ public enum Permissions {
                               why: s.expansionEnabled ? "text expansion and pasting into apps" : "pasting into apps (↵ on a clip or snippet)",
                               required: s.expansionEnabled))
         }
-        if s.safariBlocked {
-            needs.append(Need(kind: .fullDiskAccess, title: "Full Disk Access", why: "Safari history in search",
-                              required: s.safariRequested))
+        let browsers = (s.safariBlocked ? ["Safari"] : []) + s.blockedBrowsers
+        if !browsers.isEmpty {
+            needs.append(Need(kind: .fullDiskAccess, title: "Full Disk Access",
+                              why: "\(browsers.joined(separator: ", ")) history in search",
+                              required: s.safariBlocked && s.safariRequested))
         }
         return needs.sorted { $0.required && !$1.required }
     }
