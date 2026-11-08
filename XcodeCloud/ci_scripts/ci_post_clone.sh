@@ -1,11 +1,11 @@
 #!/bin/zsh
-# Xcode Cloud entry point: build, test and bundle every commit; UI screens on PRs; then publish:
+# Xcode Cloud entry point: build, test and bundle every commit; UI screens on PRs and UI pushes to main; then publish:
 # the signed dev build on pushes to main, the stable release on v* tags. Xcode Cloud can't build a standalone Swift package, so the workflow
 # builds the placeholder EuclidCI app and this script, which runs first, does the real work.
 # Any failure fails the build.
 #
 # Optional workflow secrets (XcodeCloud/README.md):
-#   GITHUB_SCREENS_TOKEN  publishes a PR's screenshots to the screens/pr-<n> branch
+#   GITHUB_SCREENS_TOKEN  publishes screenshots to screens/pr-<n> (PRs) and screens/main (main)
 #   RELEASES_TOKEN + the signing secrets  publish releases (scripts/publish-release.sh)
 #   EUCLID_RELEASE_SECRETS  all of those in one paste: base64 of gzipped NAME=<base64 value> lines
 set -euo pipefail
@@ -31,6 +31,31 @@ if [[ -n "${EUCLID_RELEASE_SECRETS:-}" ]]; then
   while IFS='=' read -r name value; do
     [[ -n "$name" ]] && export "$name=$(printf '%s' "$value" | base64 --decode)"
   done < <(printf '%s' "$EUCLID_RELEASE_SECRETS" | base64 --decode | gunzip)
+fi
+
+# Pushes to main that touch the app's UI: render the screens, clips and site demo video and publish
+# them to the screens/main branch (the website's videos come from there). Never blocks the dev build.
+publish_screens() { # $1 = branch
+  [[ -n "${GITHUB_SCREENS_TOKEN:-}" ]] || { echo "No GITHUB_SCREENS_TOKEN: screens not published"; return 0; }
+  (
+    cd screens
+    git init -q -b "$1"
+    git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja add .
+    git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "UI screens for ${CI_PULL_REQUEST_SOURCE_COMMIT:-$CI_COMMIT}"
+    git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" "$1"
+  )
+  echo "Published to $1"
+}
+render_screens() { # chained with &&: set -e doesn't apply inside `… || echo`
+  local bin
+  swift build -c release && bin="$(swift build -c release --show-bin-path)" \
+    && "$bin/euclid-bar" --render-screens screens && "$bin/euclid-bar" --render-demo screens/demo \
+    && du -sh screens/clips screens/demo
+}
+if [[ -z "${CI_PULL_REQUEST_NUMBER:-}" && "${CI_BRANCH:-}" == main && -z "${CI_TAG:-}" ]] \
+   && ! git diff --quiet HEAD^ HEAD -- Sources/EuclidBar XcodeCloud 2>/dev/null; then
+  echo "== UI screens (main)"
+  { render_screens && publish_screens screens/main; } || echo "UI screens failed; the dev build goes on"
 fi
 
 # Releases: a v* tag publishes that stable version; a push to main, the dev build.
@@ -77,12 +102,4 @@ echo "== UI screens"
 "$bin/euclid-bar" --render-screens screens
 "$bin/euclid-bar" --render-demo screens/demo
 du -sh screens/clips screens/demo
-
-[[ -n "${GITHUB_SCREENS_TOKEN:-}" ]] || { echo "No GITHUB_SCREENS_TOKEN: screens not published"; exit 0; }
-branch="screens/pr-$CI_PULL_REQUEST_NUMBER"
-cd screens
-git init -q -b "$branch"
-git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja add .
-git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "UI screens for ${CI_PULL_REQUEST_SOURCE_COMMIT:-$CI_COMMIT}"
-git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" "$branch"
-echo "Published to $branch"
+publish_screens "screens/pr-$CI_PULL_REQUEST_NUMBER"
