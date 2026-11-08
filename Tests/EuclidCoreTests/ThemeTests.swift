@@ -37,9 +37,28 @@ import Testing
             let hexes = [p.background, p.text, p.accent, p.subtext, p.muted, p.selection, p.border].compactMap { $0 } + p.colors.values
             #expect(hexes.allSatisfy { Appearance.parseHex($0) != nil }, "\(name)")
             #expect(Set(p.colors.keys) == Set(ThemePalette.colorNames), "\(name)")
-            #expect(p.mode == (name.hasSuffix("-light") || name == "catppuccin-latte" ? .light : .dark), "\(name)")
+            let light: Set = ["catppuccin-latte", "paper", "glacier", "matcha", "sakura", "sandstone"]
+            #expect(p.mode == (name.hasSuffix("-light") || light.contains(name) ? .light : .dark), "\(name)")
         }
         #expect(Themes.names.first == "default")
+    }
+
+    /// WCAG contrast: body text at least 7:1 (AAA), the accent ring and caret at least 3:1 (UI parts).
+    @Test func everyBuiltInIsReadable() {
+        func luminance(_ hex: String) -> Double {
+            let c = Appearance.parseHex(hex)!
+            func lin(_ v: Double) -> Double { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+            return 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b)
+        }
+        func ratio(_ a: String, _ b: String) -> Double {
+            let (x, y) = (luminance(a), luminance(b))
+            return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+        }
+        for (name, p) in Themes.builtIn where ["aurora", "neon-noir", "ember", "velvet", "phosphor", "amber", "graphite",
+                                               "paper", "glacier", "matcha", "sakura", "sandstone"].contains(name) {
+            #expect(ratio(p.text, p.background) >= 7, "\(name) text")
+            #expect(ratio(p.accent, p.background) >= 3, "\(name) accent")
+        }
     }
 
     @Test func unknownThemeWarnsAndFallsBack() throws {

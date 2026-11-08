@@ -370,6 +370,8 @@ theme = "tokyo-night"
 | `default` | The system look: glass, your accent colour, light or dark with macOS |
 | `dracula` · `nord` · `tokyo-night` · `catppuccin-mocha` · `gruvbox-dark` · `solarized-dark` · `monokai` | Dark |
 | `catppuccin-latte` · `gruvbox-light` · `solarized-light` | Light |
+| `aurora` · `neon-noir` · `ember` · `velvet` · `phosphor` · `amber` · `graphite` | Euclid originals, dark |
+| `paper` · `glacier` · `matcha` · `sakura` · `sandstone` | Euclid originals, light |
 
 `accent`, `density`, `glass`, `show_speed` and `contrast` still apply on top of any theme.
 
@@ -406,6 +408,7 @@ Palettes come from [Dracula](https://draculatheme.com) (MIT), [Nord](https://www
 [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (MIT, enkia),
 [Catppuccin](https://catppuccin.com) (MIT), [Gruvbox](https://github.com/morhetz/gruvbox) (MIT, Pavel Pertsev),
 [Solarized](https://ethanschoonover.com/solarized/) (MIT, Ethan Schoonover) and Monokai (Wimer Hazenberg). Thank you.
+The Euclid originals are ours.
 
 ### Share a config with your team
 
