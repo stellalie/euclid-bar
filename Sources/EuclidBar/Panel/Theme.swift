@@ -30,6 +30,7 @@ struct Theme {
     var compact = false
     var glass = true
     var showSpeed = true
+    var autoPreview = true
 
     init() {}
 
@@ -59,6 +60,7 @@ struct Theme {
         compact = a.density == .compact
         glass = a.glass
         showSpeed = a.showSpeed
+        autoPreview = a.autoPreview
     }
 
     /// Already validated by the config parser.

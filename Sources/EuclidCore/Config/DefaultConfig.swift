@@ -79,6 +79,7 @@ theme      = "default"           # or aurora, neon-noir, ember, velvet, phosphor
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
+auto_preview = true              # ↑/↓ through results opens the preview (false: only → or ⌘Y do)
 contrast   = 50                  # 0–100: how far apart text, dim text and borders sit
 
 # Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
