@@ -112,6 +112,8 @@ final class LauncherViewController: NSViewController {
     private var mode = Mode.search
     /// ⇥ narrowed the search to one source; nil = everything.
     private var scope: SearchScope?
+    /// The empty bar's source row is on its second page ("+ N more" clicked). Back to page one on every open.
+    private var scopesExpanded = false
     /// The scope and text the last search actually ran with (a typed `[search] scopes` prefix sets both).
     private var activeScope: SearchScope?
     private var searchedText = ""
@@ -516,6 +518,7 @@ final class LauncherViewController: NSViewController {
 
     /// Called right before the panel is shown: fresh search, focused field.
     func prepareForShow() {
+        scopesExpanded = false
         endArguments()
         setPreview(open: false)
         views = []
@@ -566,6 +569,11 @@ final class LauncherViewController: NSViewController {
     func demoTab() { tabScope(backwards: false) }
     /// ⌘/.
     func demoShowShortcuts() { showCheatSheet() }
+
+    func demoPageScopes(_ expanded: Bool) {
+        scopesExpanded = expanded
+        tableView.reloadData()
+    }
 
     // MARK: - Modes
 
@@ -1792,9 +1800,14 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         let r = rows[row]
         if r.isScopeBar {
             let cell = tableView.makeView(withIdentifier: ScopeBarCell.id, owner: nil) as? ScopeBarCell ?? ScopeBarCell()
-            cell.configure(availableScopes, theme: theme)
+            cell.configure(availableScopes, expanded: scopesExpanded, theme: theme)
             cell.onPick = { [weak self] scope in self?.setScope(scope, query: "") }
             cell.onMore = { [weak self] in self?.showCheatSheet() }
+            cell.onPage = { [weak self, weak cell] expanded in
+                guard let self else { return }
+                scopesExpanded = expanded
+                cell?.configure(availableScopes, expanded: expanded, theme: theme)
+            }
             return cell
         }
         if case .header(let title) = r {
