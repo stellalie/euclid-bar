@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                      limit: settings.clipboardLimit)
         panel = PanelController(clipboard: clipboard, config: config, history: history)
         panel.onCommand = { [weak self] command in self?.run(command) }
+        panel.onHide = { [weak self] in self?.updater.installIfReady() }
+        updater.isBusy = { [weak self] in self?.panel.isVisible ?? false }
         panel.reminder = { [weak self] in
             guard let self else { return nil }
             updateLicence() // the trial's day count moves on while the app runs

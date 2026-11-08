@@ -91,8 +91,8 @@ share = ["clipboard", "notes", "history"]
 
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
-check        = true              # look for a new version once a day
-auto_install = true              # download it in the background, install on quit
+check        = true              # look for a new version (hourly on dev, every 6 hours on stable)
+auto_install = true              # download it in the background, install it when the panel closes
 channel      = "stable"          # "dev": a build of every change merged to main, for testing
 
 # Euclid asks once, on first launch, with one unticked box for both. Your answer is saved here.

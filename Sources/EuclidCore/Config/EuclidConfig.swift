@@ -78,9 +78,9 @@ public struct EuclidConfig: Equatable, Sendable {
 
 /// `[updates]`. Only signed builds update; local builds ignore it.
 public struct UpdateSettings: Equatable, Sendable {
-    /// Look for a new version once a day.
+    /// Look for a new version: hourly on dev, every 6 hours on stable.
     public var check = true
-    /// Download new versions in the background and install them on quit. Needs `check`.
+    /// Download new versions in the background and install them (relaunching) once the panel closes. Needs `check`.
     public var autoInstall = true
     /// Which builds to get: tagged releases, or a build of every change merged to main.
     public var channel = Channel.stable
