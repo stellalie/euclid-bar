@@ -100,9 +100,9 @@ final class ScopeBarCell: NSTableCellView {
         b.layer?.borderWidth = 1
         resolving {
             b.layer?.backgroundColor = theme.chipFill.cgColor
-            b.layer?.borderColor = theme.border.cgColor
+            b.layer?.borderColor = theme.subtext.withAlphaComponent(0.28).cgColor // visible on dark glass too
         }
-        b.attributedTitle = NSAttributedString(string: title, attributes: [
+        b.attributedTitle = NSAttributedString(string: symbol == nil ? title : " " + title, attributes: [
             .font: NSFont.systemFont(ofSize: 12.5, weight: .medium), .foregroundColor: theme.subtext,
         ])
         var width = ceil(b.attributedTitle.size().width) + 24
