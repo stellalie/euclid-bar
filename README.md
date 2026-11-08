@@ -10,7 +10,7 @@ One keystroke, under a millisecond.
 
 [**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Plugins](#plugins) · [Build from source](#build-from-source)
 
-<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, snippets and actions">
+<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, snippets, actions, ⇥ filters and the ⌘/ shortcut list">
 
 <sub>Every frame is the real panel, rendered offscreen by the app itself (`make screens`)</sub>
 
@@ -124,6 +124,14 @@ own hotkey in `[hotkeys]`; its row shows it.
 <tr>
 <td><img src="docs/screens/09-no-match-actions.png" alt="Actions when nothing matches"><br><sub><b>No match?</b> Your actions are right there.</sub></td>
 <td><img src="docs/screens/11-compact-accent.png" alt="Compact density with an orange accent"><br><sub><b>Yours.</b> <code>density = "compact"</code>, <code>accent = "#ff8a3d"</code>.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screens/01-empty.png" alt="The empty bar with source chips and a tip"><br><sub><b>Nothing hidden.</b> The empty bar shows what it searches and a tip.</sub></td>
+<td><img src="docs/screens/43-filter.png" alt="Search narrowed to the clipboard"><br><sub><b>Filters.</b> <code>clip</code> <code>⇥</code> searches only the clipboard; <code>esc</code> goes back.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screens/45-shortcuts.png" alt="The shortcut list"><br><sub><b>Every shortcut.</b> <code>⌘/</code> lists keys, sources, actions and keywords from your config.</sub></td>
+<td></td>
 </tr>
 </table>
 
