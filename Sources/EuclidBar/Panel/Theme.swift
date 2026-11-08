@@ -9,7 +9,8 @@ struct Theme {
     var accent: NSColor = .controlAccentColor
     var text: NSColor = .labelColor
     var subtext: NSColor = .secondaryLabelColor
-    var muted: NSColor = .tertiaryLabelColor
+    /// tertiaryLabelColor is too faint on a light panel (section names nearly vanish), so light mode is darker.
+    var muted: NSColor = Theme.dynamic(dark: .tertiaryLabelColor, light: .black.withAlphaComponent(0.42))
     /// Over the glass or blur; nil = a faint accent tint (`surfaceTint`).
     var background: NSColor?
     var selection: NSColor?

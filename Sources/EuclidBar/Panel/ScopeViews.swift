@@ -42,8 +42,8 @@ final class ScopeChipView: NSView {
 /// then "+ N more" for the rest and every shortcut (⌘/). Gone on the first keystroke.
 final class ScopeBarCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("ScopeBar")
-    /// How many sources fit on the row before "+ N more".
-    static let shown = 6
+    /// How many sources fit on the row before "+ N more" (with their glyphs, at the narrowest panel).
+    static let shown = 5
 
     private let stack = NSStackView()
     private var leading: NSLayoutConstraint!
@@ -77,25 +77,45 @@ final class ScopeBarCell: NSTableCellView {
         self.scopes = scopes
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (i, scope) in scopes.prefix(Self.shown).enumerated() {
-            stack.addArrangedSubview(pill(scope.title, tag: i, theme: theme))
+            stack.addArrangedSubview(pill(scope.title, symbol: scope.symbol, tag: i, theme: theme))
         }
         let more = scopes.count - Self.shown
-        stack.addArrangedSubview(pill(more > 0 ? "+ \(more) more" : "All shortcuts", tag: -1, theme: theme))
+        stack.addArrangedSubview(pill(more > 0 ? "+ \(more) more" : "All shortcuts", symbol: nil, tag: -1, theme: theme))
+        // How to get there without the mouse.
+        let hint = NSTextField(labelWithString: "⇥")
+        hint.font = .systemFont(ofSize: 12, weight: .medium)
+        hint.textColor = theme.muted
+        hint.toolTip = "⇥ narrows to the next source"
+        stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
+        stack.addArrangedSubview(hint)
     }
 
-    private func pill(_ title: String, tag: Int, theme: Theme) -> NSButton {
+    /// A rounded pill: the source's glyph and name on a plate with a hairline edge, so it reads as a button.
+    private func pill(_ title: String, symbol: String?, tag: Int, theme: Theme) -> NSButton {
         let b = NSButton(title: title, target: self, action: #selector(clicked(_:)))
         b.tag = tag
         b.isBordered = false
         b.wantsLayer = true
         b.layer?.cornerRadius = 13
-        resolving { b.layer?.backgroundColor = theme.chipFill.cgColor }
+        b.layer?.borderWidth = 1
+        resolving {
+            b.layer?.backgroundColor = theme.chipFill.cgColor
+            b.layer?.borderColor = theme.border.cgColor
+        }
         b.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: theme.subtext,
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .medium), .foregroundColor: theme.subtext,
         ])
+        var width = ceil(b.attributedTitle.size().width) + 24
+        if let symbol, let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .medium)) {
+            b.image = image
+            b.imagePosition = .imageLeading
+            b.imageHugsTitle = true
+            b.contentTintColor = theme.subtext
+            width += image.size.width + 5
+        }
         b.refusesFirstResponder = true // typing stays in the search field
         b.translatesAutoresizingMaskIntoConstraints = false
-        let width = ceil(b.attributedTitle.size().width) + 22
         NSLayoutConstraint.activate([
             b.heightAnchor.constraint(equalToConstant: 26),
             b.widthAnchor.constraint(equalToConstant: width),

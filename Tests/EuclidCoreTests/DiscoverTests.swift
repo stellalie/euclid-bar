@@ -41,6 +41,15 @@ import Testing
         #expect(OKLab(hex: c.footer).L < OKLab(hex: c.background).L)
     }
 
+    @Test func lightThemesFirmUpPaleLevels() {
+        let latte = Themes.builtIn["catppuccin-latte"]!
+        let c = ThemeColors.derive(latte)
+        // Dim text moves toward the (dark) text colour; the selection leans toward the accent.
+        #expect(OKLab(hex: c.muted).L < OKLab(hex: latte.muted!).L)
+        #expect(OKLab(hex: c.subtext).L < OKLab(hex: latte.subtext!).L)
+        #expect(c.selection != latte.selection!)
+    }
+
     @Test func contrastConfig() throws {
         let dir = URL(fileURLWithPath: "/home/me/.config/euclid")
         func parse(_ s: String) throws -> LoadedConfig { try ConfigLoader.parse(s, directory: dir, fileExists: { _ in true }, readFile: { _ in nil }) }

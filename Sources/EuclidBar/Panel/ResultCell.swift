@@ -183,11 +183,13 @@ final class ResultRowView: NSTableRowView {
     override func drawSelection(in dirtyRect: NSRect) {
         guard !isHeader else { return }
         let rect = bounds.insetBy(dx: 2, dy: 1)
-        (fill ?? accent.withAlphaComponent(0.16)).setFill()
+        // On a light surface a faint tint and ring all but vanish, so both are a step stronger there.
+        let light = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
+        (fill ?? accent.withAlphaComponent(light ? 0.22 : 0.16)).setFill()
         NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
         let ring = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7.5, yRadius: 7.5)
         ring.lineWidth = 1
-        accent.withAlphaComponent(0.3).setStroke()
+        accent.withAlphaComponent(light ? 0.55 : 0.3).setStroke()
         ring.stroke()
     }
 }
