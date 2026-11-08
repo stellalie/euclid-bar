@@ -98,6 +98,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginDirectory = { [unowned plugins] id in plugins.plugin(id: id)?.directory }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
+        content.onReorderSources = { [weak self] ids in
+            // config.toml stays the source of truth; the panel already shows the new order.
+            if let problem = self?.config.set("sources", to: ids, in: "search") { perfLog.error("\(problem, privacy: .public)") }
+        }
         content.onReloadView = { [weak self] command, pluginID, viewID, query in
             // A search gets what you typed as $1 and may print just rows.
             self?.plugins.run(command, pluginID: pluginID, arguments: query.map { [$0] }, rows: query != nil) { [weak self] result in
@@ -197,6 +201,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
         content.scopePrefixes = settings.scopePrefixes
+        content.sourceOrder = settings.sourceOrder
+        content.hiddenSources = settings.hiddenSources
         content.hasNotes = settings.obsidianVault != nil
         content.hasFiles = settings.filesEnabled
         contentSearch.configure(vault: settings.obsidianVault)

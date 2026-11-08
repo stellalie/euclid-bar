@@ -97,6 +97,11 @@ final class LauncherViewController: NSViewController {
     var onFeatureUsed: ((String) -> Void)?
     /// `[search] scopes`: typed prefixes that narrow the search ("c" → "clipboard").
     var scopePrefixes: [String: String] = [:]
+    /// `[search] sources` / `hidden`: the chips' and ⇥'s order, and the ones left off.
+    var sourceOrder: [String] = []
+    var hiddenSources: [String] = []
+    /// A chip was dragged: the new order of every source, by id, to save as `[search] sources`.
+    var onReorderSources: (([String]) -> Void)?
     /// Note search is on (`[obsidian] vault`), so Notes is a source.
     var hasNotes = false
     /// Spotlight file search is on.
@@ -611,8 +616,13 @@ final class LauncherViewController: NSViewController {
 
     // MARK: - Scopes (⇥)
 
-    /// Sources ⇥ can narrow to, in order: the built-in ones that have anything, then each plugin with items.
+    /// Sources ⇥ can narrow to, in `[search] sources` order (default: the built-in ones that have
+    /// anything, then each plugin with items), minus `[search] hidden`.
     private var availableScopes: [SearchScope] {
+        SearchScope.ordered(presentScopes, by: sourceOrder, hidden: hiddenSources)
+    }
+
+    private var presentScopes: [SearchScope] {
         var out: [SearchScope] = SearchScope.builtIn.filter { s in
             switch s {
             case .apps: true
@@ -1795,6 +1805,12 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             cell.configure(availableScopes, theme: theme)
             cell.onPick = { [weak self] scope in self?.setScope(scope, query: "") }
             cell.onMore = { [weak self] in self?.showCheatSheet() }
+            cell.onReorder = { [weak self] scopes in
+                guard let self else { return }
+                let ids = scopes.map(\.id)
+                self.sourceOrder = ids // at once, so ⇥ follows before the file reloads
+                self.onReorderSources?(ids)
+            }
             return cell
         }
         if case .header(let title) = r {

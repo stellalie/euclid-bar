@@ -292,6 +292,15 @@ enum ScreensRenderer {
         try step("⌘/ lists every key, source, alias and keyword, from your config", hold: 2.0, name: "shortcuts")
         vc.prepareForShow()
 
+        // `[search] sources` (or dragging a chip): your order on the chips and for ⇥.
+        vc.sourceOrder = ["clipboard"]
+        vc.demoSetQuery("")
+        try step("Drag a chip to reorder; saved as [search] sources", hold: 1.6, name: "sources-order")
+        vc.demoTab()
+        try step("⇥ follows it: Clipboard first", hold: 1.6, name: "sources-tab")
+        vc.sourceOrder = []
+        vc.prepareForShow()
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")

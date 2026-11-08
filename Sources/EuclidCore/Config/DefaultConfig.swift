@@ -68,6 +68,9 @@ limit   = 8
 favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
 # ⇥ narrows the search to one source. Optional typed prefixes do the same: "c kube" = Clipboard.
 # scopes = { c = "clipboard", f = "files", h = "history" }
+# Source chips and ⇥ in your order (the rest follow); drag a chip to set it. hidden = off the chips.
+# sources = ["clipboard", "apps", "files"]
+# hidden  = ["history"]
 
 # Look and feel.
 [appearance]

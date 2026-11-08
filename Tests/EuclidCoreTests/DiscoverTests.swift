@@ -83,6 +83,45 @@ import Testing
         #expect(SearchScope.next(after: .apps, in: scopes, backwards: true) == nil)
     }
 
+    @Test func yourOrderComesFirst() {
+        let gh = SearchScope.plugin(id: "github", name: "GitHub")
+        let mine = SearchScope.ordered(scopes, by: ["clipboard", "github", "nope", "clip"])
+        #expect(mine.prefix(2) == [.clipboard, gh])
+        #expect(mine.count == scopes.count) // the rest follow; unknown names and repeats are skipped
+        #expect(mine.dropFirst(2) == ArraySlice(scopes.filter { $0 != .clipboard && $0 != gh }))
+        #expect(SearchScope.next(after: nil, in: mine) == .clipboard) // ⇥ goes there first
+        #expect(SearchScope.ordered(scopes, by: []) == scopes)
+        let hidden = SearchScope.ordered(scopes, by: ["history"], hidden: ["History", "apps"])
+        #expect(!hidden.contains(.history) && !hidden.contains(.apps))
+        #expect(hidden.count == scopes.count - 2)
+    }
+
+    @Test func sourcesInConfig() throws {
+        let c = try ConfigLoader.parse("[search]\nsources = [\"Clipboard\", \"apps\"]\nhidden = [\"history\"]\n")
+        #expect(c.config.sourceOrder == ["clipboard", "apps"])
+        #expect(c.config.hiddenSources == ["history"])
+        #expect(c.issues.isEmpty)
+        #expect(try ConfigLoader.parse(DefaultConfig.text).config.sourceOrder == [])
+    }
+
+    @Test func draggingWritesTheList() throws {
+        // Added under [search], keeping everything else.
+        let added = try #require(ConfigEditor.set("sources", to: ["clipboard", "apps"], in: "search", text: DefaultConfig.text))
+        #expect(try ConfigLoader.parse(added).config.sourceOrder == ["clipboard", "apps"])
+        #expect(added.components(separatedBy: "\n").count == DefaultConfig.text.components(separatedBy: "\n").count + 1)
+        // Then replaced in place, comment kept.
+        let one = "[search]\nsources = [\"apps\", \"files\"]  # mine\nfavorites = []\n"
+        #expect(ConfigEditor.set("sources", to: ["files", "apps"], in: "search", text: one)
+                == "[search]\nsources = [\"files\", \"apps\"]  # mine\nfavorites = []\n")
+        // A list over several lines (with a ] in a string and a comment) becomes one line.
+        let multi = "[search]\nsources = [\n  \"apps\", # first\n  \"we]ird\",\n]\nfavorites = []\n"
+        #expect(ConfigEditor.set("sources", to: ["clipboard"], in: "search", text: multi)
+                == "[search]\nsources = [\"clipboard\"]\nfavorites = []\n")
+        // Quotes in a plugin id survive.
+        let odd = try #require(ConfigEditor.set("sources", to: ["a\"b\\c"], in: "search", text: ""))
+        #expect(try ConfigLoader.parse(odd).config.sourceOrder == ["a\"b\\c"])
+    }
+
     @Test func typedPrefixes() {
         let p = ["c": "clipboard", "gh": "github"]
         #expect(SearchScope.prefixed("c kube", prefixes: p, among: scopes)! == (.clipboard, "kube"))
