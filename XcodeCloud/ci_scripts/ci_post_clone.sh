@@ -5,7 +5,7 @@
 # Any failure fails the build.
 #
 # Optional workflow secrets (XcodeCloud/README.md):
-#   GITHUB_SCREENS_TOKEN  publishes screenshots to screens/pr-<n> (PRs) and screens/main (main)
+#   GITHUB_SCREENS_TOKEN  publishes a PR's screenshots to screens/pr-<n> (main's go to euclid-bar-releases site-media, with RELEASES_TOKEN)
 #   RELEASES_TOKEN + the signing secrets  publish releases (scripts/publish-release.sh)
 #   EUCLID_RELEASE_SECRETS  all of those in one paste: base64 of gzipped NAME=<base64 value> lines
 set -euo pipefail
@@ -59,17 +59,18 @@ if [[ -n "${EUCLID_RELEASE_SECRETS:-}" ]]; then
 fi
 
 # Pushes to main that touch the app's UI: render the screens, clips and site demo video and publish
-# them to the screens/main branch (the website's videos come from there). Never blocks the dev build.
-publish_screens() { # $1 = branch
-  [[ -n "${GITHUB_SCREENS_TOKEN:-}" ]] || { echo "No GITHUB_SCREENS_TOKEN: screens not published"; return 0; }
+# them to the site-media branch of euclid-bar-releases (the website's videos come from there). Never blocks the dev build.
+publish_screens() { # $1 = branch [$2 = owner/repo, $3 = token]
+  local repo="${2:-stellalie/euclid-bar}" token="${3:-${GITHUB_SCREENS_TOKEN:-}}"
+  [[ -n "$token" ]] || { echo "No token: screens not published"; return 0; }
   (
     cd screens
     git init -q -b "$1"
     git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja add .
     git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "UI screens for ${CI_PULL_REQUEST_SOURCE_COMMIT:-$CI_COMMIT}"
-    git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" "$1"
+    git push -qf "https://x-access-token:${token}@github.com/$repo.git" "$1"
   )
-  echo "Published to $1"
+  echo "Published to $repo $1"
 }
 render_screens() { # chained with &&: set -e doesn't apply inside `… || echo`
   local bin
@@ -80,7 +81,9 @@ render_screens() { # chained with &&: set -e doesn't apply inside `… || echo`
 if [[ -z "${CI_PULL_REQUEST_NUMBER:-}" && "${CI_BRANCH:-}" == main && -z "${CI_TAG:-}" ]] \
    && ! git diff --quiet HEAD^ HEAD -- Sources/EuclidBar XcodeCloud 2>/dev/null; then
   echo "== UI screens (main)"
-  { render_screens && publish_screens screens/main; } || echo "UI screens failed; the dev build goes on"
+  # They're the public website's media, so they go to the public releases repo with RELEASES_TOKEN.
+  { render_screens && publish_screens site-media stellalie/euclid-bar-releases "${RELEASES_TOKEN:-}"; } \
+    || echo "UI screens failed; the dev build goes on"
 fi
 
 # Releases: a v* tag publishes that stable version; a push to main, the dev build.
