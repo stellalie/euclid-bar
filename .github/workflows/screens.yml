@@ -18,9 +18,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Resolve packages
-        # The 2026-11-04 macos-15 image's SwiftPM fails putting Sparkle's binary into its shared cache
-        # ("... already exists in file system"), even with the cache emptied. Resolve without it.
-        run: swift package resolve --disable-dependency-cache
+        # The 2026-11-04 macos-15 image's SwiftPM sometimes trips over its own half-downloaded
+        # Sparkle zip ("... already exists in file system"). Resolve without the shared cache,
+        # and on failure clear the partial download and try again.
+        run: |
+          for attempt in 1 2 3; do
+            swift package resolve --disable-dependency-cache && exit 0
+            echo "resolve failed (attempt $attempt); clearing partial artifacts"
+            rm -rf .build/artifacts ~/Library/Caches/org.swift.swiftpm/artifacts
+            sleep 5
+          done
+          exit 1
       - name: Render
         run: |
           swift build -c release
