@@ -97,7 +97,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 - 🔎 **Filter by source.** `⇥` narrows to Apps, Files, Clipboard, History, Projects, Snippets, Notes
   or any plugin; type a source's name first (`clip⇥`) to jump there. The empty bar shows every source
   as a chip, and `⌘/` lists every key, source, alias and keyword from your config.
-- 👀 **Preview card** (`→` or `⌘Y`): the full clip with light syntax colour, images, Quick Look for
+- 👀 **Preview card** (opens as you `↑`/`↓` through results, or `→` / `⌘Y`): the full clip with light syntax colour, images, Quick Look for
   files, a project's README, a note's text.
 - 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
   anything a short **alias** and pin **favorites** to the empty box.
@@ -293,6 +293,7 @@ accent     = "#7c5cff"                        # selection and caret, over the th
 density    = "comfortable"                    # or "compact"
 glass      = true                             # Liquid Glass on macOS 26+
 show_speed = true                             # "12,431 items · 0.6 ms" in the footer
+auto_preview = true                           # ↑/↓ through results opens the preview (false: only → / ⌘Y)
 contrast   = 50                               # 0–100: how far apart text, dim text and borders sit
 
 [obsidian]
@@ -373,7 +374,7 @@ theme = "tokyo-night"
 | `aurora` · `neon-noir` · `ember` · `velvet` · `phosphor` · `amber` · `graphite` | Euclid originals, dark |
 | `paper` · `glacier` · `matcha` · `sakura` · `sandstone` | Euclid originals, light |
 
-`accent`, `density`, `glass`, `show_speed` and `contrast` still apply on top of any theme.
+`accent`, `density`, `glass`, `show_speed`, `auto_preview` and `contrast` still apply on top of any theme.
 
 A theme only needs `background`, `text` and `accent`: every other colour (dim text, borders, the
 selection, the footer strip, the preview card) is mixed from those three in OKLab, so any base looks

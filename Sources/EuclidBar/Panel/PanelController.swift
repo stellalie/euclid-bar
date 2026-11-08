@@ -26,6 +26,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         set { content.commands = newValue }
     }
     var onCommand: ((AppCommand) -> Void)?
+    /// After the panel closes (the updater installs a downloaded update then).
+    var onHide: (() -> Void)?
+    var isVisible: Bool { panel.isVisible }
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
     /// Shown in the footer the next time the panel opens, once (the first-launch welcome).
@@ -475,6 +478,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         plugins.cancelAnswers()
         content.didHide()
         anchor = nil
+        onHide?()
     }
 
     func windowDidResignKey(_ notification: Notification) { hide() }

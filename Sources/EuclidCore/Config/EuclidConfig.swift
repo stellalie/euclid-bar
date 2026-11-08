@@ -82,9 +82,9 @@ public struct EuclidConfig: Equatable, Sendable {
 
 /// `[updates]`. Only signed builds update; local builds ignore it.
 public struct UpdateSettings: Equatable, Sendable {
-    /// Look for a new version once a day.
+    /// Look for a new version: hourly on dev, every 6 hours on stable.
     public var check = true
-    /// Download new versions in the background and install them on quit. Needs `check`.
+    /// Download new versions in the background and install them (relaunching) once the panel closes. Needs `check`.
     public var autoInstall = true
     /// Which builds to get: tagged releases, or a build of every change merged to main.
     public var channel = Channel.stable
@@ -108,6 +108,8 @@ public struct Appearance: Equatable, Sendable {
     public var glass = true
     /// "12,431 items · 0.6 ms" in the footer.
     public var showSpeed = true
+    /// ↑/↓ through results opens the preview, so you don't have to press →.
+    public var autoPreview = true
     /// 0–100: how far apart text, dim text, borders and the selection sit (50 = as each theme is designed).
     public var contrast = ThemeColors.defaultContrast
 
@@ -476,7 +478,7 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "appearance", &issues) {
-            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed", "contrast"], in: "[appearance]", &issues)
+            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed", "auto_preview", "contrast"], in: "[appearance]", &issues)
             if t.contains(key: "theme") {
                 if let s = try? t.string(forKey: "theme"), !s.isEmpty, !s.contains("/") { config.appearance.theme = s }
                 else { issues.append(.warning("appearance.theme must be a theme name like \"nord\"")) }
@@ -491,6 +493,7 @@ public enum ConfigLoader {
             }
             if let b = bool(t, "glass", in: "appearance", &issues) { config.appearance.glass = b }
             if let b = bool(t, "show_speed", in: "appearance", &issues) { config.appearance.showSpeed = b }
+            if let b = bool(t, "auto_preview", in: "appearance", &issues) { config.appearance.autoPreview = b }
             if t.contains(key: "contrast") {
                 if let n = try? t.integer(forKey: "contrast"), (0...100).contains(n) { config.appearance.contrast = Int(n) }
                 else { issues.append(.warning("appearance.contrast must be a whole number from 0 to 100")) }

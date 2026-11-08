@@ -117,6 +117,8 @@ final class LauncherViewController: NSViewController {
     private var mode = Mode.search
     /// ⇥ narrowed the search to one source; nil = everything.
     private var scope: SearchScope?
+    /// The empty bar's source row is on its second page ("+ N more" clicked). Back to page one on every open.
+    private var scopesExpanded = false
     /// The scope and text the last search actually ran with (a typed `[search] scopes` prefix sets both).
     private var activeScope: SearchScope?
     private var searchedText = ""
@@ -166,6 +168,10 @@ final class LauncherViewController: NSViewController {
     private var pluginAnswers: (query: String, entries: [PluginService.Entry]) = ("", [])
     private var keyMonitor: Any?
     private var previewOpen = false
+    /// You closed the preview: ↑/↓ leaves it closed until the panel opens again.
+    private var previewDismissed = false
+    /// Holding ↑/↓: the preview waits for where you stop instead of loading every row on the way.
+    private var previewTimer: Timer?
     /// "12,431 items · 0.6 ms", refreshed on every search.
     private var lastStats = ""
 
@@ -521,8 +527,10 @@ final class LauncherViewController: NSViewController {
 
     /// Called right before the panel is shown: fresh search, focused field.
     func prepareForShow() {
+        scopesExpanded = false
         endArguments()
         setPreview(open: false)
+        previewDismissed = false
         views = []
         scope = nil
         enterSearchMode(query: "")
@@ -564,6 +572,8 @@ final class LauncherViewController: NSViewController {
         if selectable.indices.contains(row) { select(row: selectable[row]) }
     }
     var demoRowCount: Int { rows.filter { !$0.isHeader }.count }
+    func demoMove(by step: Int) { move(by: step) }
+
     func demoTogglePreview() { setPreview(open: !previewOpen) }
     /// ↵ on the selected result, as if pressed (renders the argument fields).
     func demoActivate() { activateSelection() }
@@ -571,6 +581,11 @@ final class LauncherViewController: NSViewController {
     func demoTab() { tabScope(backwards: false) }
     /// ⌘/.
     func demoShowShortcuts() { showCheatSheet() }
+
+    func demoPageScopes(_ expanded: Bool) {
+        scopesExpanded = expanded
+        tableView.reloadData()
+    }
 
     // MARK: - Modes
 
@@ -1322,6 +1337,20 @@ final class LauncherViewController: NSViewController {
     }
 
     private func updatePreview() {
+        previewTimer?.invalidate()
+        previewTimer = nil
+        guard previewOpen else { return }
+        if NSApp.currentEvent?.isARepeat == true {
+            previewTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: false) { [weak self] _ in
+                MainActor.assumeIsolated { self?.showPreview() }
+            }
+            return
+        }
+        showPreview()
+    }
+
+    private func showPreview() {
+        previewTimer = nil
         guard previewOpen else { return }
         preview.show(selectedRow.map(previewContent) ?? .none)
     }
@@ -1522,6 +1551,14 @@ final class LauncherViewController: NSViewController {
         updatePreview()
     }
 
+    /// ↑/↓ in the list. Browsing opens the preview (`[appearance] auto_preview`) unless you closed it.
+    private func move(by step: Int) {
+        select(row: selectedIndex + step, direction: step)
+        if theme.autoPreview, !previewDismissed, mode == .search || layout == .list, selectedRow != nil {
+            setPreview(open: true)
+        }
+    }
+
     @objc private func activateSelection() {
         if layout == .detail, let text = views.last?.view.text {
             onCopyText?(text)
@@ -1632,6 +1669,7 @@ final class LauncherViewController: NSViewController {
             return true
         case (.command, kVK_ANSI_Y):
             guard !inActions else { return false }
+            previewDismissed = previewOpen
             setPreview(open: !previewOpen)
             return true
         case (.command, kVK_Return), (.command, kVK_ANSI_KeypadEnter):
@@ -1750,14 +1788,15 @@ extension LauncherViewController: NSTextFieldDelegate {
             }
         }
         switch selector {
-        case #selector(NSResponder.moveUp(_:)): select(row: selectedIndex - 1, direction: -1)
-        case #selector(NSResponder.moveDown(_:)): select(row: selectedIndex + 1, direction: 1)
+        case #selector(NSResponder.moveUp(_:)): move(by: -1)
+        case #selector(NSResponder.moveDown(_:)): move(by: 1)
         case #selector(NSResponder.moveRight(_:)):
             // → at the end of the text opens the preview; anywhere else it moves the caret.
             let r = textView.selectedRange()
             guard !previewOpen, mode == .search || layout == .list, selectedRow != nil, r.length == 0,
                   r.location == (textView.string as NSString).length
             else { return false }
+            previewDismissed = false
             setPreview(open: true)
         case #selector(NSResponder.insertNewline(_:)): activateSelection()
         case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
@@ -1768,7 +1807,7 @@ extension LauncherViewController: NSTextFieldDelegate {
             guard mode == .search, scope != nil, textView.string.isEmpty else { return false }
             setScope(nil, query: "")
         case #selector(NSResponder.cancelOperation(_:)):
-            if previewOpen { setPreview(open: false) }
+            if previewOpen { setPreview(open: false); previewDismissed = true }
             else if mode == .search, scope != nil { setScope(nil, query: searchField.stringValue) }
             else if case .actions = mode { enterSearchMode(query: query) }
             else if mode == .view { popView() }
@@ -1802,9 +1841,14 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         let r = rows[row]
         if r.isScopeBar {
             let cell = tableView.makeView(withIdentifier: ScopeBarCell.id, owner: nil) as? ScopeBarCell ?? ScopeBarCell()
-            cell.configure(availableScopes, theme: theme)
+            cell.configure(availableScopes, expanded: scopesExpanded, theme: theme)
             cell.onPick = { [weak self] scope in self?.setScope(scope, query: "") }
             cell.onMore = { [weak self] in self?.showCheatSheet() }
+            cell.onPage = { [weak self, weak cell] expanded in
+                guard let self else { return }
+                scopesExpanded = expanded
+                cell?.configure(availableScopes, expanded: expanded, theme: theme)
+            }
             cell.onReorder = { [weak self] scopes in
                 guard let self else { return }
                 let ids = scopes.map(\.id)

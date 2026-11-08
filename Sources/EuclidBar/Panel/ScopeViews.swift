@@ -39,8 +39,9 @@ final class ScopeChipView: NSView {
 }
 
 /// The empty bar's map of what it searches: one row of source chips (click or ⇥ to narrow),
-/// then "+ N more" for the rest and every shortcut (⌘/). Gone on the first keystroke.
-/// Drag a chip sideways to reorder; the order is saved as `[search] sources`, which ⇥ follows too.
+/// then "+ N more", which pages the row to the rest of the sources, "All shortcuts" (⌘/) and ‹ back.
+/// Gone on the first keystroke. Drag a chip sideways to reorder; the order is saved as
+/// `[search] sources`, which ⇥ follows too.
 final class ScopeBarCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("ScopeBar")
     /// How many sources fit on the row before "+ N more" (with their glyphs, at the narrowest panel).
@@ -52,8 +53,12 @@ final class ScopeBarCell: NSTableCellView {
     private var theme = Theme()
     var onPick: ((SearchScope) -> Void)?
     var onMore: (() -> Void)?
+    /// The row is showing the sources past the first `shown`; the controller keeps it so a reload keeps the page.
+    var onPage: ((Bool) -> Void)?
     /// A chip was dropped somewhere new: every source, in the new order.
     var onReorder: (([SearchScope]) -> Void)?
+    private var expanded = false
+    private static let back = -2, more = -1, all = -3
 
     init() {
         super.init(frame: .zero)
@@ -77,18 +82,26 @@ final class ScopeBarCell: NSTableCellView {
         super.layout()
     }
 
-    func configure(_ scopes: [SearchScope], theme: Theme) {
+    func configure(_ scopes: [SearchScope], expanded: Bool, theme: Theme) {
         self.scopes = scopes
         self.theme = theme
+        self.expanded = expanded
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (i, scope) in scopes.prefix(Self.shown).enumerated() {
-            let p = pill(scope.title, symbol: scope.symbol, tag: i, theme: theme)
-            p.onDrag = { [weak self, weak p] event in if let self, let p { self.drag(p, from: event) } }
-            p.toolTip = "Click to search only \(scope.title) · drag to reorder"
-            stack.addArrangedSubview(p)
-        }
         let more = scopes.count - Self.shown
-        stack.addArrangedSubview(pill(more > 0 ? "+ \(more) more" : "All shortcuts", symbol: nil, tag: -1, theme: theme))
+        if expanded && more > 0 {
+            stack.addArrangedSubview(pill("‹", symbol: nil, tag: Self.back, theme: theme))
+            for (i, scope) in scopes.enumerated().dropFirst(Self.shown) {
+                stack.addArrangedSubview(sourcePill(scope, tag: i))
+            }
+            stack.addArrangedSubview(pill("All shortcuts", symbol: nil, tag: Self.all, theme: theme))
+        } else {
+            for (i, scope) in scopes.prefix(Self.shown).enumerated() {
+                stack.addArrangedSubview(sourcePill(scope, tag: i))
+            }
+            stack.addArrangedSubview(more > 0
+                ? pill("+ \(more) more", symbol: nil, tag: Self.more, theme: theme)
+                : pill("All shortcuts", symbol: nil, tag: Self.all, theme: theme))
+        }
         // How to get there without the mouse.
         let hint = NSTextField(labelWithString: "⇥")
         hint.font = .systemFont(ofSize: 12, weight: .medium)
@@ -96,6 +109,14 @@ final class ScopeBarCell: NSTableCellView {
         hint.toolTip = "⇥ narrows to the next source"
         stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(hint)
+    }
+
+    /// A source's pill: click narrows to it, drag reorders it.
+    private func sourcePill(_ scope: SearchScope, tag: Int) -> SourcePill {
+        let p = pill(scope.title, symbol: scope.symbol, tag: tag, theme: theme)
+        p.onDrag = { [weak self, weak p] event in if let self, let p { self.drag(p, from: event) } }
+        p.toolTip = "Click to search only \(scope.title) · drag to reorder"
+        return p
     }
 
     /// A rounded pill: the source's glyph and name on a plate with a hairline edge, so it reads as a button.
@@ -132,7 +153,12 @@ final class ScopeBarCell: NSTableCellView {
     }
 
     @objc private func clicked(_ sender: NSButton) {
-        if scopes.indices.contains(sender.tag) { onPick?(scopes[sender.tag]) } else { onMore?() }
+        switch sender.tag {
+        case Self.more: onPage?(true)
+        case Self.back: onPage?(false)
+        case Self.all: onMore?()
+        default: if scopes.indices.contains(sender.tag) { onPick?(scopes[sender.tag]) }
+        }
     }
 
     /// Follows the mouse until it's let go: the chip slides past its neighbours as you cross their middles,
@@ -159,7 +185,9 @@ final class ScopeBarCell: NSTableCellView {
                     ctx.duration = 0.12
                     ctx.allowsImplicitAnimation = true
                     stack.removeArrangedSubview(pill)
-                    stack.insertArrangedSubview(pill, at: target)
+                    // Source pills sit together, after the ‹ on the second page.
+                    let first = stack.arrangedSubviews.firstIndex { ($0 as? SourcePill)?.onDrag != nil } ?? 0
+                    stack.insertArrangedSubview(pill, at: first + target)
                     stack.layoutSubtreeIfNeeded()
                 }
             }
@@ -167,10 +195,12 @@ final class ScopeBarCell: NSTableCellView {
         guard dragging else { pill.performClick(nil); return }
         NSCursor.arrow.set()
         pill.alphaValue = 1
-        let shown = pills.map { scopes[$0.tag] }
-        let reordered = shown + scopes.filter { !shown.contains($0) }
+        // The chips on this page take their old slots in the new order; the other page stays put.
+        let tags = pills.map(\.tag)
+        var reordered = scopes
+        for (slot, tag) in zip(tags.sorted(), tags) { reordered[slot] = scopes[tag] }
         guard reordered != scopes else { return }
-        configure(reordered, theme: theme) // tags follow the new order
+        configure(reordered, expanded: expanded, theme: theme) // tags follow the new order
         onReorder?(reordered)
     }
 }

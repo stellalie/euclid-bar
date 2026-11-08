@@ -152,6 +152,7 @@ import Testing
             density = "compact"
             glass = false
             show_speed = false
+            auto_preview = false
 
             [pages]
             enabled = false
@@ -162,7 +163,8 @@ import Testing
             """)
         #expect(c.config.appearance.accent == "#7c5cff")
         #expect(c.config.appearance.density == .compact)
-        #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed)
+        #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed && !c.config.appearance.autoPreview)
+        #expect(try ConfigLoader.parse("").config.appearance.autoPreview) // on unless turned off
         #expect(c.config.obsidianVault == "~/Notes")
         #expect(c.issues.isEmpty) // the old, off [pages] table is ignored quietly
     }
