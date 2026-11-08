@@ -172,8 +172,11 @@ enum DemoRenderer {
             ("https://github.com/stellalie/euclid-bar", "Dia", 5 * 60),
             ("git rebase -i HEAD~3", "Ghostty", 2 * 60),
         ]
+        // Real bundle IDs, so a Mac with these apps shows their icons on the rows.
+        let ids = ["Ghostty": "com.mitchellh.ghostty", "Zed": "dev.zed.Zed", "Notes": "com.apple.Notes",
+                   "TablePlus": "com.tinyapp.TablePlus", "Dia": "company.thebrowser.dia"]
         for (text, app, ago) in samples {
-            h.record(text, sourceBundleID: nil, sourceName: app, at: now.addingTimeInterval(-ago))
+            h.record(text, sourceBundleID: ids[app], sourceName: app, at: now.addingTimeInterval(-ago))
         }
         return h
     }

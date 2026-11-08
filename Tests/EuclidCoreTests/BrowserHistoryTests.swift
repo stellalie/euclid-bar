@@ -126,6 +126,8 @@ import Testing
         #expect(RelativeAge.short(now - 3 * 86_400, now: now) == "3d ago")
         #expect(RelativeAge.short(now - 15 * 86_400, now: now) == "2w ago")
         #expect(RelativeAge.short(now + 30, now: now) == "just now")   // clock skew
+        #expect(RelativeAge.compact(now - 20, now: now) == "now")
+        #expect(RelativeAge.compact(now - 2 * 3_600, now: now) == "2h")
     }
 
     @Test func unreadableSourceIsReportedNotFatal() {

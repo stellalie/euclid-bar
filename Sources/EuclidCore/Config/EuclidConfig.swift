@@ -36,6 +36,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var filesLimit = 8
     /// Shown when the search box is empty (`[search] favorites`), by title.
     public var favorites: [String] = []
+    /// `[search] scopes`: a word that narrows the search to one source ("c" → "clipboard").
+    public var scopePrefixes: [String: String] = [:]
     /// `[aliases]` plus every action's `alias`.
     public var aliases = Aliases()
     /// Look and feel (`[appearance]`).
@@ -102,6 +104,8 @@ public struct Appearance: Equatable, Sendable {
     public var glass = true
     /// "12,431 items · 0.6 ms" in the footer.
     public var showSpeed = true
+    /// 0–100: how far apart text, dim text, borders and the selection sit (50 = as each theme is designed).
+    public var contrast = ThemeColors.defaultContrast
 
     public init() {}
 
@@ -417,8 +421,19 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "search", &issues) {
-            warnUnknownKeys(t, known: ["favorites"], in: "[search]", &issues)
+            warnUnknownKeys(t, known: ["favorites", "scopes"], in: "[search]", &issues)
             if let a = strings(t, "favorites", in: "search", &issues) { config.favorites = a }
+            if t.contains(key: "scopes") {
+                if let s = try? t.table(forKey: "scopes") {
+                    for key in s.keys.sorted() {
+                        let prefix = key.lowercased()
+                        if let v = try? s.string(forKey: key), !v.isEmpty, !prefix.contains(" ") { config.scopePrefixes[prefix] = v.lowercased() }
+                        else { issues.append(.warning("search.scopes.\(key) must be a source name like \"clipboard\" or a plugin id")) }
+                    }
+                } else {
+                    issues.append(.warning("search.scopes must be a table like { c = \"clipboard\" }"))
+                }
+            }
         }
 
         if let t = table(root, "aliases", &issues) {
@@ -455,7 +470,7 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "appearance", &issues) {
-            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed"], in: "[appearance]", &issues)
+            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed", "contrast"], in: "[appearance]", &issues)
             if t.contains(key: "theme") {
                 if let s = try? t.string(forKey: "theme"), !s.isEmpty, !s.contains("/") { config.appearance.theme = s }
                 else { issues.append(.warning("appearance.theme must be a theme name like \"nord\"")) }
@@ -470,6 +485,10 @@ public enum ConfigLoader {
             }
             if let b = bool(t, "glass", in: "appearance", &issues) { config.appearance.glass = b }
             if let b = bool(t, "show_speed", in: "appearance", &issues) { config.appearance.showSpeed = b }
+            if t.contains(key: "contrast") {
+                if let n = try? t.integer(forKey: "contrast"), (0...100).contains(n) { config.appearance.contrast = Int(n) }
+                else { issues.append(.warning("appearance.contrast must be a whole number from 0 to 100")) }
+            }
         }
 
         if root.contains(key: "snippet") {
