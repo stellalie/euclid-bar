@@ -17,9 +17,10 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Clear stale SwiftPM artifact cache
-        # The runner image ships a half-written Sparkle artifact; SwiftPM then fails with "already exists".
-        run: rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts
+      - name: Resolve packages
+        # The 2026-11-04 macos-15 image's SwiftPM fails putting Sparkle's binary into its shared cache
+        # ("... already exists in file system"), even with the cache emptied. Resolve without it.
+        run: swift package resolve --disable-dependency-cache
       - name: Render
         run: |
           swift build -c release
