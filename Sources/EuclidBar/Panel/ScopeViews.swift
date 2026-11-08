@@ -39,7 +39,8 @@ final class ScopeChipView: NSView {
 }
 
 /// The empty bar's map of what it searches: one row of source chips (click or ⇥ to narrow),
-/// then "+ N more" for the rest and every shortcut (⌘/). Gone on the first keystroke.
+/// then "+ N more", which pages the row to the rest of the sources, "All shortcuts" (⌘/) and ‹ back.
+/// Gone on the first keystroke.
 final class ScopeBarCell: NSTableCellView {
     static let id = NSUserInterfaceItemIdentifier("ScopeBar")
     /// How many sources fit on the row before "+ N more" (with their glyphs, at the narrowest panel).
@@ -50,6 +51,9 @@ final class ScopeBarCell: NSTableCellView {
     private var scopes: [SearchScope] = []
     var onPick: ((SearchScope) -> Void)?
     var onMore: (() -> Void)?
+    /// The row is showing the sources past the first `shown`; the controller keeps it so a reload keeps the page.
+    var onPage: ((Bool) -> Void)?
+    private static let back = -2, more = -1, all = -3
 
     init() {
         super.init(frame: .zero)
@@ -73,14 +77,24 @@ final class ScopeBarCell: NSTableCellView {
         super.layout()
     }
 
-    func configure(_ scopes: [SearchScope], theme: Theme) {
+    func configure(_ scopes: [SearchScope], expanded: Bool, theme: Theme) {
         self.scopes = scopes
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for (i, scope) in scopes.prefix(Self.shown).enumerated() {
-            stack.addArrangedSubview(pill(scope.title, symbol: scope.symbol, tag: i, theme: theme))
-        }
         let more = scopes.count - Self.shown
-        stack.addArrangedSubview(pill(more > 0 ? "+ \(more) more" : "All shortcuts", symbol: nil, tag: -1, theme: theme))
+        if expanded && more > 0 {
+            stack.addArrangedSubview(pill("‹", symbol: nil, tag: Self.back, theme: theme))
+            for (i, scope) in scopes.enumerated().dropFirst(Self.shown) {
+                stack.addArrangedSubview(pill(scope.title, symbol: scope.symbol, tag: i, theme: theme))
+            }
+            stack.addArrangedSubview(pill("All shortcuts", symbol: nil, tag: Self.all, theme: theme))
+        } else {
+            for (i, scope) in scopes.prefix(Self.shown).enumerated() {
+                stack.addArrangedSubview(pill(scope.title, symbol: scope.symbol, tag: i, theme: theme))
+            }
+            stack.addArrangedSubview(more > 0
+                ? pill("+ \(more) more", symbol: nil, tag: Self.more, theme: theme)
+                : pill("All shortcuts", symbol: nil, tag: Self.all, theme: theme))
+        }
         // How to get there without the mouse.
         let hint = NSTextField(labelWithString: "⇥")
         hint.font = .systemFont(ofSize: 12, weight: .medium)
@@ -124,7 +138,12 @@ final class ScopeBarCell: NSTableCellView {
     }
 
     @objc private func clicked(_ sender: NSButton) {
-        if scopes.indices.contains(sender.tag) { onPick?(scopes[sender.tag]) } else { onMore?() }
+        switch sender.tag {
+        case Self.more: onPage?(true)
+        case Self.back: onPage?(false)
+        case Self.all: onMore?()
+        default: if scopes.indices.contains(sender.tag) { onPick?(scopes[sender.tag]) }
+        }
     }
 }
 

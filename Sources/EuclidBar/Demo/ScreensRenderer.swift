@@ -86,6 +86,9 @@ enum ScreensRenderer {
         }
 
         try step("Empty box: suggestions, plugin picks, clipboard", hold: 1.8, name: "empty")
+        vc.demoPageScopes(true)
+        try step("+ N more: the rest of the sources, then every shortcut", hold: 1.4)
+        vc.demoPageScopes(false)
         vc.demoSetQuery("")
         try type("rebase", caption: "Sections, matched letters highlighted, search speed in the footer")
         vc.setContentResults([
