@@ -38,6 +38,10 @@ public struct EuclidConfig: Equatable, Sendable {
     public var favorites: [String] = []
     /// `[search] scopes`: a word that narrows the search to one source ("c" → "clipboard").
     public var scopePrefixes: [String: String] = [:]
+    /// `[search] sources`: the source chips' and ⇥'s order (the rest follow). Dragging a chip writes it.
+    public var sourceOrder: [String] = []
+    /// `[search] hidden`: sources left off the chips and ⇥ (still searched).
+    public var hiddenSources: [String] = []
     /// `[aliases]` plus every action's `alias`.
     public var aliases = Aliases()
     /// Look and feel (`[appearance]`).
@@ -423,8 +427,10 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "search", &issues) {
-            warnUnknownKeys(t, known: ["favorites", "scopes"], in: "[search]", &issues)
+            warnUnknownKeys(t, known: ["favorites", "scopes", "sources", "hidden"], in: "[search]", &issues)
             if let a = strings(t, "favorites", in: "search", &issues) { config.favorites = a }
+            if let a = strings(t, "sources", in: "search", &issues) { config.sourceOrder = a.map { $0.lowercased() } }
+            if let a = strings(t, "hidden", in: "search", &issues) { config.hiddenSources = a.map { $0.lowercased() } }
             if t.contains(key: "scopes") {
                 if let s = try? t.table(forKey: "scopes") {
                     for key in s.keys.sorted() {

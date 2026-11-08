@@ -72,6 +72,21 @@ public enum SearchScope: Hashable, Sendable {
         return starts.count == 1 ? starts[0] : nil
     }
 
+    /// `[search] sources`: the ones you list first, in your order (by id, alias or name), then the rest
+    /// as they were; any in `hidden` left out. Chips and ⇥ both follow it.
+    public static func ordered(_ scopes: [SearchScope], by order: [String], hidden: [String] = []) -> [SearchScope] {
+        func matches(_ s: SearchScope, _ word: String) -> Bool {
+            let w = word.trimmingCharacters(in: .whitespaces).lowercased()
+            return s.id == w || s.title.lowercased() == w || s.aliases.contains(w)
+        }
+        let visible = scopes.filter { s in !hidden.contains { matches(s, $0) } }
+        var first: [SearchScope] = []
+        for word in order {
+            if let s = visible.first(where: { matches($0, word) }), !first.contains(s) { first.append(s) }
+        }
+        return first + visible.filter { !first.contains($0) }
+    }
+
     /// ⇥ from `current` (nil = everything): the next scope, wrapping back to everything.
     public static func next(after current: SearchScope?, in scopes: [SearchScope], backwards: Bool = false) -> SearchScope? {
         let all: [SearchScope?] = [nil] + scopes
