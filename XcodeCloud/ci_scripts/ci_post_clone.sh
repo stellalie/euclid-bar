@@ -11,6 +11,31 @@
 set -euo pipefail
 cd "$CI_PRIMARY_REPOSITORY_PATH"
 
+# Xcode Cloud's log isn't readable from GitHub: on failure, push it to the ci-logs/<branch or pr-n> branch.
+ci_log="${TMPDIR:-/tmp}/euclid-ci.log"
+exec > >(tee "$ci_log") 2>&1
+publish_log() {
+  local code=$1
+  (( code != 0 )) && [[ -n "${GITHUB_SCREENS_TOKEN:-}" ]] || return 0
+  sleep 1 # let tee flush
+  local dir="$(mktemp -d)" branch="ci-logs/${CI_PULL_REQUEST_NUMBER:+pr-}${CI_PULL_REQUEST_NUMBER:-${CI_BRANCH:-${CI_TAG:-unknown}}}"
+  tail -c 2000000 "$ci_log" > "$dir/ci.log"
+  ( cd "$dir" && git init -q -b "$branch" && git add ci.log \
+    && git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "Failed CI log for ${CI_COMMIT:-?} (exit $code)" \
+    && git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" "$branch" ) || true
+}
+trap 'publish_log $?' EXIT
+
+# SwiftPM sometimes trips over its own half-downloaded Sparkle zip ("... already exists in file system"):
+# resolve on its own, clearing the partial download and retrying.
+for attempt in 1 2 3; do
+  swift package resolve --disable-dependency-cache && break
+  (( attempt < 3 )) || exit 1
+  echo "resolve failed (attempt $attempt); clearing partial artifacts"
+  rm -rf .build/artifacts ~/Library/Caches/org.swift.swiftpm/artifacts
+  sleep 5
+done
+
 # A test reads an old helper script from git history (ConfigAndActionTests.ghosttyRunV1).
 if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
   git fetch --quiet --unshallow
