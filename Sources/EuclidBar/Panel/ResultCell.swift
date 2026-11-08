@@ -103,14 +103,12 @@ final class ResultCell: NSTableCellView {
         let firstLine = text.prefix(300).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         let shown = firstLine.trimmingCharacters(in: .whitespaces)
         let font = NSFont.systemFont(ofSize: theme.titleSize)
-        // Matches are told by weight, not colour: semibold at full strength, the rest a touch dimmer.
+        // Matches are told by weight, not colour. (Not by a dimmer rest either: a dynamic colour with
+        // alpha can resolve dark on a selected row.)
         let ranges = highlight.map { $0.isEmpty ? [] : FuzzyMatcher.displayRanges(query: $0, in: shown) } ?? []
-        let rest = ranges.isEmpty ? theme.text : theme.text.withAlphaComponent(0.8)
-        let attributed = NSMutableAttributedString(string: shown, attributes: [.font: font, .foregroundColor: rest])
+        let attributed = NSMutableAttributedString(string: shown, attributes: [.font: font, .foregroundColor: theme.text])
         let bold = NSFont.systemFont(ofSize: theme.titleSize, weight: .semibold)
-        for r in ranges {
-            attributed.addAttributes([.font: bold, .foregroundColor: theme.text], range: NSRange(r, in: shown))
-        }
+        for r in ranges { attributed.addAttribute(.font, value: bold, range: NSRange(r, in: shown)) }
         title.attributedStringValue = attributed
         detail.textColor = theme.muted
         subtitle.textColor = theme.muted

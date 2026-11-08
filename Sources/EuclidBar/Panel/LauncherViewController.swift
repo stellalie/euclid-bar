@@ -541,7 +541,11 @@ final class LauncherViewController: NSViewController {
 
     // MARK: - Demo (driven by `euclid-bar --render-demo`)
 
-    func demoSetQuery(_ text: String) { searchField.stringValue = text; runSearch() }
+    func demoSetQuery(_ text: String) {
+        searchField.stringValue = text
+        runSearch()
+        searchField.currentEditor()?.moveToEndOfDocument(nil)
+    }
 
     /// An `open` hook's `{"query":…}`: start the search with it, unless you already typed.
     func suggestQuery(_ text: String) {
@@ -1296,7 +1300,7 @@ final class LauncherViewController: NSViewController {
                 return .text(title: item.title, facts: facts, body: c.paths.joined(separator: "\n"), code: true)
             case .text:
                 let pretty = DevTransforms.json(c.content).first?.value
-                return .text(title: "", facts: facts, body: pretty ?? c.content, code: true)
+                return .text(title: "", facts: facts, body: pretty ?? c.content, code: true, colour: true)
             }
         case .history(let item):
             let url = historyURL(item.id) ?? ""
@@ -1458,9 +1462,15 @@ final class LauncherViewController: NSViewController {
         }
         guard rows.indices.contains(r) else { return }
         tableView.selectRowIndexes([r], byExtendingSelection: false)
-        // Keep the header above the first result in view.
-        tableView.scrollRowToVisible(r > 0 && rows[r - 1].isHeader ? r - 1 : r)
-        tableView.scrollRowToVisible(r)
+        if rows[..<r].allSatisfy(\.isHeader) {
+            // The first result: show everything above it (the source chips, its header), even when
+            // the list is still short and the panel grows after this.
+            tableView.scroll(.zero)
+        } else {
+            // Keep the header above the result in view.
+            tableView.scrollRowToVisible(r > 0 && rows[r - 1].isHeader ? r - 1 : r)
+            tableView.scrollRowToVisible(r)
+        }
         updateFooter()
         updatePreview()
     }

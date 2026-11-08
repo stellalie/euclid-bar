@@ -2,12 +2,13 @@ import AppKit
 import Quartz
 
 /// The right-hand card opened with → or ⌘Y: full text, an image, or a Quick Look preview,
-/// on its own darker surface. Short code gets light syntax colour; facts sit in a two-column grid.
+/// on its own darker surface. Short copied code gets light syntax colour; facts sit in a two-column grid.
 @MainActor
 final class PreviewView: NSView {
     enum Content {
-        /// Title, then "label: value" lines, then a body (monospaced when `code`).
-        case text(title: String, facts: [(String, String)], body: String, code: Bool)
+        /// Title, then "label: value" lines, then a body (monospaced when `code`;
+        /// syntax-coloured when `colour`, for copied text only, never a plugin's or Euclid's own lists).
+        case text(title: String, facts: [(String, String)], body: String, code: Bool, colour: Bool = false)
         case image(NSImage, title: String)
         case quickLook(URL)
         case none
@@ -61,8 +62,8 @@ final class PreviewView: NSView {
         imageView.isHidden = true
         quickLook?.isHidden = true
         switch content {
-        case .text(let title, let facts, let body, let code):
-            textView.textStorage?.setAttributedString(render(title: title, facts: facts, body: body, code: code))
+        case .text(let title, let facts, let body, let code, let colour):
+            textView.textStorage?.setAttributedString(render(title: title, facts: facts, body: body, code: code, colour: colour))
             textView.scroll(.zero)
             textScroll.isHidden = false
         case .image(let image, _):
@@ -99,7 +100,7 @@ final class PreviewView: NSView {
         return ql
     }
 
-    private func render(title: String, facts: [(String, String)], body: String, code: Bool) -> NSAttributedString {
+    private func render(title: String, facts: [(String, String)], body: String, code: Bool, colour: Bool) -> NSAttributedString {
         let out = NSMutableAttributedString()
         let para = NSMutableParagraphStyle()
         para.paragraphSpacing = 8
@@ -116,10 +117,10 @@ final class PreviewView: NSView {
         grid.paragraphSpacing = 4
         for (label, value) in facts {
             out.append(NSAttributedString(string: label + "\t", attributes: [
-                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.muted, .paragraphStyle: grid,
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.subtext, .paragraphStyle: grid,
             ]))
             out.append(NSAttributedString(string: value + "\n", attributes: [
-                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.subtext, .paragraphStyle: grid,
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.text, .paragraphStyle: grid,
             ]))
         }
         if !body.isEmpty {
@@ -132,7 +133,7 @@ final class PreviewView: NSView {
                 .font: code ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular) : NSFont.systemFont(ofSize: 13),
                 .foregroundColor: theme.text, .paragraphStyle: lines,
             ])
-            if code { highlight(text) }
+            if code && colour { highlight(text) }
             out.append(text)
         }
         return out
