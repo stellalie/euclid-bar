@@ -872,7 +872,7 @@ final class LauncherViewController: NSViewController {
         plate.layer?.borderWidth = 1
         plate.resolving {
             plate.layer?.backgroundColor = theme.chipFill.cgColor
-            plate.layer?.borderColor = theme.border.cgColor
+            plate.layer?.borderColor = theme.subtext.withAlphaComponent(0.28).cgColor
         }
         field.isBezeled = false
         field.isBordered = false
