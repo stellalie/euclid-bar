@@ -103,9 +103,9 @@ enum ScreensRenderer {
 
         vc.demoSetQuery("docker")
         vc.demoSelect(row: 0)
-        try step("→ opens the preview", hold: 0.8)
-        vc.demoTogglePreview()
-        try step("→ opens the preview", hold: 2.0, name: "preview-clip")
+        try step("↓ through results opens the preview", hold: 0.8)
+        vc.demoMove(by: 1)
+        try step("↓ through results opens the preview", hold: 2.0, name: "preview-clip")
         vc.demoTogglePreview()
         try step("esc closes it", hold: 0.8)
 
