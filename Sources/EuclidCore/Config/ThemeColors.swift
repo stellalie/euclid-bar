@@ -33,14 +33,19 @@ public struct ThemeColors: Equatable, Sendable {
         let dark = p.mode == .dark
         func mixed(_ t: Double) -> String { bg.mixed(with: fg, t).hex }
         func step(_ dl: Double) -> String { OKLab(L: bg.L + (dark ? -dl : -dl * 1.2), a: bg.a, b: bg.b).hex }
+        // Light themes: pale greys that look fine in a palette wash out on a bright panel, so dim text is
+        // pulled toward the text colour and the selection toward the accent (hand-picked ones too).
+        func firmer(_ hex: String, toward target: OKLab, _ t: Double) -> String {
+            dark ? hex : OKLab(hex: hex).mixed(with: target, t).hex
+        }
         return ThemeColors(
             mode: p.mode,
             background: p.background,
             text: p.text,
             accent: p.accent,
-            subtext: (own ? p.subtext : nil) ?? mixed(0.62 + 0.25 * c),
-            muted: (own ? p.muted : nil) ?? mixed(0.40 + 0.25 * c),
-            selection: (own ? p.selection : nil) ?? bg.mixed(with: ac, 0.16 + 0.12 * c).hex,
+            subtext: firmer((own ? p.subtext : nil) ?? mixed(0.62 + 0.25 * c), toward: fg, 0.15),
+            muted: firmer((own ? p.muted : nil) ?? mixed(0.40 + 0.25 * c), toward: fg, 0.25),
+            selection: firmer((own ? p.selection : nil) ?? bg.mixed(with: ac, 0.16 + 0.12 * c).hex, toward: ac, 0.15),
             border: (own ? p.border : nil) ?? mixed(0.06 + 0.12 * c),
             footer: step(0.025),
             card: step(0.045),

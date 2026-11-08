@@ -1,7 +1,8 @@
 import AppKit
 import EuclidCore
 
-/// A plugin view's items as tiles: a big icon (emoji, image or symbol) with the title under it.
+/// A plugin view's items as tiles: just a big icon (emoji, image or symbol). The selected tile's
+/// title is in the footer, so the grid isn't a wall of cut-off labels.
 /// Drawn in one view (only the visible rows), so a grid of 2,000 emoji costs nothing to show.
 /// The search field keeps the keyboard; the panel moves `selected` with the arrow keys.
 @MainActor
@@ -22,12 +23,13 @@ final class GridView: NSView {
     var onActivate: ((Int) -> Void)?
 
     private static let inset: CGFloat = 8
-    private static let caption: CGFloat = 20
+    /// Tiles are a little wider than tall.
+    private static let aspect: CGFloat = 0.82
 
     override var isFlipped: Bool { true }
 
     private var tileWidth: CGFloat { max(40, ((bounds.width - Self.inset * 2) / CGFloat(columns)).rounded(.down)) }
-    private var tileHeight: CGFloat { (tileWidth * 0.78).rounded() + Self.caption }
+    private var tileHeight: CGFloat { (tileWidth * Self.aspect).rounded() }
     private var rowCount: Int { (entries.count + columns - 1) / columns }
 
     func tileRect(_ i: Int) -> NSRect {
@@ -47,7 +49,7 @@ final class GridView: NSView {
         let width = newSize.width
         let tile = max(40, ((width - Self.inset * 2) / CGFloat(columns)).rounded(.down))
         let rows = CGFloat((entries.count + columns - 1) / columns)
-        let height = max(visible, Self.inset * 2 + rows * ((tile * 0.78).rounded() + Self.caption))
+        let height = max(visible, Self.inset * 2 + rows * (tile * Self.aspect).rounded())
         super.setFrameSize(NSSize(width: width, height: height))
     }
 
@@ -62,12 +64,6 @@ final class GridView: NSView {
         let first = max(0, Int((dirtyRect.minY - Self.inset) / h))
         let last = min(rowCount - 1, Int((dirtyRect.maxY - Self.inset) / h))
         guard first <= last else { return }
-        let para = NSMutableParagraphStyle()
-        para.alignment = .center
-        para.lineBreakMode = .byTruncatingTail
-        let captionAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: theme.subtext, .paragraphStyle: para,
-        ]
         for row in first...last {
             for col in 0..<columns {
                 let i = row * columns + col
@@ -81,13 +77,7 @@ final class GridView: NSView {
                     path.lineWidth = 1.5
                     path.stroke()
                 }
-                let item = entries[i].item
-                let glyph = NSRect(x: tile.minX + 8, y: tile.minY + 6, width: tile.width - 16,
-                                   height: tile.height - Self.caption - 8)
-                drawIcon(entries[i], in: glyph)
-                let captionRect = NSRect(x: tile.minX + 4, y: tile.maxY - Self.caption, width: tile.width - 8, height: 16)
-                (item.title as NSString).draw(with: captionRect, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
-                                              attributes: captionAttrs)
+                drawIcon(entries[i], in: tile.insetBy(dx: tile.width * 0.2, dy: tile.height * 0.2))
             }
         }
     }

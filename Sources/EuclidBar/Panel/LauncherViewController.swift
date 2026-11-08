@@ -847,19 +847,49 @@ final class LauncherViewController: NSViewController {
                 field = combo
             case .text: field = NSTextField()
             }
-            field.placeholderString = arg.placeholder.isEmpty ? (arg.optional ? "optional" : nil) : arg.placeholder
+            let placeholder = arg.placeholder.isEmpty ? (arg.optional ? "optional" : "") : arg.placeholder
+            field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
+                .font: NSFont.systemFont(ofSize: 13), .foregroundColor: theme.muted,
+            ])
             field.font = .systemFont(ofSize: 13)
-            if !(field is NSComboBox) { field.bezelStyle = .roundedBezel }
+            field.textColor = theme.text
             field.delegate = self
-            field.translatesAutoresizingMaskIntoConstraints = false
-            field.widthAnchor.constraint(equalToConstant: arg.type == .dropdown ? 150 : 140).isActive = true
-            argumentStack.addArrangedSubview(field)
+            argumentStack.addArrangedSubview(Self.fieldPlate(field, width: arg.type == .dropdown ? 150 : 140, theme: theme))
             argumentFields.append(field)
         }
         for (i, f) in argumentFields.enumerated() { f.nextKeyView = argumentFields[(i + 1) % argumentFields.count] }
         argumentStack.isHidden = false
         view.window?.makeFirstResponder(argumentFields.first)
         updateFooter()
+    }
+
+    /// A flat field in the panel's own colours (a chip-fill plate with a hairline edge), not the stock
+    /// white bezel. Dropdowns keep their arrow button, on the same plate.
+    private static func fieldPlate(_ field: NSTextField, width: CGFloat, theme: Theme) -> NSView {
+        let plate = NSView()
+        plate.wantsLayer = true
+        plate.layer?.cornerRadius = 6
+        plate.layer?.borderWidth = 1
+        plate.resolving {
+            plate.layer?.backgroundColor = theme.chipFill.cgColor
+            plate.layer?.borderColor = theme.border.cgColor
+        }
+        field.isBezeled = false
+        field.isBordered = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        if let combo = field as? NSComboBox { combo.isButtonBordered = false }
+        field.translatesAutoresizingMaskIntoConstraints = false
+        plate.translatesAutoresizingMaskIntoConstraints = false
+        plate.addSubview(field)
+        NSLayoutConstraint.activate([
+            plate.widthAnchor.constraint(equalToConstant: width),
+            plate.heightAnchor.constraint(equalToConstant: 26),
+            field.leadingAnchor.constraint(equalTo: plate.leadingAnchor, constant: 8),
+            field.trailingAnchor.constraint(equalTo: plate.trailingAnchor, constant: field is NSComboBox ? -2 : -8),
+            field.centerYAnchor.constraint(equalTo: plate.centerYAnchor),
+        ])
+        return plate
     }
 
     private func endArguments() {
@@ -1355,11 +1385,13 @@ final class LauncherViewController: NSViewController {
         typealias H = HintBar.Hint
         var lead: [H] = []
         var showTip = false
+        /// Text on the left instead of the tip (a grid's selected tile name).
+        var leadText: NSAttributedString?
         defer {
             leadHints.set(lead)
             leadHints.isHidden = lead.isEmpty
-            tipLabel.attributedStringValue = showTip ? tipText() : NSAttributedString()
-            tipLabel.isHidden = !showTip
+            tipLabel.attributedStringValue = leadText ?? (showTip ? tipText() : NSAttributedString())
+            tipLabel.isHidden = leadText == nil && !showTip
         }
         switch mode {
         case .search:
@@ -1399,6 +1431,11 @@ final class LauncherViewController: NSViewController {
             } else {
                 if case .plugin(let e)? = selectedRow {
                     let i = e.item
+                    if layout == .grid { // tiles have no captions: name the selected one here
+                        leadText = NSAttributedString(string: i.title, attributes: [
+                            .font: NSFont.systemFont(ofSize: 12.5, weight: .medium), .foregroundColor: theme.text,
+                        ])
+                    }
                     list.append(H(key: "↵", label: Self.enterLabel(i)))
                     if let n = i.actions?.count, views.last?.isActions != true { list.append(H(key: "⌘K", label: "\(n) actions")) }
                     if i.paste != nil, i.copy != nil { list.append(H(key: "⌘C", label: "Copy")) }
@@ -1800,7 +1837,8 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
         case .app(let item):
             show("app", image: IconCache.shared.icon(forPath: item.subtitle), item.title, tagged("Application", title: item.title))
         case .project(let p):
-            show("folder", image: IconCache.shared.icon(forPath: p.path), p.name,
+            // A folder glyph on a plate like every other row; the Finder icon of a repo is a blank page or folder.
+            show("folder", p.name,
                  detail: ProjectScanner.abbreviate((p.path as NSString).deletingLastPathComponent), tagged("Project", title: p.name))
         case .file(let f):
             show(f.isFolder ? "folder" : "doc", image: IconCache.shared.icon(forPath: f.path), f.name, detail: f.folder,
