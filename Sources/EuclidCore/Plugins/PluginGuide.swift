@@ -869,7 +869,7 @@ run   = "./clean.sh"               # open: the panel opened ($1 = the app you we
                                    # app: you switched apps ($1 = the app's name)
 
 [[key]]                            # a shortcut in the panel, on the selected result
-key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘1…) are taken
+key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘/, ⌘1…) are taken
 name = "Open in GitHub Desktop"    # shown in the footer when it applies
 when = ["github", "project"]       # optional: kinds it applies to, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
