@@ -6,7 +6,7 @@ import EuclidCore
 final class LauncherViewController: NSViewController {
     /// Largest size without the preview. The panel shrinks to fit fewer results.
     static let size = NSSize(width: 680, height: 440)
-    static let previewWidth: CGFloat = 400
+    static let previewWidth: CGFloat = 340
 
     // Wiring (set by PanelController).
     var onClose: (() -> Void)?
@@ -91,6 +91,16 @@ final class LauncherViewController: NSViewController {
     var licenceNote = "" { didSet { if isViewLoaded, licenceNote != oldValue { updateFooter() } } }
     /// One-off message (e.g. last action failed). Cleared when the panel hides.
     var notice: String? { didSet { if isViewLoaded { updateFooter() } } }
+    /// The empty bar's footer tip (PanelController rotates it per open).
+    var tip: Tip? { didSet { if isViewLoaded, tip != oldValue { updateFooter() } } }
+    /// You used something a tip shows ("filter", "preview"…), so it can retire.
+    var onFeatureUsed: ((String) -> Void)?
+    /// `[search] scopes`: typed prefixes that narrow the search ("c" → "clipboard").
+    var scopePrefixes: [String: String] = [:]
+    /// Note search is on (`[obsidian] vault`), so Notes is a source.
+    var hasNotes = false
+    /// Spotlight file search is on.
+    var hasFiles = true
 
     private enum Mode: Equatable {
         case search
@@ -100,6 +110,11 @@ final class LauncherViewController: NSViewController {
         case view
     }
     private var mode = Mode.search
+    /// ⇥ narrowed the search to one source; nil = everything.
+    private var scope: SearchScope?
+    /// The scope and text the last search actually ran with (a typed `[search] scopes` prefix sets both).
+    private var activeScope: SearchScope?
+    private var searchedText = ""
 
     /// Views a plugin opened, newest last; `esc` goes back one.
     private struct ViewState {
@@ -150,6 +165,15 @@ final class LauncherViewController: NSViewController {
     private var lastStats = ""
 
     private let background = NSView()
+    private let glowLine = NSView()
+    private let footerBar = NSView()
+    private let scopeChip = ScopeChipView()
+    private var fieldLeading: NSLayoutConstraint!
+    private var fieldAfterChip: NSLayoutConstraint!
+    /// Left side of the footer: ⇥ Filter, ⌘/ Shortcuts, and the tip.
+    private let leadHints = HintBar()
+    private let tipLabel = NSTextField(labelWithString: "")
+    private lazy var leadStack = NSStackView(views: [leadHints, tipLabel])
     private var effectView: NSView?
     private var installedGlass: Bool?
     private let content = NSView()
@@ -183,7 +207,8 @@ final class LauncherViewController: NSViewController {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(origin: .zero, size: Self.size))
+        let root = PanelRootView(frame: NSRect(origin: .zero, size: Self.size))
+        root.onAppearanceChange = { [weak self] in self?.applyLayerColors() }
         root.wantsLayer = true
         root.layer?.cornerRadius = 16
         root.layer?.masksToBounds = true
@@ -193,6 +218,11 @@ final class LauncherViewController: NSViewController {
         background.frame = root.bounds
         background.autoresizingMask = [.width, .height]
         root.addSubview(background)
+        // A 1 pt light along the top edge, inside the corners: the panel reads as a lit surface.
+        glowLine.wantsLayer = true
+        glowLine.frame = NSRect(x: 18, y: root.bounds.height - 1, width: root.bounds.width - 36, height: 1)
+        glowLine.autoresizingMask = [.width, .minYMargin]
+        root.addSubview(glowLine)
         content.frame = root.bounds
         content.autoresizingMask = [.width, .height]
 
@@ -237,6 +267,7 @@ final class LauncherViewController: NSViewController {
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay // only while scrolling, never over the selection
         scrollView.contentInsets = NSEdgeInsets(top: 4, left: 6, bottom: 4, right: 6)
         scrollView.automaticallyAdjustsContentInsets = false
 
@@ -251,10 +282,24 @@ final class LauncherViewController: NSViewController {
         gridScroll.drawsBackground = false
         gridScroll.hasVerticalScroller = true
         gridScroll.autohidesScrollers = true
+        gridScroll.scrollerStyle = .overlay
         gridScroll.isHidden = true
 
         let footerDivider = NSBox()
         footerDivider.boxType = .separator
+        // Areas are told apart by surfaces (the darker footer strip), not lines.
+        divider.isHidden = true
+        footerDivider.isHidden = true
+        footerBar.wantsLayer = true
+        tipLabel.lineBreakMode = .byTruncatingTail
+        tipLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        leadStack.spacing = 12
+        leadStack.alignment = .centerY
+        leadStack.setHuggingPriority(.init(750), for: .horizontal)
+        leadStack.setClippingResistancePriority(.defaultLow, for: .horizontal)
+        // The right-hand hints hug, so they sit against the speed readout.
+        hints.setHuggingPriority(.init(750), for: .horizontal)
+        scopeChip.isHidden = true
         footer.font = .systemFont(ofSize: 11)
         footer.textColor = .systemOrange
         footer.lineBreakMode = .byTruncatingTail
@@ -265,6 +310,8 @@ final class LauncherViewController: NSViewController {
         stats.setContentCompressionResistancePriority(.required, for: .horizontal)
         stats.setContentHuggingPriority(.required, for: .horizontal)
         emptyLabel.font = .systemFont(ofSize: 13)
+        emptyLabel.maximumNumberOfLines = 2
+        emptyLabel.alignment = .center
         emptyLabel.textColor = .tertiaryLabelColor
         previewDivider.boxType = .separator
         // A separator's intrinsic height is 1pt; stood on end it must not pull the
@@ -274,16 +321,24 @@ final class LauncherViewController: NSViewController {
         preview.isHidden = true
         previewDivider.isHidden = true
 
-        for v in [searchField, argumentStack, badgeStack, modeLabel, divider, scrollView, gridScroll, emptyLabel, footerDivider, footer, hints,
-                  stats, preview, previewDivider] {
+        for v in [footerBar, scopeChip, searchField, argumentStack, badgeStack, modeLabel, divider, scrollView, gridScroll, emptyLabel,
+                  footerDivider, footer, leadStack, hints, stats, preview, previewDivider] {
             v.translatesAutoresizingMaskIntoConstraints = false
             content.addSubview(v)
         }
         listTrailing = scrollView.trailingAnchor.constraint(equalTo: content.trailingAnchor)
         listCollapsed = scrollView.widthAnchor.constraint(equalToConstant: 0)
+        fieldLeading = searchField.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Theme.gutter - 2)
+        fieldAfterChip = searchField.leadingAnchor.constraint(equalTo: scopeChip.trailingAnchor, constant: 8)
         NSLayoutConstraint.activate([
             searchField.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            searchField.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 20),
+            fieldLeading,
+            scopeChip.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: Theme.gutter - 2),
+            scopeChip.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
+            footerBar.topAnchor.constraint(equalTo: footerDivider.topAnchor),
+            footerBar.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            footerBar.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            footerBar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
             searchField.trailingAnchor.constraint(equalTo: argumentStack.leadingAnchor, constant: -8),
             argumentStack.trailingAnchor.constraint(equalTo: badgeStack.leadingAnchor, constant: -8),
             argumentStack.centerYAnchor.constraint(equalTo: searchField.centerYAnchor),
@@ -313,18 +368,22 @@ final class LauncherViewController: NSViewController {
             previewDivider.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
             previewDivider.leadingAnchor.constraint(equalTo: scrollView.trailingAnchor),
             previewDivider.widthAnchor.constraint(equalToConstant: 1),
-            preview.topAnchor.constraint(equalTo: divider.bottomAnchor),
-            preview.bottomAnchor.constraint(equalTo: footerDivider.topAnchor),
-            preview.leadingAnchor.constraint(equalTo: previewDivider.trailingAnchor),
-            preview.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            // An inset card on its own surface, not a slab.
+            preview.topAnchor.constraint(equalTo: divider.bottomAnchor, constant: 4),
+            preview.bottomAnchor.constraint(equalTo: footerDivider.topAnchor, constant: -8),
+            preview.leadingAnchor.constraint(equalTo: previewDivider.trailingAnchor, constant: 2),
+            preview.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -8),
 
             footerDivider.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             footerDivider.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             footerDivider.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -33),
 
-            hints.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            hints.centerYAnchor.constraint(equalTo: content.bottomAnchor, constant: -16.5),
-            hints.trailingAnchor.constraint(lessThanOrEqualTo: stats.leadingAnchor, constant: -12),
+            leadStack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            leadStack.centerYAnchor.constraint(equalTo: content.bottomAnchor, constant: -16.5),
+            hints.leadingAnchor.constraint(greaterThanOrEqualTo: leadStack.trailingAnchor, constant: 16),
+            hints.centerYAnchor.constraint(equalTo: leadStack.centerYAnchor),
+            hints.trailingAnchor.constraint(equalTo: stats.leadingAnchor, constant: -16).withPriority(.init(999)),
+            hints.trailingAnchor.constraint(lessThanOrEqualTo: stats.leadingAnchor, constant: -16),
             footer.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 18),
             footer.centerYAnchor.constraint(equalTo: hints.centerYAnchor),
             footer.trailingAnchor.constraint(lessThanOrEqualTo: stats.leadingAnchor, constant: -12),
@@ -333,6 +392,7 @@ final class LauncherViewController: NSViewController {
 
             emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+            emptyLabel.widthAnchor.constraint(lessThanOrEqualTo: scrollView.widthAnchor, constant: -40),
         ])
         applyTheme()
         updateBadges()
@@ -346,22 +406,35 @@ final class LauncherViewController: NSViewController {
         if installedGlass != theme.glass { installBackground(glass: theme.glass) }
         view.appearance = theme.appearance ?? defaultAppearance
         setPlaceholder(placeholder)
-        view.layer?.borderColor = theme.border.cgColor
         content.wantsLayer = true
-        content.layer?.backgroundColor = theme.background?.cgColor
+        applyLayerColors()
         searchField.textColor = theme.text
         modeLabel.textColor = theme.subtext
         footer.textColor = theme.warning
         stats.textColor = theme.muted
         emptyLabel.textColor = theme.muted
         hints.theme = theme
+        leadHints.theme = theme
+        if let scope { scopeChip.show(scope, theme: theme) }
         preview.theme = theme
+        preview.applyCard()
         grid.theme = theme
         updatePreview()
         tableView.reloadData()
         if !rows.isEmpty { select(row: max(tableView.selectedRow, 0)) }
         updateFooter()
         notifySize()
+    }
+
+    /// Layer colours (dynamic ones resolve for light or dark): the border, the accent wash, the footer strip, the top light.
+    private func applyLayerColors() {
+        view.resolving {
+            view.layer?.borderColor = theme.border.cgColor
+            content.layer?.backgroundColor = (theme.background ?? theme.surfaceTint)?.cgColor
+            footerBar.layer?.backgroundColor = theme.footerFill.cgColor
+            glowLine.layer?.backgroundColor = theme.glow.cgColor
+        }
+        preview.applyCard()
     }
 
     /// In the theme's faintest colour; the system look keeps the stock placeholder.
@@ -446,6 +519,7 @@ final class LauncherViewController: NSViewController {
         endArguments()
         setPreview(open: false)
         views = []
+        scope = nil
         enterSearchMode(query: "")
         view.window?.makeFirstResponder(searchField)
     }
@@ -484,6 +558,10 @@ final class LauncherViewController: NSViewController {
     func demoTogglePreview() { setPreview(open: !previewOpen) }
     /// ↵ on the selected result, as if pressed (renders the argument fields).
     func demoActivate() { activateSelection() }
+    /// ⇥ in the search box.
+    func demoTab() { tabScope(backwards: false) }
+    /// ⌘/.
+    func demoShowShortcuts() { showCheatSheet() }
 
     // MARK: - Modes
 
@@ -493,8 +571,9 @@ final class LauncherViewController: NSViewController {
         views = []
         applyLayout()
         searchField.stringValue = query
-        setPlaceholder("Search apps, projects, files, clipboard, history…")
+        setPlaceholder("Search everything")
         modeLabel.stringValue = ""
+        updateScopeChip()
         runSearch()
         searchField.currentEditor()?.moveToEndOfDocument(nil)
     }
@@ -512,6 +591,8 @@ final class LauncherViewController: NSViewController {
         mode = .actions(query: query, clipID: clipID)
         views = []
         applyLayout()
+        updateScopeChip()
+        onFeatureUsed?("actions")
         searchField.stringValue = ""
         setPlaceholder("Filter actions…")
         modeLabel.stringValue = query.isEmpty ? "Actions" : "Actions · “\(query)”"
@@ -522,6 +603,70 @@ final class LauncherViewController: NSViewController {
     var query: String {
         if case .actions(let q, _) = mode { return q }
         return searchField.stringValue
+    }
+
+    // MARK: - Scopes (⇥)
+
+    /// Sources ⇥ can narrow to, in order: the built-in ones that have anything, then each plugin with items.
+    private var availableScopes: [SearchScope] {
+        var out: [SearchScope] = SearchScope.builtIn.filter { s in
+            switch s {
+            case .apps: true
+            case .files: hasFiles
+            case .clipboard: true
+            case .history: !historyProvider().isEmpty
+            case .projects: !projectsProvider().isEmpty
+            case .snippets: !snippets.isEmpty
+            case .notes: hasNotes
+            case .actions: !actions.isEmpty
+            case .plugin: false
+            }
+        }
+        var seen = Set<String>()
+        for e in pluginProvider().compactMap({ pluginEntry($0.id) }) where seen.insert(e.pluginID).inserted {
+            out.append(.plugin(id: e.pluginID, name: e.pluginName))
+        }
+        return out
+    }
+
+    /// Narrow to `newScope` (nil = everything) and search `query` in it.
+    private func setScope(_ newScope: SearchScope?, query: String) {
+        scope = newScope
+        if newScope != nil { onFeatureUsed?("filter") }
+        searchField.stringValue = query
+        updateScopeChip()
+        runSearch()
+        searchField.currentEditor()?.moveToEndOfDocument(nil)
+    }
+
+    private func updateScopeChip() {
+        let shown = mode == .search ? scope : nil
+        if let shown { scopeChip.show(shown, theme: theme) }
+        scopeChip.isHidden = shown == nil
+        fieldLeading.isActive = shown == nil
+        fieldAfterChip.isActive = shown != nil
+    }
+
+    /// ⇥ / ⇧⇥ in the search box: a typed source name ("clip⇥") jumps to it, otherwise the next source.
+    private func tabScope(backwards: Bool) {
+        let scopes = availableScopes
+        let typed = searchField.stringValue
+        if scope == nil, !backwards, let named = SearchScope.named(typed, among: scopes) {
+            setScope(named, query: "")
+        } else {
+            setScope(SearchScope.next(after: scope, in: scopes, backwards: backwards), query: typed)
+        }
+    }
+
+    /// ⌘/: every key, source, prefix and keyword, as a view (`esc` comes back).
+    private func showCheatSheet() {
+        onFeatureUsed?("shortcuts")
+        let text = CheatSheet.text(
+            scopes: availableScopes, prefixes: scopePrefixes, actions: actions.map(\.name),
+            aliases: aliases.targets.sorted { $0.key < $1.key }.map { (alias: $0.key, target: $0.value) },
+            snippets: snippets.compactMap { s in s.keyword.map { (keyword: $0, name: s.name) } },
+            pluginKeys: modKeys.map { (key: $0.key.key.symbols, name: $0.key.name) })
+        present(PluginView(layout: .detail, title: "Shortcuts", text: text, code: true), pluginID: "euclid", pluginName: "Euclid")
     }
 
     // MARK: - Plugin views
@@ -540,6 +685,7 @@ final class LauncherViewController: NSViewController {
         guard let top = views.last else { return }
         mode = .view
         applyLayout()
+        updateScopeChip()
         searchField.stringValue = text
         let fallback = top.view.layout == .detail ? "" : "Filter \(top.view.title.isEmpty ? top.pluginName : top.view.title)…"
         setPlaceholder(top.view.placeholder ?? fallback)
@@ -749,15 +895,29 @@ final class LauncherViewController: NSViewController {
     private func runSearch() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("search")
-        let text = searchField.stringValue
+        var text = searchField.stringValue
         var searched = 0
 
         switch mode {
         case .search:
             let all = itemsProvider()
-            if text.isEmpty {
+            // A typed `[search] scopes` prefix ("c kube") narrows like ⇥ does.
+            activeScope = scope
+            if scope == nil, !scopePrefixes.isEmpty, text.contains(" "),
+               let hit = SearchScope.prefixed(text, prefixes: scopePrefixes, among: availableScopes) {
+                activeScope = hit.0
+                text = hit.1
+            }
+            searchedText = text
+            if let only = activeScope {
+                let ranked = text.isEmpty ? listing(only, clips: all) : rankedRows(for: text, clips: all, only: only)
+                searched = ranked.searched
+                baseRows = ranked.rows // one source: the chip says which, so no section header
+                baseIsFallback = false
+            } else if text.isEmpty {
                 let clips = FuzzyMatcher.search(text, in: all).map(Row.clip)
-                baseRows = suggestions() + (clips.isEmpty ? [] : [.header("Clipboard")] + clips)
+                // The map of sources first: it shows what Euclid searches, and goes away on the first keystroke.
+                baseRows = [Row.scopeBar] + suggestions() + (clips.isEmpty ? [] : [.header("Clipboard")] + clips)
                 baseIsFallback = false
                 searched = all.count
             } else {
@@ -781,11 +941,17 @@ final class LauncherViewController: NSViewController {
                 } : [])
             }
             if pluginAnswers.query != text { pluginAnswers = (text, []) }
-            fileSearch?(text)
-            contentSearch?(text)
-            pluginAnswer?(text)
+            fileSearch?(wants(.files) ? text : "")
+            contentSearch?(wants(.notes) ? text : "")
+            pluginAnswer?(activeScope == nil ? text : "")
             rows = withAsyncRows(baseRows)
-            emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
+            if let only = activeScope {
+                emptyLabel.stringValue = text.isEmpty && (only == .files || only == .notes)
+                    ? "Type to search \(only.title.lowercased())."
+                    : "No matches in \(only.title). esc searches everything."
+            } else {
+                emptyLabel.stringValue = all.isEmpty && text.isEmpty ? "Copy something — it will show up here." : "No matches"
+            }
 
         case .actions(_, let clipID):
             fileSearch?("")
@@ -839,6 +1005,7 @@ final class LauncherViewController: NSViewController {
         emptyLabel.isHidden = !rows.isEmpty || layout == .detail
         let elapsed = ContinuousClock.now - start
         lastStats = layout == .detail ? "" : Self.stats(items: searched, elapsed: elapsed)
+        if mode == .search, let only = activeScope { lastStats = "\(only.title) · \(lastStats)" }
         updateFooter()
         notifySize()
         tableView.displayIfNeeded()
@@ -864,21 +1031,52 @@ final class LauncherViewController: NSViewController {
             byPlugin[e.pluginName, default: []].append(.plugin(e))
         }
         for name in answered { answers += [.header(name)] + byPlugin[name]! }
+        if activeScope != nil { answers = [] }
         var out = baseIsFallback ? answers + base : base + answers
-        if !contentHits.hits.isEmpty { out += [.header("Notes")] + contentHits.hits.map(Row.content) }
-        if !fileHits.hits.isEmpty { out += [.header("Files")] + fileHits.hits.map(Row.file) }
+        // In one source, no section header: the chip already says which.
+        let header = activeScope == nil
+        if wants(.notes), !contentHits.hits.isEmpty { out += (header ? [.header("Notes")] : []) + contentHits.hits.map(Row.content) }
+        if wants(.files), !fileHits.hits.isEmpty { out += (header ? [.header("Files")] : []) + fileHits.hits.map(Row.file) }
         return out
+    }
+
+    /// The search covers `source`: everything, or exactly it.
+    private func wants(_ source: SearchScope) -> Bool { activeScope == nil || activeScope == source }
+
+    /// A source with nothing typed yet: all of it, most useful first.
+    private func listing(_ only: SearchScope, clips: [SearchItem]) -> (rows: [Row], searched: Int) {
+        switch only {
+        case .apps:
+            let apps = appsProvider()
+            return (apps.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }.map(Row.app), apps.count)
+        case .clipboard: return (FuzzyMatcher.search("", in: clips).map(Row.clip), clips.count)
+        case .history:
+            let h = historyProvider()
+            return (h.prefix(50).map(Row.history), h.count)
+        case .projects:
+            let p = projectsProvider()
+            return (p.compactMap { project($0.id) }.map(Row.project), p.count)
+        case .snippets: return (snippetItems.indices.map { .snippet(snippetItems[$0], snippets[$0]) }, snippets.count)
+        case .actions: return (actionRows(filter: ""), actions.count)
+        case .plugin(let id, _):
+            let entries = pluginProvider().compactMap { pluginEntry($0.id) }.filter { $0.pluginID == id }
+            return (entries.map(Row.plugin), entries.count)
+        case .files, .notes: return ([], 0) // need words to search
+        }
     }
 
     /// Everything that matches, best first. A row's score is its text match, plus a
     /// bonus for sources you usually want (apps over clips), plus what it learned from
     /// your past picks for this query. Answers (calculator, conversions) and an exact
     /// alias or snippet keyword go first.
-    private func rankedRows(for text: String, clips: [SearchItem]) -> (rows: [Row], searched: Int) {
+    private func rankedRows(for text: String, clips: [SearchItem], only: SearchScope? = nil) -> (rows: [Row], searched: Int) {
         let learned = ranking?.bonuses(for: text) ?? [:]
         var scored: [(score: Int, source: Int, order: Int, row: Row)] = []
         var searched = 0
-        func add(_ items: [SearchItem], limit: Int, source: Int, boost: Int, _ make: (SearchItem) -> Row?) {
+        func add(_ items: @autoclosure () -> [SearchItem], limit: Int, source: Int, boost: Int, scope: SearchScope?,
+                 _ make: (SearchItem) -> Row?) {
+            if let only, only != scope { return }
+            let items = items()
             searched += items.count
             for (i, hit) in FuzzyMatcher.scoredSearch(text, in: items, limit: limit).enumerated() {
                 guard let row = make(hit.item) else { continue }
@@ -886,27 +1084,37 @@ final class LauncherViewController: NSViewController {
                 scored.append((hit.score + boost + bonus, source, i, row))
             }
         }
-        add(appsProvider(), limit: 20, source: 0, boost: 80) { .app($0) }
-        add(projectsProvider(), limit: 20, source: 1, boost: 40) { project($0.id).map(Row.project) }
-        add(pluginProvider(), limit: 15, source: 9, boost: 30) { pluginEntry($0.id).map(Row.plugin) }
-        add(snippetItems, limit: 9, source: 3, boost: 20) { item in snippets.indices.contains(item.id) ? .snippet(item, snippets[item.id]) : nil }
-        let actionItems = actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }
-        add(actionItems, limit: 9, source: 4, boost: -50) { .action(number: $0.id + 1, actions[$0.id]) }
-        add(clips, limit: 50, source: 5, boost: 0) { .clip($0) }
-        let commandItems = commands.enumerated().map { SearchItem(id: $0.offset, title: $0.element.title) }
-        add(commandItems, limit: 5, source: 7, boost: -50) { .command(commands[$0.id]) }
-        add(historyProvider(), limit: 30, source: 6, boost: 0) { .history($0) }
+        add(appsProvider(), limit: 20, source: 0, boost: 80, scope: .apps) { .app($0) }
+        add(projectsProvider(), limit: 20, source: 1, boost: 40, scope: .projects) { project($0.id).map(Row.project) }
+        if case .plugin(let id, _)? = only {
+            // One plugin's items only: filter before matching, so its limit isn't spent on other plugins.
+            let mine = pluginProvider().filter { pluginEntry($0.id)?.pluginID == id }
+            add(mine, limit: 50, source: 9, boost: 30, scope: only) { pluginEntry($0.id).map(Row.plugin) }
+        } else {
+            add(pluginProvider(), limit: 15, source: 9, boost: 30, scope: nil) { pluginEntry($0.id).map(Row.plugin) }
+        }
+        add(snippetItems, limit: 9, source: 3, boost: 20, scope: .snippets) { item in
+            snippets.indices.contains(item.id) ? .snippet(item, snippets[item.id]) : nil
+        }
+        add(actions.enumerated().map { SearchItem(id: $0.offset, title: $0.element.name) }, limit: 9, source: 4, boost: -50,
+            scope: .actions) { .action(number: $0.id + 1, actions[$0.id]) }
+        add(clips, limit: 50, source: 5, boost: 0, scope: .clipboard) { .clip($0) }
+        add(commands.enumerated().map { SearchItem(id: $0.offset, title: $0.element.title) }, limit: 5, source: 7, boost: -50,
+            scope: nil) { .command(commands[$0.id]) }
+        add(historyProvider(), limit: 30, source: 6, boost: 0, scope: .history) { .history($0) }
 
         var ranked = scored.sorted {
             $0.score != $1.score ? $0.score > $1.score : $0.source != $1.source ? $0.source < $1.source : $0.order < $1.order
         }.map(\.row)
 
         var pinned: [Row] = []
-        if let result = Calculator.evaluate(text) { pinned.append(.calc(result, expression: text)) }
-        pinned += DevTransforms.evaluate(text).map(Row.transform)
         var top: [Row] = []
-        if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) { top.append(row) }
-        if let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
+        if only == nil { // answers and aliases belong to the whole search
+            if let result = Calculator.evaluate(text) { pinned.append(.calc(result, expression: text)) }
+            pinned += DevTransforms.evaluate(text).map(Row.transform)
+            if let match = aliases.match(text), let row = resolve(title: match.target, argument: match.argument) { top.append(row) }
+        }
+        if only == nil || only == .snippets, let i = snippets.firstIndex(where: { $0.keyword?.lowercased() == text.lowercased() }) {
             top.append(.snippet(snippetItems[i], snippets[i]))
         }
         let topKeys = Set(top.map(\.key))
@@ -973,21 +1181,21 @@ final class LauncherViewController: NSViewController {
 
     /// Spotlight answered. Append below the instant rows, keeping the selection.
     func setFileResults(_ hits: [FileHit], for text: String) {
-        guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
+        guard isViewLoaded, case .search = mode, text == searchedText else { return }
         fileHits = (text, hits)
         asyncResultsChanged()
     }
 
     /// The page/note index answered.
     func setContentResults(_ hits: [ContentHit], for text: String) {
-        guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
+        guard isViewLoaded, case .search = mode, text == searchedText else { return }
         contentHits = (text, hits)
         asyncResultsChanged()
     }
 
     /// Plugin answers for `text` arrived. `reveal`: select the first and open the preview (an AI reply to read).
     func setPluginAnswers(_ entries: [PluginService.Entry], for text: String, reveal: Bool = false) {
-        guard isViewLoaded, case .search = mode, text == searchField.stringValue else { return }
+        guard isViewLoaded, case .search = mode, text == searchedText else { return }
         pluginAnswers = (text, entries)
         asyncResultsChanged()
         guard reveal, let first = entries.first, let i = rows.firstIndex(where: { $0.key == Row.plugin(first).key }) else { return }
@@ -1001,11 +1209,27 @@ final class LauncherViewController: NSViewController {
         guard newRows.map(\.key) != rows.map(\.key) else { return }
         // Still on the first fallback action: the user hasn't picked it, so let an answer above it take ↵.
         let untouched = baseIsFallback && tableView.selectedRow == rows.firstIndex { !$0.isHeader }
+        let before = Set(rows.map(\.key))
         rows = newRows
         tableView.reloadData()
         emptyLabel.isHidden = !rows.isEmpty
         select(row: untouched ? 0 : previous.flatMap { key in rows.firstIndex { $0.key == key } } ?? 0)
         notifySize()
+        fadeIn(rows.indices.filter { !before.contains(rows[$0].key) })
+    }
+
+    /// Rows that arrived on their own (files, notes, plugin answers) fade in over 80 ms instead of popping.
+    /// The only motion in the panel: nothing you start from the keyboard animates.
+    private func fadeIn(_ indices: [Int]) {
+        guard !indices.isEmpty, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        tableView.layoutSubtreeIfNeeded()
+        let views = indices.compactMap { tableView.rowView(atRow: $0, makeIfNecessary: false) }
+        views.forEach { $0.alphaValue = 0 }
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.08
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            views.forEach { $0.animator().alphaValue = 1 }
+        }
     }
 
     private func iconLoaded(_ path: String) {
@@ -1034,13 +1258,17 @@ final class LauncherViewController: NSViewController {
 
     private func notifySize() { onPreferredSizeChange?(preferredSize) }
 
-    private func height(of row: Row) -> CGFloat { row.isHeader ? theme.headerHeight : theme.rowHeight }
+    private func height(of row: Row) -> CGFloat {
+        if row.isScopeBar { return 40 }
+        return row.isHeader ? theme.headerHeight : theme.rowHeight
+    }
 
     // MARK: - Preview
 
     private func setPreview(open: Bool) {
         guard open != previewOpen, !(open && (layout == .grid || layout == .detail)) else { return }
         previewOpen = open
+        if open { onFeatureUsed?("preview") }
         preview.isHidden = !open
         previewDivider.isHidden = !open
         listTrailing.isActive = !open
@@ -1114,13 +1342,31 @@ final class LauncherViewController: NSViewController {
             footer.stringValue = message
             footer.isHidden = false
             hints.isHidden = true
+            leadStack.isHidden = true
             return
         }
         footer.isHidden = true
         hints.isHidden = false
+        leadStack.isHidden = false
         typealias H = HintBar.Hint
+        var lead: [H] = []
+        var showTip = false
+        defer {
+            leadHints.set(lead)
+            leadHints.isHidden = lead.isEmpty
+            tipLabel.attributedStringValue = showTip ? tipText() : NSAttributedString()
+            tipLabel.isHidden = !showTip
+        }
         switch mode {
         case .search:
+            // Two hints on the right (what ↵ does, ⌘K for the rest); ⌘/ lists every other key.
+            if searchField.stringValue.isEmpty, scope == nil {
+                lead = [H(key: "⌘/", label: "Shortcuts")]
+                showTip = tip != nil
+            } else {
+                lead = [H(key: "⇥", label: scope == nil ? "Filter" : "Next source")]
+                if scope != nil { lead.append(H(key: "esc", label: "All sources")) }
+            }
             var list: [H] = []
             switch selectedRow {
             case .clip?, .snippet?: list.append(H(key: "↵", label: "Paste"))
@@ -1135,18 +1381,10 @@ final class LauncherViewController: NSViewController {
             case nil, .header?: break
             default: list.append(H(key: "↵", label: "Run"))
             }
-            if selectedRow != nil { list.append(H(key: previewOpen ? "esc" : "→", label: previewOpen ? "Close preview" : "Preview")) }
-            if let first = actions.first { list.append(H(key: "⌘↵", label: first.name)) }
+            if previewOpen { list.append(H(key: "esc", label: "Close preview")) }
             if case .project? = selectedRow { list.append(H(key: "⌘K", label: "Tasks & actions")) }
             else if case .plugin(let e)? = selectedRow, let n = e.item.actions?.count { list.append(H(key: "⌘K", label: "\(n) actions")) }
             else { list.append(H(key: "⌘K", label: "Actions")) }
-            if let item = selectedRow.flatMap(modItem(for:)), let k = modKeys.first(where: { $0.key.applies(to: item) }) {
-                list.append(H(key: k.key.key.symbols, label: k.key.name))
-            }
-            if case .clip? = selectedRow { list += [H(key: "⌘C", label: "Copy"), H(key: "⌘⌫", label: "Delete")] }
-            if case .history? = selectedRow { list.append(H(key: "⌘C", label: "Copy URL")) }
-            if case .plugin(let e)? = selectedRow, (e.item.copy ?? e.item.open) != nil { list.append(H(key: "⌘C", label: "Copy")) }
-            if selectedRow?.path != nil { list.append(H(key: "⌘C", label: "Copy path")) }
             hints.set(list)
         case .actions:
             hints.set([H(key: "↵", label: "Run"), H(key: "1–9", label: "Run"), H(key: "esc", label: "Back")])
@@ -1169,6 +1407,20 @@ final class LauncherViewController: NSViewController {
         if argumentEntry != nil {
             hints.set([H(key: "tab", label: "Next field"), H(key: "↵", label: "Run"), H(key: "esc", label: "Cancel")])
         }
+    }
+
+    /// "Try 12*7  #7c5cff  1697040000": the tip's words, then its examples as code.
+    private func tipText() -> NSAttributedString {
+        guard let tip else { return NSAttributedString() }
+        let out = NSMutableAttributedString(string: tip.text, attributes: [
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: theme.muted,
+        ])
+        for example in tip.examples {
+            out.append(NSAttributedString(string: "   " + example, attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .regular), .foregroundColor: theme.subtext,
+            ]))
+        }
+        return out
     }
 
     // MARK: - Selection & activation
@@ -1253,8 +1505,8 @@ final class LauncherViewController: NSViewController {
         case .app(let item): onOpenApp?(item.subtitle)
         case .project(let p): onOpenProject?(p.path)
         case .file(let f): onOpenFile?(f.path)
-        case .calc(let result, _): onCopyText?(result.text)
-        case .transform(let t): onCopyText?(t.value)
+        case .calc(let result, _): onFeatureUsed?("answers"); onCopyText?(result.text)
+        case .transform(let t): onFeatureUsed?("answers"); onCopyText?(t.value)
         case .snippet(_, let s): onPasteText?(s.expanded(clipboard: Self.clipboardText))
         case .content(let c): onOpenNote?(c.ref)
         case .task(let t, _): onRunTask?(t)
@@ -1326,7 +1578,12 @@ final class LauncherViewController: NSViewController {
             setPreview(open: !previewOpen)
             return true
         case (.command, kVK_Return), (.command, kVK_ANSI_KeypadEnter):
+            onFeatureUsed?("first-action")
             runAction(number: 1)
+            return true
+        case (.command, kVK_ANSI_Slash):
+            guard mode == .search else { return false }
+            showCheatSheet()
             return true
         case (.command, _) where digit != nil:
             runAction(number: digit!)
@@ -1406,8 +1663,9 @@ final class LauncherViewController: NSViewController {
     /// The file whose icon a row shows (beyond `Row.path`): a copied file's first path.
     private func iconPath(_ row: Row) -> String? {
         if case .plugin(let e) = row { return PluginIcon.appPath(e.item.icon) }
-        guard case .clip(let item) = row, let c = clip(item.id), c.kind == .files else { return nil }
-        return c.paths.first
+        guard case .clip(let item) = row, let c = clip(item.id) else { return nil }
+        if c.kind == .files { return c.paths.first }
+        return c.sourceBundleID.map { "bundle:\($0)" }
     }
 }
 
@@ -1445,8 +1703,16 @@ extension LauncherViewController: NSTextFieldDelegate {
             else { return false }
             setPreview(open: true)
         case #selector(NSResponder.insertNewline(_:)): activateSelection()
+        case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            guard mode == .search else { return false }
+            tabScope(backwards: selector == #selector(NSResponder.insertBacktab(_:)))
+        case #selector(NSResponder.deleteBackward(_:)):
+            // ⌫ on an empty search drops the source filter.
+            guard mode == .search, scope != nil, textView.string.isEmpty else { return false }
+            setScope(nil, query: "")
         case #selector(NSResponder.cancelOperation(_:)):
             if previewOpen { setPreview(open: false) }
+            else if mode == .search, scope != nil { setScope(nil, query: searchField.stringValue) }
             else if case .actions = mode { enterSearchMode(query: query) }
             else if mode == .view { popView() }
             else { onClose?() }
@@ -1477,6 +1743,13 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let r = rows[row]
+        if r.isScopeBar {
+            let cell = tableView.makeView(withIdentifier: ScopeBarCell.id, owner: nil) as? ScopeBarCell ?? ScopeBarCell()
+            cell.configure(availableScopes, theme: theme)
+            cell.onPick = { [weak self] scope in self?.setScope(scope, query: "") }
+            cell.onMore = { [weak self] in self?.showCheatSheet() }
+            return cell
+        }
         if case .header(let title) = r {
             let cell = tableView.makeView(withIdentifier: SectionHeaderCell.id, owner: nil) as? SectionHeaderCell ?? SectionHeaderCell()
             cell.configure(title, theme: theme)
@@ -1497,11 +1770,16 @@ extension LauncherViewController: NSTableViewDataSource, NSTableViewDelegate {
             switch c?.kind {
             case .image?: show("photo", image: c.flatMap(clipImage), item.title, ResultCell.clipSubtitle(item))
             case .files?: show("doc.on.doc", image: c?.paths.first.flatMap { IconCache.shared.icon(forPath: $0) }, item.title, ResultCell.clipSubtitle(item))
-            default: show("doc.on.clipboard", item.title, ResultCell.clipSubtitle(item))
+            default:
+                // The app it came from, as its icon: five copies from Ghostty read as Ghostty at a glance.
+                let app = c?.sourceBundleID.flatMap { IconCache.shared.icon(forBundleID: $0) }
+                show("doc.on.clipboard", image: app, item.title, ResultCell.clipSubtitle(item, showsApp: app != nil))
             }
         case .history(let item):
             let host = URL(string: historyURL(item.id) ?? "")?.host()?.lowercased() ?? ""
-            show("globe", image: favicon(host), item.title, ResultCell.historySubtitle(item))
+            let browser = item.subtitle.components(separatedBy: " · ").first ?? ""
+            show("globe", image: favicon(host), item.title, detail: host,
+                 [browser, ResultCell.historyAge(item)].filter { !$0.isEmpty }.joined(separator: " · "))
         case .action(let n, let action):
             let key = n <= 9 ? (inActions ? "\(n)" : "⌘\(n)") : ""
             show("bolt.fill", action.name, tagged(key, title: action.name))

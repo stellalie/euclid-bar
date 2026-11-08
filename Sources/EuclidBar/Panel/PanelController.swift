@@ -64,6 +64,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.contentViewController = content
         panel.setContentSize(LauncherViewController.size)
         panel.delegate = self
+        // Footer tips retire once you've used what they show.
+        content.onFeatureUsed = { feature in
+            var used = UserDefaults.standard.stringArray(forKey: PanelController.usedFeaturesKey) ?? []
+            guard !used.contains(feature) else { return }
+            used.append(feature)
+            UserDefaults.standard.set(used, forKey: PanelController.usedFeaturesKey)
+        }
         content.onClose = { [weak self] in self?.hide() }
         content.onPaste = { [weak self] id in self?.paste(id: id) }
         content.onCopy = { [weak self] id in self?.copy(id: id) }
@@ -189,6 +196,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.snippets = settings.snippets
         content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
+        content.scopePrefixes = settings.scopePrefixes
+        content.hasNotes = settings.obsidianVault != nil
+        content.hasFiles = settings.filesEnabled
         contentSearch.configure(vault: settings.obsidianVault)
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
         content.badges = plugins.badges
@@ -420,6 +430,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func toggle() { panel.isVisible ? hide() : show() }
 
+    private static let tipOpensKey = "tipOpens"
+    private static let usedFeaturesKey = "usedFeatures"
+
     func show() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("show")
@@ -429,6 +442,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         projects.refreshIfStale()
         plugins.refreshIfStale()
         contentSearch.syncNotesIfStale()
+        let opens = UserDefaults.standard.integer(forKey: PanelController.tipOpensKey)
+        UserDefaults.standard.set(opens + 1, forKey: PanelController.tipOpensKey)
+        content.tip = Tips.pick(opens: opens, used: Set(UserDefaults.standard.stringArray(forKey: PanelController.usedFeaturesKey) ?? []))
         content.prepareForShow() // sizes the panel for its first results
         if let message = welcome {
             content.notice = message
@@ -467,22 +483,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         return NSPoint(x: frame.midX, y: frame.minY + frame.height * 0.66 + full.height / 2)
     }
 
-    /// Fit the panel to its results. Instant while hidden; a quick 80 ms ease while visible,
-    /// animated by Core Animation so typing never waits on it.
+    /// Fit the panel to its results. Shrinking, the preview's width and anything while hidden snap at once;
+    /// only growing taller eases (120 ms, Core Animation, so typing never waits on it), so new rows slide in
+    /// instead of the panel jumping.
     private func resize(to size: NSSize) {
         let top = anchor ?? topCenter()
         let frame = NSRect(x: (top.x - size.width / 2).rounded(), y: (top.y - size.height).rounded(), width: size.width, height: size.height)
         guard frame != panel.frame else { return }
-        if panel.isVisible {
+        let grows = frame.width == panel.frame.width && frame.height > panel.frame.height
+        if panel.isVisible, grows, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.08
+                ctx.duration = 0.12
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().setFrame(frame, display: true)
             } completionHandler: { [weak self] in
                 MainActor.assumeIsolated { self?.panel.invalidateShadow() }
             }
         } else {
-            panel.setFrame(frame, display: false)
+            panel.setFrame(frame, display: panel.isVisible)
+            if panel.isVisible { panel.invalidateShadow() }
         }
     }
 }

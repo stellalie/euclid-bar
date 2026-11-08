@@ -66,15 +66,18 @@ limit   = 8
 [search]
 # Shown first when the search box is empty, by name (apps, projects or actions).
 favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
+# ⇥ narrows the search to one source. Optional typed prefixes do the same: "c kube" = Clipboard.
+# scopes = { c = "clipboard", f = "files", h = "history" }
 
 # Look and feel.
 [appearance]
 theme      = "default"           # or dracula, nord, tokyo-night, catppuccin-mocha, catppuccin-latte, gruvbox-dark,
                                  # gruvbox-light, solarized-dark, solarized-light, monokai, or themes/<name>.toml
-# accent   = "#7c5cff"           # match highlight; default: the theme's, or your system accent colour
+# accent   = "#7c5cff"           # selection and caret; default: the theme's, or your system accent colour
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
+contrast   = 50                  # 0–100: how far apart text, dim text and borders sit
 
 # Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
 [obsidian]

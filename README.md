@@ -94,15 +94,19 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 **And the rest.**
 
-- 👀 **Preview pane** (`→` or `⌘Y`): the full clip, images, Quick Look for files, a project's README,
-  a note's text.
+- 🔎 **Filter by source.** `⇥` narrows to Apps, Files, Clipboard, History, Projects, Snippets, Notes
+  or any plugin; type a source's name first (`clip⇥`) to jump there. The empty bar shows every source
+  as a chip, and `⌘/` lists every key, source, alias and keyword from your config.
+- 👀 **Preview card** (`→` or `⌘Y`): the full clip with light syntax colour, images, Quick Look for
+  files, a project's README, a note's text.
 - 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
   anything a short **alias** and pin **favorites** to the empty box.
 - 🤖 **Agent-ready.** Nothing matches? Your actions show up instead, so a question is one `↵` away
   from `pi`, `claude` or any agent in a new Ghostty tab. And your agents can [search what
   Euclid knows](#your-agents-can-search-it-too) over MCP.
-- 🎨 **Sharp and light.** Liquid Glass on macOS 26, a panel that grows with its results, your own
-  accent colour, `comfortable` or `compact` density.
+- 🎨 **Sharp and light.** Liquid Glass on macOS 26, a lit two-tone panel that grows with its results,
+  each clip shown with the icon of the app it came from, your own accent colour, `comfortable` or
+  `compact` density, and no animation on anything you do from the keyboard.
 - 🧛 **[Themes](#themes)** from the editor schemes you already use: Dracula, Nord, Tokyo Night,
   Catppuccin, Gruvbox, Solarized, Monokai, or your own in one small TOML file.
 
@@ -110,7 +114,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screens/02-search-sections.png" alt="Search results in sections"><br><sub><b>Sections.</b> Matched letters highlighted, search time in the footer.</sub></td>
+<td width="50%"><img src="docs/screens/02-search-sections.png" alt="Search results in sections"><br><sub><b>Sections.</b> Matched letters in bold, search time in the footer.</sub></td>
 <td width="50%"><img src="docs/screens/03-epoch.png" alt="Epoch answer"><br><sub><b>Answers.</b> Paste an epoch, get the date.</sub></td>
 </tr>
 <tr>
@@ -139,6 +143,9 @@ own hotkey in `[hotkeys]`; its row shows it.
 | `→` / `⌘Y` | Preview the selection |
 | `⌘C` | Copy the clip, or a page's URL, or an app, project or file's path |
 | `⌘⌫` | Delete the selected clip |
+| `⇥` / `⇧⇥` | Narrow to one source (Apps, Files, Clipboard…), or the next one; `clip⇥` jumps straight there |
+| `⌫` / `esc` | On an empty search: drop the filter · `esc` always does |
+| `⌘/` | Every key, source, alias and keyword, from your config |
 
 ## Install
 
@@ -267,16 +274,18 @@ limit   = 8
 
 [search]
 favorites = ["Ghostty", "euclid-bar"]         # shown first when the box is empty
+scopes    = { c = "clipboard", f = "files" }  # optional: "c kube" searches only the clipboard
 
 [aliases]
 code = "Visual Studio Code"                   # type `code` ↵
 
 [appearance]
 theme      = "default"                        # or a built-in / your own: see Themes below
-accent     = "#7c5cff"                        # match highlight, over the theme's (default: system accent)
+accent     = "#7c5cff"                        # selection and caret, over the theme's (default: system accent)
 density    = "comfortable"                    # or "compact"
 glass      = true                             # Liquid Glass on macOS 26+
 show_speed = true                             # "12,431 items · 0.6 ms" in the footer
+contrast   = 50                               # 0–100: how far apart text, dim text and borders sit
 
 [obsidian]
 vault = "~/Notes"
@@ -354,7 +363,12 @@ theme = "tokyo-night"
 | `dracula` · `nord` · `tokyo-night` · `catppuccin-mocha` · `gruvbox-dark` · `solarized-dark` · `monokai` | Dark |
 | `catppuccin-latte` · `gruvbox-light` · `solarized-light` | Light |
 
-`accent`, `density`, `glass` and `show_speed` still apply on top of any theme.
+`accent`, `density`, `glass`, `show_speed` and `contrast` still apply on top of any theme.
+
+A theme only needs `background`, `text` and `accent`: every other colour (dim text, borders, the
+selection, the footer strip, the preview card) is mixed from those three in OKLab, so any base looks
+even. `contrast` (0–100, default 50) spreads those levels apart or pulls them together; moved off 50
+it also overrides the dim colours a theme picked itself.
 
 **Switch any time.** Change `theme` in `config.toml` and save: the panel restyles at once, no
 restart. Back to the system look with `theme = "default"`.
@@ -367,7 +381,7 @@ built-in with `base` and change only what you want, or set everything:
 # base     = "gruvbox-dark" # optional: start from a built-in, set only what changes
 background = "#1d2021"     # required without a base, with text and accent
 text       = "#ebdbb2"
-accent     = "#fabd2f"     # match highlight and selection
+accent     = "#fabd2f"     # selection ring, caret, filter chip
 subtext    = "#d5c4a1"     # details and hints (default: text, dimmer)
 muted      = "#928374"     # section titles, faintest text (default: text, dimmer still)
 selection  = "#504945"     # selected row (default: accent, faint)

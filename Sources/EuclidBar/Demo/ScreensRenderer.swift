@@ -31,6 +31,7 @@ enum ScreensRenderer {
         let window = offscreenWindow(for: vc)
         let view = vc.view
         vc.defaultAppearance = NSAppearance(named: .darkAqua)
+        vc.tip = Tips.all[0]
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
@@ -275,6 +276,20 @@ enum ScreensRenderer {
         vc.present(PluginView(layout: .list, title: "web", placeholder: "Actions for web…", items: webActions),
                    pluginID: "docker", pluginName: "Docker", isActions: true)
         try step("⌘K on a row: its own actions (an item's \"actions\"); ↵ runs one and goes back", hold: 2.0, name: "item-actions")
+        vc.prepareForShow()
+
+        // ⇥ filters and ⌘/ (last, so earlier shot numbers stay put).
+        vc.demoSetQuery("")
+        try type("clip", caption: "Type a source's name…")
+        vc.demoTab()
+        try step("…and ⇥: only the clipboard", hold: 1.4)
+        try type("kube", caption: "⇥ narrows to one source; esc goes back to everything")
+        try step("⇥ narrows to one source; esc goes back to everything", hold: 2.0, name: "filter")
+        vc.demoTogglePreview()
+        try step("→ previews it: a card with light syntax colour", hold: 2.0, name: "filter-preview")
+        vc.prepareForShow()
+        vc.demoShowShortcuts()
+        try step("⌘/ lists every key, source, alias and keyword, from your config", hold: 2.0, name: "shortcuts")
         vc.prepareForShow()
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
