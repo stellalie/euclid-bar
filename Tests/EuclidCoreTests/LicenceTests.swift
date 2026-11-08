@@ -66,9 +66,9 @@ import Testing
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let day: TimeInterval = 86_400
         let early = LicenceState(firstRun: start)
-        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: nil, now: start + 90 * day) == .beta, "still in beta")
+        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: nil, now: start + 90 * day) == .free, "free while betaEnds is nil")
         let launch = start + 60 * day
-        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: launch, now: start + 400 * day) == .beta, "beta users keep it")
+        #expect(Evaluation.status(early, publicKey: publicKey, betaEnds: launch, now: start + 400 * day) == .free, "early installs keep it")
         #expect(!Evaluation.shouldRemind(early, publicKey: publicKey, betaEnds: launch, now: start + 400 * day))
 
         let late = LicenceState(firstRun: launch + day)

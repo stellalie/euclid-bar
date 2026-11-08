@@ -31,6 +31,7 @@ enum ScreensRenderer {
         let window = offscreenWindow(for: vc)
         let view = vc.view
         vc.defaultAppearance = NSAppearance(named: .darkAqua)
+        vc.tip = Tips.all[0]
         vc.demoSetQuery("")
 
         var frames: [Frame] = []
@@ -85,6 +86,9 @@ enum ScreensRenderer {
         }
 
         try step("Empty box: suggestions, plugin picks, clipboard", hold: 1.8, name: "empty")
+        vc.demoPageScopes(true)
+        try step("+ N more: the rest of the sources, then every shortcut", hold: 1.4)
+        vc.demoPageScopes(false)
         vc.demoSetQuery("")
         try type("rebase", caption: "Sections, matched letters highlighted, search speed in the footer")
         vc.setContentResults([
@@ -101,10 +105,10 @@ enum ScreensRenderer {
         try step("JSON: pretty or minified", hold: 1.4, name: "json")
 
         vc.demoSetQuery("docker")
-        vc.demoSelect(row: 0)
-        try step("→ opens the preview", hold: 0.8)
-        vc.demoTogglePreview()
-        try step("→ opens the preview", hold: 2.0, name: "preview-clip")
+        vc.demoSelect(row: 1)
+        try step("↑/↓ through results opens the preview", hold: 0.8)
+        vc.demoMove(by: -1) // back up to the clip: the site's preview clip shows its code card
+        try step("↑/↓ through results opens the preview", hold: 2.0, name: "preview-clip")
         vc.demoTogglePreview()
         try step("esc closes it", hold: 0.8)
 
@@ -188,6 +192,18 @@ enum ScreensRenderer {
         try step("A mod's [[key]]: ⌘G opens the selected PR in GitHub Desktop", hold: 1.8, name: "mod-key")
         vc.modKeys = []
 
+        vc.commands += AppCommand.settingsWithAI(problems: true)
+        vc.demoSetQuery("")
+        try type("settings", caption: "Change settings in plain words with any AI chat")
+        try step("Change settings in plain words with any AI chat", hold: 2.0, name: "settings-ai")
+
+        try SettingsDialogs.renderFlow(to: dir, snapshot: DemoRenderer.snapshot) { image, name, caption in
+            var size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+            let room: CGFloat = 540 // above the caption
+            if size.height > room { size = NSSize(width: (size.width * room / size.height).rounded(), height: room) }
+            try writePNG(compose(image, size: size, caption: caption), to: dir.appendingPathComponent("\(name).png"))
+        }
+
         // Every built-in theme, last so the numbers of the shots above stay put.
         for name in Themes.names.dropFirst() {
             var look = Appearance()
@@ -199,12 +215,111 @@ enum ScreensRenderer {
         }
         vc.theme = Theme(Appearance())
 
+        // Plugin views, typed arguments and --pick (after the themes, so earlier shot numbers stay put).
+        let emoji = sampleEmoji()
+        vc.demoSetQuery("")
+        vc.present(PluginView(layout: .grid, title: "Emoji", placeholder: "Search emoji…", columns: 8, items: emoji),
+                   pluginID: "emoji", pluginName: "Emoji")
+        try step("emoji plugin: a script prints {\"view\":\"grid\"} and its items; ↵ pastes", hold: 2.0, name: "view-grid")
+        try type("heart", caption: "Typing filters the grid")
+        try step("Typing filters the grid", hold: 1.6, name: "view-grid-filter")
+        vc.prepareForShow()
+        vc.present(PluginView(layout: .detail, title: "Weather", text: sampleWeather, code: true), pluginID: "raycast", pluginName: "Raycast scripts")
+        try step("raycast plugin: a fullOutput script command, shown as a detail view", hold: 2.0, name: "view-detail")
+        vc.prepareForShow()
+        let weather = PluginItem(title: "Weather", subtitle: "Web", run: "./run.sh weather.sh", icon: "🌤", label: "Script", arguments: [
+            PluginArgument(placeholder: "City"),
+            PluginArgument(type: .dropdown, placeholder: "Units", optional: true,
+                           data: [.init(title: "Metric", value: "m"), .init(title: "US", value: "u")]),
+        ])
+        vc.present(PluginView(layout: .list, title: "Raycast scripts", items: [weather]), pluginID: "raycast", pluginName: "Raycast scripts")
+        vc.demoActivate()
+        try step("Typed arguments: ↵ asks for a script's @raycast.argument fields, tab moves, ↵ runs", hold: 2.0, name: "arguments")
+        vc.prepareForShow()
+        vc.standalone = true
+        let branches = ["main", "claude/project-thread-f6u4dp", "feature/grid-view", "fix/safari-export", "release/1.4"]
+        vc.present(PluginView(layout: .list, title: "Branch", placeholder: "Branch…", items: branches.map {
+            PluginItem(title: $0, icon: "arrow.triangle.branch")
+        }), pluginID: "pick", pluginName: "Pick")
+        try step("git branch | euclid-bar --pick --prompt Branch: dmenu for the Mac", hold: 2.0, name: "pick")
+        vc.standalone = false
+        vc.prepareForShow()
+
+        // Live views (kill-process, docker): a reload swaps the rows in place.
+        func process(_ name: String, _ cpu: String, _ mem: String, _ pid: Int, app: String? = nil) -> PluginItem {
+            PluginItem(title: name, subtitle: "\(cpu)% CPU · \(mem) · PID \(pid)", run: "./kill.sh \(pid)",
+                       icon: app ?? "gearshape", id: "pid:\(pid)")
+        }
+        let processes = [
+            process("Safari", "38.2", "1.4 GB", 812, app: "/Applications/Safari.app"),
+            process("node", "21.7", "512 MB", 4410),
+            process("Terminal", "9.3", "210 MB", 655, app: "/System/Applications/Utilities/Terminal.app"),
+            process("Finder", "1.2", "98 MB", 402, app: "/System/Library/CoreServices/Finder.app"),
+            process("mds_stores", "0.8", "64 MB", 311),
+        ]
+        vc.present(PluginView(layout: .list, title: "Processes", placeholder: "Filter processes…", items: processes,
+                              reload: "./list.sh", refreshSeconds: 3), pluginID: "kill-process", pluginName: "Kill Process")
+        try step("kill-process plugin: a live view, refreshed every 3 s; ↵ quits, ↵ again force-quits", hold: 2.0, name: "live-processes")
+        vc.prepareForShow()
+        let containers = [
+            PluginItem(title: "web", subtitle: "nginx:1.27 · Up 3 minutes", run: "./container.sh a1", icon: "🟢", id: "docker:a1"),
+            PluginItem(title: "api", subtitle: "acme/api:dev · Up 2 hours", run: "./container.sh b2", icon: "🟢", id: "docker:b2"),
+            PluginItem(title: "db", subtitle: "postgres:16 · Exited (0) 2 hours ago", run: "./container.sh c3", icon: "⚪️", id: "docker:c3"),
+        ]
+        vc.present(PluginView(layout: .list, title: "Containers", placeholder: "Filter containers…", items: containers,
+                              reload: "./containers.sh", refreshSeconds: 3), pluginID: "docker", pluginName: "Docker")
+        try step("docker plugin: containers, live; ↵ opens logs, a shell, its port, start, stop, restart", hold: 2.0, name: "live-docker")
+        let webActions = [
+            PluginItem(title: "Logs", run: "./logs.sh a1", icon: "doc.text"),
+            PluginItem(title: "Open Shell", run: "./shell.sh a1", icon: "terminal"),
+            PluginItem(title: "Restart", run: "./act.sh restart a1", icon: "arrow.clockwise"),
+            PluginItem(title: "Stop", run: "./act.sh stop a1", icon: "stop.fill"),
+            PluginItem(title: "Copy ID", copy: "a1", icon: "doc.on.doc"),
+        ]
+        vc.present(PluginView(layout: .list, title: "web", placeholder: "Actions for web…", items: webActions),
+                   pluginID: "docker", pluginName: "Docker", isActions: true)
+        try step("⌘K on a row: its own actions (an item's \"actions\"); ↵ runs one and goes back", hold: 2.0, name: "item-actions")
+        vc.prepareForShow()
+
+        // ⇥ filters and ⌘/ (last, so earlier shot numbers stay put).
+        vc.demoSetQuery("")
+        try type("clip", caption: "Type a source's name…")
+        vc.demoTab()
+        try step("…and ⇥: only the clipboard", hold: 1.4)
+        try type("kube", caption: "⇥ narrows to one source; esc goes back to everything")
+        try step("⇥ narrows to one source; esc goes back to everything", hold: 2.0, name: "filter")
+        vc.demoTogglePreview()
+        try step("→ previews it: a card with light syntax colour", hold: 2.0, name: "filter-preview")
+        vc.prepareForShow()
+        vc.demoShowShortcuts()
+        try step("⌘/ lists every key, source, alias and keyword, from your config", hold: 2.0, name: "shortcuts")
+        vc.prepareForShow()
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")
     }
 
     // MARK: - Sample data
+
+    /// The emoji plugin's grid, from its own data.
+    static func sampleEmoji() -> [PluginItem] {
+        (PluginGuide.examples["emoji"]?.first { $0.name == "emoji.tsv" }?.text ?? "")
+            .split(separator: "\n").prefix(400).map { line -> PluginItem in
+                let f = line.split(separator: "\t").map(String.init)
+                return PluginItem(title: f[1], subtitle: f.count > 2 ? f[2] : nil, copy: f[0], paste: f[0], icon: f[0], id: f[0])
+            }
+    }
+
+    /// A Raycast fullOutput script's page.
+    static let sampleWeather = """
+        Weather for Sydney
+            \\  /       Partly cloudy
+          _ /"".-.     22 °C
+            \\_(   ).   ↗ 11 km/h
+            /(___(__)  10 km
+                       0.0 mm
+        """
 
     static func wire(_ vc: LauncherViewController, clips: ClipHistory) {
         let pages = DemoRenderer.samplePages()

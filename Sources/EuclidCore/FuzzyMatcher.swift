@@ -126,3 +126,19 @@ extension FuzzyMatcher {
         return ranges
     }
 }
+
+extension FuzzyMatcher {
+    /// The match ranges worth drawing: a contiguous match as is; for a scattered (subsequence) match,
+    /// only runs of two or more letters or runs that start a word. Lone letters mid-word
+    /// ("How do I squash … c … k") are noise, so they stay plain.
+    public static func displayRanges(query: String, in text: String) -> [Range<String.Index>] {
+        let ranges = matchRanges(query: query, in: text)
+        guard ranges.count > 1 else { return ranges }
+        return ranges.filter { r in
+            if text.distance(from: r.lowerBound, to: r.upperBound) >= 2 { return true }
+            guard r.lowerBound > text.startIndex else { return true }
+            let before = text[text.index(before: r.lowerBound)]
+            return !before.isLetter && !before.isNumber
+        }
+    }
+}

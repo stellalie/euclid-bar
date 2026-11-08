@@ -10,8 +10,29 @@ enum Paster {
     /// Stamped on the keystrokes we post (`eventSourceUserData`), so text expansion skips them.
     static let syntheticMarker: Int64 = 0x4555_434C
 
+    private static var clearedStaleEntry = false
+
     /// Shows the system "allow Accessibility" prompt (only if not yet granted).
+    /// macOS keeps one Accessibility entry per bundle ID, tied to the signature that asked first.
+    /// An entry left by another copy with Euclid's ID (an older or locally built one) looks ticked
+    /// in System Settings but never matches this app, so ticking it again does nothing and Euclid
+    /// keeps asking. Clear Euclid's own entry once per launch first, so the prompt adds a fresh one.
     static func requestPermission() {
+        guard !isTrusted else { return }
+        if !clearedStaleEntry, let id = Bundle.main.bundleIdentifier {
+            clearedStaleEntry = true
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "Accessibility", id]
+            reset.standardOutput = FileHandle.nullDevice
+            reset.standardError = FileHandle.nullDevice
+            do {
+                try reset.run()
+                reset.waitUntilExit()
+            } catch {
+                CrashReporter.error("tcc-reset", error.localizedDescription)
+            }
+        }
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(options)
     }

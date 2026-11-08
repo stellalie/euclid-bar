@@ -36,6 +36,8 @@ public struct EuclidConfig: Equatable, Sendable {
     public var filesLimit = 8
     /// Shown when the search box is empty (`[search] favorites`), by title.
     public var favorites: [String] = []
+    /// `[search] scopes`: a word that narrows the search to one source ("c" → "clipboard").
+    public var scopePrefixes: [String: String] = [:]
     /// `[aliases]` plus every action's `alias`.
     public var aliases = Aliases()
     /// Look and feel (`[appearance]`).
@@ -53,8 +55,12 @@ public struct EuclidConfig: Equatable, Sendable {
     public var agentShare = Set(AgentTools.Source.allCases)
     /// Sparkle auto-update (`[updates]`).
     public var updates = UpdateSettings()
+    /// Start Euclid when you log in (`[startup] open_at_login`). On by default, so the hotkey works after a restart.
+    public var openAtLogin = true
     /// Send crash reports and internal errors to the developer (`[privacy] crash_reports`). Off by default.
     public var crashReports = false
+    /// Send a once-a-day anonymous "in use" ping, so installs can be counted (`[privacy] usage_ping`). Off by default.
+    public var usagePing = false
     /// Installed plugins, from `<config>/plugins` and `[plugins] paths`, minus `disabled`.
     public var plugins: [Plugin] = []
     /// `[plugins] paths`: more folders of plugins (a team repo's), after `<config>/plugins`.
@@ -72,9 +78,9 @@ public struct EuclidConfig: Equatable, Sendable {
 
 /// `[updates]`. Only signed builds update; local builds ignore it.
 public struct UpdateSettings: Equatable, Sendable {
-    /// Look for a new version once a day.
+    /// Look for a new version: hourly on dev, every 6 hours on stable.
     public var check = true
-    /// Download new versions in the background and install them on quit. Needs `check`.
+    /// Download new versions in the background and install them (relaunching) once the panel closes. Needs `check`.
     public var autoInstall = true
     /// Which builds to get: tagged releases, or a build of every change merged to main.
     public var channel = Channel.stable
@@ -98,6 +104,10 @@ public struct Appearance: Equatable, Sendable {
     public var glass = true
     /// "12,431 items · 0.6 ms" in the footer.
     public var showSpeed = true
+    /// ↑/↓ through results opens the preview, so you don't have to press →.
+    public var autoPreview = true
+    /// 0–100: how far apart text, dim text, borders and the selection sit (50 = as each theme is designed).
+    public var contrast = ThemeColors.defaultContrast
 
     public init() {}
 
@@ -270,7 +280,7 @@ public enum ConfigLoader {
     /// Read one file's settings into `config`, on top of what's already there.
     private static func apply(_ root: TOMLTable, to config: inout EuclidConfig, isInclude: Bool,
                               fileExists: (String) -> Bool, _ issues: inout [ConfigIssue]) {
-        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "privacy", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
+        warnUnknownKeys(root, known: ["include", "hotkey", "editor", "clipboard", "shell", "env", "history", "apps", "projects", "files", "search", "aliases", "action", "appearance", "snippet", "pages", "obsidian", "bitbucket", "jira", "agents", "updates", "startup", "privacy", "hotkeys", "expansion", "plugins", "plugin"], in: "top level", &issues)
         if isInclude, root.contains(key: "include") {
             issues.append(.warning("include only works in config.toml, not in an included file"))
         }
@@ -413,8 +423,19 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "search", &issues) {
-            warnUnknownKeys(t, known: ["favorites"], in: "[search]", &issues)
+            warnUnknownKeys(t, known: ["favorites", "scopes"], in: "[search]", &issues)
             if let a = strings(t, "favorites", in: "search", &issues) { config.favorites = a }
+            if t.contains(key: "scopes") {
+                if let s = try? t.table(forKey: "scopes") {
+                    for key in s.keys.sorted() {
+                        let prefix = key.lowercased()
+                        if let v = try? s.string(forKey: key), !v.isEmpty, !prefix.contains(" ") { config.scopePrefixes[prefix] = v.lowercased() }
+                        else { issues.append(.warning("search.scopes.\(key) must be a source name like \"clipboard\" or a plugin id")) }
+                    }
+                } else {
+                    issues.append(.warning("search.scopes must be a table like { c = \"clipboard\" }"))
+                }
+            }
         }
 
         if let t = table(root, "aliases", &issues) {
@@ -451,7 +472,7 @@ public enum ConfigLoader {
         }
 
         if let t = table(root, "appearance", &issues) {
-            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed"], in: "[appearance]", &issues)
+            warnUnknownKeys(t, known: ["theme", "accent", "density", "glass", "show_speed", "auto_preview", "contrast"], in: "[appearance]", &issues)
             if t.contains(key: "theme") {
                 if let s = try? t.string(forKey: "theme"), !s.isEmpty, !s.contains("/") { config.appearance.theme = s }
                 else { issues.append(.warning("appearance.theme must be a theme name like \"nord\"")) }
@@ -466,6 +487,11 @@ public enum ConfigLoader {
             }
             if let b = bool(t, "glass", in: "appearance", &issues) { config.appearance.glass = b }
             if let b = bool(t, "show_speed", in: "appearance", &issues) { config.appearance.showSpeed = b }
+            if let b = bool(t, "auto_preview", in: "appearance", &issues) { config.appearance.autoPreview = b }
+            if t.contains(key: "contrast") {
+                if let n = try? t.integer(forKey: "contrast"), (0...100).contains(n) { config.appearance.contrast = Int(n) }
+                else { issues.append(.warning("appearance.contrast must be a whole number from 0 to 100")) }
+            }
         }
 
         if root.contains(key: "snippet") {
@@ -577,9 +603,15 @@ public enum ConfigLoader {
             }
         }
 
+        if let t = table(root, "startup", &issues) {
+            warnUnknownKeys(t, known: ["open_at_login"], in: "[startup]", &issues)
+            if let b = bool(t, "open_at_login", in: "startup", &issues) { config.openAtLogin = b }
+        }
+
         if let t = table(root, "privacy", &issues) {
-            warnUnknownKeys(t, known: ["crash_reports"], in: "[privacy]", &issues)
+            warnUnknownKeys(t, known: ["crash_reports", "usage_ping"], in: "[privacy]", &issues)
             if let b = bool(t, "crash_reports", in: "privacy", &issues) { config.crashReports = b }
+            if let b = bool(t, "usage_ping", in: "privacy", &issues) { config.usagePing = b }
         }
     }
 

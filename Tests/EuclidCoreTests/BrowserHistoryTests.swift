@@ -126,6 +126,8 @@ import Testing
         #expect(RelativeAge.short(now - 3 * 86_400, now: now) == "3d ago")
         #expect(RelativeAge.short(now - 15 * 86_400, now: now) == "2w ago")
         #expect(RelativeAge.short(now + 30, now: now) == "just now")   // clock skew
+        #expect(RelativeAge.compact(now - 20, now: now) == "now")
+        #expect(RelativeAge.compact(now - 2 * 3_600, now: now) == "2h")
     }
 
     @Test func unreadableSourceIsReportedNotFatal() {
@@ -177,6 +179,29 @@ import Testing
         let (_, errors) = BrowserHistory.load([safari], limit: 10)
         #expect(errors.count == 1)
         #expect(BrowserHistory.problem(errors) == nil)
+    }
+
+    /// A work Mac's security software refuses the read: no footer line, the Permissions row names it.
+    @Test func deniedBrowsersGoToPermissionsNotTheFooter() {
+        func source(_ name: String) -> BrowserHistory.Source {
+            BrowserHistory.Source(browser: name, key: name.lowercased(), kind: .chromium,
+                                  database: URL(fileURLWithPath: "/x/\(name)/History"))
+        }
+        // As FileManager reports it: Cocoa error wrapping EPERM.
+        let posix = NSError(domain: NSPOSIXErrorDomain, code: Int(EPERM))
+        let copy = NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError,
+                           userInfo: [NSUnderlyingErrorKey: posix])
+        let read = NSError(domain: NSCocoaErrorDomain, code: NSFileReadNoPermissionError)
+        let errors: [(BrowserHistory.Source, Error)] = [(source("Dia"), copy), (source("Dia"), read), (source("Chrome"), read)]
+        #expect(BrowserHistory.problem(errors) == nil)
+        #expect(BrowserHistory.blocked(errors) == ["Dia", "Chrome"])
+        let needs = Permissions.missing(.init(accessibility: true, expansionEnabled: false, safariBlocked: false,
+                                              safariRequested: false, blockedBrowsers: BrowserHistory.blocked(errors)))
+        #expect(Permissions.footer(needs) == nil)
+        #expect(Permissions.summary(needs) == "Full Disk Access: Dia, Chrome history in search (optional)")
+        // A broken database is still worth a footer line.
+        let broken = NSError(domain: NSCocoaErrorDomain, code: NSFileReadCorruptFileError)
+        #expect(BrowserHistory.problem(errors + [(source("Arc"), broken)])?.hasPrefix("⚠︎ couldn't read Arc history: ") == true)
     }
 
     @Test func historyConfig() throws {

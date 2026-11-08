@@ -23,6 +23,17 @@ import Testing
         #expect(FuzzyMatcher.matchRanges(query: "zz", in: "git").isEmpty)
     }
 
+    @Test func displayRangesDropStrayLetters() {
+        func shown(_ q: String, _ t: String) -> String {
+            var out = t
+            for r in FuzzyMatcher.displayRanges(query: q, in: t).reversed() { out.replaceSubrange(r, with: "[\(t[r])]") }
+            return out
+        }
+        #expect(shown("gtrb", "git rebase") == "[g]it [r]ebase") // word starts stay, mid-word singles go
+        #expect(shown("reba", "git rebase") == "git [reba]se") // contiguous: unchanged
+        #expect(shown("dock", "do a check") == "[do] a [c]heck")
+    }
+
     @Test func foldsAccentsAndKeepsRangesValid() {
         #expect(marked("cafe", "Café au lait") == "[Café] au lait")
         #expect(marked("ok", "👍 ok") == "👍 [ok]")
@@ -141,6 +152,7 @@ import Testing
             density = "compact"
             glass = false
             show_speed = false
+            auto_preview = false
 
             [pages]
             enabled = false
@@ -151,7 +163,8 @@ import Testing
             """)
         #expect(c.config.appearance.accent == "#7c5cff")
         #expect(c.config.appearance.density == .compact)
-        #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed)
+        #expect(!c.config.appearance.glass && !c.config.appearance.showSpeed && !c.config.appearance.autoPreview)
+        #expect(try ConfigLoader.parse("").config.appearance.autoPreview) // on unless turned off
         #expect(c.config.obsidianVault == "~/Notes")
         #expect(c.issues.isEmpty) // the old, off [pages] table is ignored quietly
     }

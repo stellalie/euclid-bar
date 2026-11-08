@@ -10,7 +10,7 @@ One keystroke, under a millisecond.
 
 [**Download for macOS**](https://github.com/stellalie/euclid-bar-releases/releases/latest) · [Features](#features) · [Config](#configuration) · [Plugins](#plugins) · [Build from source](#build-from-source)
 
-<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, snippets and actions">
+<img src="docs/flow.gif" width="900" alt="Euclid: typing, sections, developer answers, preview, snippets, actions, ⇥ filters and the ⌘/ shortcut list">
 
 <sub>Every frame is the real panel, rendered offscreen by the app itself (`make screens`)</sub>
 
@@ -56,7 +56,7 @@ with `euclid-bar --plugin add <name>`:
 
 | Plugin | What you get |
 |---|---|
-| `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI |
+| `github` *(plugin)* | Your PRs, review requests and issues, through the `gh` CLI; ⌘K copies, approves or comments; `gh <words>` searches as you type |
 | `bitbucket` *(plugin)* | Your open PRs, PRs waiting on your review, your repos (Cloud and Data Center) |
 | `jira` *(plugin)* | Issues assigned to you and ones you viewed lately; type `ABC-123` to open any issue |
 | `linear` *(plugin)* | Linear issues assigned to you |
@@ -68,7 +68,12 @@ with `euclid-bar --plugin add <name>`:
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
-| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
+| `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues the chat in a terminal with your AI CLI. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
+| `raycast` *(plugin)* | Runs your Raycast script commands: each is a row, `rc <name> <args>` runs one. Modes silent, compact, fullOutput and inline; typed arguments; confirmation |
+| `emoji` *(plugin)* | An emoji grid; `emoji heart` lists matches. `↵` pastes |
+| `volume` *(plugin)* | Volume Up, Down and Mute rows, `vol 40`, and Set Volume with a dropdown |
+| `kill-process` *(plugin)* | Your processes, busiest first, refreshing live; `↵` quits one, `↵` again force-quits; `kill chrome` finds one |
+| `docker` *(plugin)* | Your containers, live: logs (live too), a shell, open its port, start, stop, restart |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its
@@ -89,15 +94,19 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 **And the rest.**
 
-- 👀 **Preview pane** (`→` or `⌘Y`): the full clip, images, Quick Look for files, a project's README,
-  a note's text.
+- 🔎 **Filter by source.** `⇥` narrows to Apps, Files, Clipboard, History, Projects, Snippets, Notes
+  or any plugin; type a source's name first (`clip⇥`) to jump there. The empty bar shows every source
+  as a chip, and `⌘/` lists every key, source, alias and keyword from your config.
+- 👀 **Preview card** (opens as you `↑`/`↓` through results, or `→` / `⌘Y`): the full clip with light syntax colour, images, Quick Look for
+  files, a project's README, a note's text.
 - 🧠 **Learns what you mean.** The result you pick for what you type ranks first next time. Give
   anything a short **alias** and pin **favorites** to the empty box.
 - 🤖 **Agent-ready.** Nothing matches? Your actions show up instead, so a question is one `↵` away
   from `pi`, `claude` or any agent in a new Ghostty tab. And your agents can [search what
   Euclid knows](#your-agents-can-search-it-too) over MCP.
-- 🎨 **Sharp and light.** Liquid Glass on macOS 26, a panel that grows with its results, your own
-  accent colour, `comfortable` or `compact` density.
+- 🎨 **Sharp and light.** Liquid Glass on macOS 26, a lit two-tone panel that grows with its results,
+  each clip shown with the icon of the app it came from, your own accent colour, `comfortable` or
+  `compact` density, and no animation on anything you do from the keyboard.
 - 🧛 **[Themes](#themes)** from the editor schemes you already use: Dracula, Nord, Tokyo Night,
   Catppuccin, Gruvbox, Solarized, Monokai, or your own in one small TOML file.
 
@@ -105,7 +114,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/screens/02-search-sections.png" alt="Search results in sections"><br><sub><b>Sections.</b> Matched letters highlighted, search time in the footer.</sub></td>
+<td width="50%"><img src="docs/screens/02-search-sections.png" alt="Search results in sections"><br><sub><b>Sections.</b> Matched letters in bold, search time in the footer.</sub></td>
 <td width="50%"><img src="docs/screens/03-epoch.png" alt="Epoch answer"><br><sub><b>Answers.</b> Paste an epoch, get the date.</sub></td>
 </tr>
 <tr>
@@ -115,6 +124,14 @@ own hotkey in `[hotkeys]`; its row shows it.
 <tr>
 <td><img src="docs/screens/09-no-match-actions.png" alt="Actions when nothing matches"><br><sub><b>No match?</b> Your actions are right there.</sub></td>
 <td><img src="docs/screens/11-compact-accent.png" alt="Compact density with an orange accent"><br><sub><b>Yours.</b> <code>density = "compact"</code>, <code>accent = "#ff8a3d"</code>.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screens/01-empty.png" alt="The empty bar with source chips and a tip"><br><sub><b>Nothing hidden.</b> The empty bar shows what it searches and a tip.</sub></td>
+<td><img src="docs/screens/43-filter.png" alt="Search narrowed to the clipboard"><br><sub><b>Filters.</b> <code>clip</code> <code>⇥</code> searches only the clipboard; <code>esc</code> goes back.</sub></td>
+</tr>
+<tr>
+<td><img src="docs/screens/45-shortcuts.png" alt="The shortcut list"><br><sub><b>Every shortcut.</b> <code>⌘/</code> lists keys, sources, actions and keywords from your config.</sub></td>
+<td></td>
 </tr>
 </table>
 
@@ -134,8 +151,20 @@ own hotkey in `[hotkeys]`; its row shows it.
 | `→` / `⌘Y` | Preview the selection |
 | `⌘C` | Copy the clip, or a page's URL, or an app, project or file's path |
 | `⌘⌫` | Delete the selected clip |
+| `⇥` / `⇧⇥` | Narrow to one source (Apps, Files, Clipboard…), or the next one; `clip⇥` jumps straight there |
+| `⌫` / `esc` | On an empty search: drop the filter · `esc` always does |
+| `⌘/` | Every key, source, alias and keyword, from your config |
 
 ## Install
+
+**Homebrew** (also puts the `euclid-bar` CLI on your `PATH`):
+
+```sh
+brew tap stellalie/euclid https://github.com/stellalie/euclid-bar-releases
+brew install --cask stellalie/euclid/euclid
+```
+
+Then press **`⌥Space`**. Euclid updates itself, so `brew upgrade` skips it. Or by hand:
 
 1. **Download** `Euclid-<version>.dmg` from
    [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
@@ -154,6 +183,7 @@ own hotkey in `[hotkeys]`; its row shows it.
 missing; `↵` opens the right pane in System Settings. The footer only mentions it when something
 you turned on is waiting.
 - **Accessibility**: for `↵` to paste into the previous app, and for text expansion. Without it, Euclid copies instead.
+  If Euclid keeps asking although it looks ticked, the tick belongs to another copy of Euclid: Euclid clears its own entry when it asks, so tick it once more.
 - **Automation**: the first time an action drives Ghostty.
 - **Full Disk Access** *(optional)*: only to include Safari history.
 
@@ -200,6 +230,18 @@ action). Read it, tweak it, or drop your own scripts next to it. Using herdr? Co
 typo never breaks the app: the last good config stays active and the error shows in the panel footer.
 Unknown keys are flagged too. Teams can [share a config](#share-a-config-with-your-team).
 
+**Change it in plain words, with any AI.** Search `settings` in Euclid:
+
+1. **Change Settings with AI…** shows a prompt with a Copy button. Paste it into ChatGPT, Copilot,
+   Claude or any AI chat: the AI reads the [docs](https://lgtm.ninja/euclid/docs/), asks what you'd
+   like, suggests what Euclid can do, and replies with your whole config.toml.
+2. Paste that in **Edit Config…** and save. Euclid applies it at once; a problem shows in the footer
+   and the last good settings stay.
+3. **Fix Settings with AI…** (when the footer shows a problem) gives a prompt with the problems.
+
+Euclid calls no AI itself. Coding agents (Claude Code, Codex) can edit the files directly:
+`~/.config/euclid/AGENTS.md` is the settings guide, `plugins/AGENTS.md` the plugin one.
+
 <details open>
 <summary><b>Full reference</b></summary>
 
@@ -240,16 +282,19 @@ limit   = 8
 
 [search]
 favorites = ["Ghostty", "euclid-bar"]         # shown first when the box is empty
+scopes    = { c = "clipboard", f = "files" }  # optional: "c kube" searches only the clipboard
 
 [aliases]
 code = "Visual Studio Code"                   # type `code` ↵
 
 [appearance]
 theme      = "default"                        # or a built-in / your own: see Themes below
-accent     = "#7c5cff"                        # match highlight, over the theme's (default: system accent)
+accent     = "#7c5cff"                        # selection and caret, over the theme's (default: system accent)
 density    = "comfortable"                    # or "compact"
 glass      = true                             # Liquid Glass on macOS 26+
 show_speed = true                             # "12,431 items · 0.6 ms" in the footer
+auto_preview = true                           # ↑/↓ through results opens the preview (false: only → / ⌘Y)
+contrast   = 50                               # 0–100: how far apart text, dim text and borders sit
 
 [obsidian]
 vault = "~/Notes"
@@ -263,9 +308,15 @@ check        = true                           # look for a new version daily
 auto_install = true                           # install it in the background (also a menu toggle)
 channel      = "stable"                       # "dev": a build of every change, for testing
 
-[privacy]
+[startup]
+open_at_login = true                          # start Euclid at login (also a menu toggle)
+
+[privacy]                                     # one menu toggle, Share Anonymous Diagnostics, sets both;
+                                              # asked once on first launch, unticked
 crash_reports = false                         # true: send crashes and internal errors so they get fixed
                                               # (stack + versions only; copies in ~/Library/Logs/Euclid/Reports)
+usage_ping    = false                         # true: a daily anonymous "in use" ping (random ID + versions),
+                                              # so installs can be counted
 
 [expansion]
 enabled = true                                # snippet keywords expand in any app (needs Accessibility)
@@ -320,8 +371,15 @@ theme = "tokyo-night"
 | `default` | The system look: glass, your accent colour, light or dark with macOS |
 | `dracula` · `nord` · `tokyo-night` · `catppuccin-mocha` · `gruvbox-dark` · `solarized-dark` · `monokai` | Dark |
 | `catppuccin-latte` · `gruvbox-light` · `solarized-light` | Light |
+| `aurora` · `neon-noir` · `ember` · `velvet` · `phosphor` · `amber` · `graphite` | Euclid originals, dark |
+| `paper` · `glacier` · `matcha` · `sakura` · `sandstone` | Euclid originals, light |
 
-`accent`, `density`, `glass` and `show_speed` still apply on top of any theme.
+`accent`, `density`, `glass`, `show_speed`, `auto_preview` and `contrast` still apply on top of any theme.
+
+A theme only needs `background`, `text` and `accent`: every other colour (dim text, borders, the
+selection, the footer strip, the preview card) is mixed from those three in OKLab, so any base looks
+even. `contrast` (0–100, default 50) spreads those levels apart or pulls them together; moved off 50
+it also overrides the dim colours a theme picked itself.
 
 **Switch any time.** Change `theme` in `config.toml` and save: the panel restyles at once, no
 restart. Back to the system look with `theme = "default"`.
@@ -334,7 +392,7 @@ built-in with `base` and change only what you want, or set everything:
 # base     = "gruvbox-dark" # optional: start from a built-in, set only what changes
 background = "#1d2021"     # required without a base, with text and accent
 text       = "#ebdbb2"
-accent     = "#fabd2f"     # match highlight and selection
+accent     = "#fabd2f"     # selection ring, caret, filter chip
 subtext    = "#d5c4a1"     # details and hints (default: text, dimmer)
 muted      = "#928374"     # section titles, faintest text (default: text, dimmer still)
 selection  = "#504945"     # selected row (default: accent, faint)
@@ -351,17 +409,7 @@ Palettes come from [Dracula](https://draculatheme.com) (MIT), [Nord](https://www
 [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme) (MIT, enkia),
 [Catppuccin](https://catppuccin.com) (MIT), [Gruvbox](https://github.com/morhetz/gruvbox) (MIT, Pavel Pertsev),
 [Solarized](https://ethanschoonover.com/solarized/) (MIT, Ethan Schoonover) and Monokai (Wimer Hazenberg). Thank you.
-
-### Coming from Raycast or Alfred
-
-Menu bar 🧠 › **Import from Raycast or Alfred…** (or type `import`), then pick your exports:
-
-- Raycast: *Snippets › Export Snippets* and *Quicklinks › Export Quicklinks* (`.json`)
-- Alfred: *Features › Snippets ›* right-click a collection › *Export* (`.alfredsnippets`)
-
-Snippets become `[[snippet]]` blocks and web quicklinks become `[[action]]`s, appended to
-`config.toml`. Placeholders carry over (`{date}`, `{time}`, `{clipboard}`, `{argument}` → your query).
-From a terminal: `euclid-bar --import snippets.json >> ~/.config/euclid/config.toml`.
+The Euclid originals are ours.
 
 ### Share a config with your team
 
@@ -436,8 +484,6 @@ command = "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
 args    = ["--mcp"]
 ```
 
-Menu bar 🧠 › **Connect Claude Code or Codex (MCP)…** copies the Claude command for you.
-
 | Tool | What it does |
 |---|---|
 | `search_clipboard`, `recent_clipboard` | Text you copied, newest first |
@@ -477,6 +523,34 @@ click = 'ghostty-run tab npx -y ccusage@latest daily'
 A script prints rows like `{"title":"Fix login","subtitle":"acme/web · #412","open":"https://…"}`;
 `↵` opens, pastes, copies or runs whatever the row says.
 
+**Everything is a script, including the screens.** A row's `run` can print what to do next:
+`{"notice":"Volume 40%"}` in the footer, or a header like `{"view":"grid","title":"Emoji"}` and
+then items, to open a **list**, a **grid** (emoji, images) or a **detail** page of text. A row can
+ask for up to 3 **typed arguments** (text, password, dropdown) in the search bar before it runs.
+Icons can be SF Symbols, emoji, image files or an app (`/Applications/Safari.app`).
+
+**Live views, no state.** Add `"reload":"./list.sh","refresh_seconds":3` to the header and Euclid
+reruns the script to keep the view current: on a timer, after an action, and when you come back to
+it. Your filter and selection stay put. That's how `kill-process` and `docker` stay live.
+A row can carry `actions` (⌘K lists them, ↵ runs one), and a view with `"search":"./find.sh"`
+hands what you type to the script, for searches only it can do (`github`: `gh fix login`).
+
+**Port a Raycast extension.** Paste the prompt from [AGENTS.md](https://lgtm.ninja/euclid/plugins/AGENTS.md)
+("Port a Raycast extension") into Claude Code or Codex with the extension's GitHub link.
+
+```sh
+echo '{"view":"grid","title":"Emoji","columns":8}'
+echo '{"title":"grinning face","icon":"😀","paste":"😀"}'
+```
+
+**dmenu for the Mac.** `euclid-bar --pick` opens the panel on any list piped into it and prints
+your choice: `git branch --format='%(refname:short)' | euclid-bar --pick --prompt Branch | xargs git switch`.
+`--grid` shows tiles.
+
+**Raycast script commands work as they are.** `euclid-bar --plugin add raycast`, then put scripts
+in `~/.config/euclid/raycast` (or clone [raycast/script-commands](https://github.com/raycast/script-commands)
+and point `[plugin.raycast] folders` at it).
+
 **Let your AI write them.** Euclid keeps the whole format in `~/.config/euclid/plugins/AGENTS.md`.
 Ask Claude Code or Codex "make me a Euclid plugin that shows my Vercel deploys": it writes the
 folder, checks it with `--try-plugin`, and it shows up in the bar on save.
@@ -487,6 +561,8 @@ euclid-bar --plugin add linear      # Linear issues assigned to you
 euclid-bar --plugin add slack       # jump to channels; `slack <words>` searches messages
 euclid-bar --plugin add tokens      # today's Claude Code tokens on the bar (ccusage)
 euclid-bar --plugin add currency    # `100 usd to eur`; also define, contacts, shortcuts
+euclid-bar --plugin add raycast     # your Raycast script commands; also emoji, volume
+euclid-bar --plugin add docker      # live containers; also kill-process
 euclid-bar --plugin add https://github.com/you/euclid-plugin-foo   # any git repo
 euclid-bar --try-plugin github      # run it once and print what the bar would show
 ```
@@ -560,8 +636,9 @@ scripts/             bundle.sh, release.sh (see docs/RELEASING.md), make-dev-cer
                      check-toolchain.sh, test-core-linux.sh (core tests on Linux)
 ```
 
-`make cert` creates a local signing identity so macOS keeps Accessibility permission across
-rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI screens* check).
+Local builds are a separate app, *Euclid Dev* (`dev.euclid.Euclid.dev`), so they never take the
+installed Euclid's Accessibility permission. `make cert` creates a local signing identity so macOS
+keeps that permission across rebuilds. Every PR that touches the app renders fresh screenshots in CI (the *UI screens* check).
 </details>
 
 ## Roadmap

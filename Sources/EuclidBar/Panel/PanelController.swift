@@ -26,8 +26,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         set { content.commands = newValue }
     }
     var onCommand: ((AppCommand) -> Void)?
+    /// After the panel closes (the updater installs a downloaded update then).
+    var onHide: (() -> Void)?
+    var isVisible: Bool { panel.isVisible }
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
+    /// Shown in the footer the next time the panel opens, once (the first-launch welcome).
+    var welcome: String?
     /// "412 opens on 21 days · 120 apps, 38 actions" for the last 30 days, or nil before any use.
     /// Shown after the search speed while unregistered.
     var licenceNote: String {
@@ -43,6 +48,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var appObserver: NSObjectProtocol?
     /// The app you're in, for `open` hooks (`frontmostApplication` goes stale in an accessory app).
     private var frontApp = (name: "", id: "")
+    /// The item `run` the panel is waiting on (up to 1 s) before it hides.
+    private var waitingRun: UUID?
 
     init(clipboard: ClipboardService, config: ConfigService, history: HistoryService) {
         self.clipboard = clipboard
@@ -60,6 +67,13 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.contentViewController = content
         panel.setContentSize(LauncherViewController.size)
         panel.delegate = self
+        // Footer tips retire once you've used what they show.
+        content.onFeatureUsed = { feature in
+            var used = UserDefaults.standard.stringArray(forKey: PanelController.usedFeaturesKey) ?? []
+            guard !used.contains(feature) else { return }
+            used.append(feature)
+            UserDefaults.standard.set(used, forKey: PanelController.usedFeaturesKey)
+        }
         content.onClose = { [weak self] in self?.hide() }
         content.onPaste = { [weak self] id in self?.paste(id: id) }
         content.onCopy = { [weak self] id in self?.copy(id: id) }
@@ -84,8 +98,22 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.pluginProvider = { [unowned plugins] in plugins.items }
         content.pluginEntry = { [unowned plugins] id in plugins.entry(id: id) }
         content.pluginAnswer = { [unowned plugins] text in plugins.answer(text) }
+        content.pluginDirectory = { [unowned plugins] id in plugins.plugin(id: id)?.directory }
         content.onPluginItem = { [weak self] entry in self?.activate(entry) }
         content.onBadgeClick = { [weak self] id in self?.clickBadge(pluginID: id) }
+        content.onReloadView = { [weak self] command, pluginID, viewID, query in
+            // A search gets what you typed as $1 and may print just rows.
+            self?.plugins.run(command, pluginID: pluginID, arguments: query.map { [$0] }, rows: query != nil) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success(let r):
+                    self.content.viewReloaded(viewID, with: r.view, query: query)
+                case .failure(let failure):
+                    self.content.viewReloaded(viewID, with: nil, query: query)
+                    if !failure.stillRunning { self.content.notice = "⚠︎ Refresh failed (\(failure.description))" }
+                }
+            }
+        }
         plugins.onAnswers = { [weak self] text, entries, reveal in self?.content.setPluginAnswers(entries, for: text, reveal: reveal) }
         plugins.onChange = { [weak self] in
             guard let self else { return }
@@ -171,6 +199,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         content.snippets = settings.snippets
         content.hotkeys = settings.commandHotkeys
         content.theme = Theme(settings.appearance)
+        content.scopePrefixes = settings.scopePrefixes
+        content.hasNotes = settings.obsidianVault != nil
+        content.hasFiles = settings.filesEnabled
         contentSearch.configure(vault: settings.obsidianVault)
         plugins.configure(settings.plugins, shell: settings.shellPath, environment: settings.environment)
         content.badges = plugins.badges
@@ -290,7 +321,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             Paster.copy(text)
             hide()
         } else if let run = item.run {
-            runPluginCommand(run, pluginID: entry.pluginID, label: item.title)
+            runPluginCommand(run, pluginID: entry.pluginID, label: item.title, arguments: entry.arguments)
+        } else if let first = item.actions?.first {
+            // Nothing of its own to do: ↵ does its first action.
+            activate(PluginService.Entry(pluginID: entry.pluginID, pluginName: entry.pluginName, item: first))
         }
     }
 
@@ -310,6 +344,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 plugins.present(text, pluginName: pluginName, pluginID: pluginID, query: content.query)
             }
             if let open = e.open {
+                hide()
                 let expanded = (open as NSString).expandingTildeInPath
                 if expanded.hasPrefix("/") { NSWorkspace.shared.open(URL(fileURLWithPath: expanded)) }
                 else if let url = URL(string: open) { NSWorkspace.shared.open(url) }
@@ -324,14 +359,43 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func clickBadge(pluginID: String) {
         guard let click = plugins.plugin(id: pluginID)?.badge?.click else { return }
-        runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID)
+        runPluginCommand(click, pluginID: pluginID, label: plugins.plugin(id: pluginID)?.name ?? pluginID, arguments: nil)
     }
 
-    private func runPluginCommand(_ command: String, pluginID: String, label: String) {
-        hide()
-        plugins.runCommand(command, pluginID: pluginID) { [weak self] result in
-            guard case .failure(let failure) = result else { return }
-            DispatchQueue.main.async { self?.content.notice = "⚠︎ “\(label)” failed (\(failure.description))" }
+    /// An item's `run` (or a badge's `click`). The panel waits up to 1 s for it, so what it prints
+    /// lands in the open panel: a view opens, a notice shows in the footer (↵ again repeats it).
+    /// Anything else, or a slower command, closes the panel; its effects still apply when it's done.
+    private func runPluginCommand(_ command: String, pluginID: String, label: String, arguments: [String]?) {
+        let token = UUID()
+        waitingRun = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.waitingRun == token else { return }
+            self.waitingRun = nil
+            self.hide()
+        }
+        let name = plugins.plugin(id: pluginID)?.name ?? pluginID
+        plugins.run(command, pluginID: pluginID, arguments: arguments) { [weak self] result in
+            guard let self else { return }
+            let waited = self.waitingRun == token
+            if waited { self.waitingRun = nil }
+            switch result {
+            case .failure(let failure) where failure.stillRunning:
+                return
+            case .failure(let failure):
+                self.content.notice = "⚠︎ “\(label)” failed (\(failure.description))"
+            case .success(let r):
+                var effects = r.effects
+                if let problem = r.problems.first { effects.append(PluginEffect(notice: "⚠︎ \(problem)")) }
+                let staysOpen = r.view != nil || effects.contains { $0.show != nil || $0.notice != nil }
+                if waited, !staysOpen { self.hide() }
+                if !effects.isEmpty { self.apply(effects, from: name, pluginID: pluginID) }
+                if let view = r.view {
+                    if !self.panel.isVisible { self.show() }
+                    self.content.present(view, pluginID: pluginID, pluginName: name)
+                } else if self.panel.isVisible {
+                    self.content.reloadTopView() // a live view shows what the run changed
+                }
+            }
         }
     }
 
@@ -369,6 +433,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func toggle() { panel.isVisible ? hide() : show() }
 
+    private static let tipOpensKey = "tipOpens"
+    private static let usedFeaturesKey = "usedFeatures"
+
     func show() {
         let start = ContinuousClock.now
         let state = signposter.beginInterval("show")
@@ -378,8 +445,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         projects.refreshIfStale()
         plugins.refreshIfStale()
         contentSearch.syncNotesIfStale()
+        let opens = UserDefaults.standard.integer(forKey: PanelController.tipOpensKey)
+        UserDefaults.standard.set(opens + 1, forKey: PanelController.tipOpensKey)
+        content.tip = Tips.pick(opens: opens, used: Set(UserDefaults.standard.stringArray(forKey: PanelController.usedFeaturesKey) ?? []))
         content.prepareForShow() // sizes the panel for its first results
-        if let message = reminder?() { content.notice = message }
+        if let message = welcome {
+            content.notice = message
+            welcome = nil
+        } else if let message = reminder?() {
+            content.notice = message
+        }
         if plugins.hasHooks(for: .open) { plugins.fire(.open, input: frontApp.name, environment: ["EUCLID_APP_ID": frontApp.id]) }
         panel.makeKeyAndOrderFront(nil)
         panel.displayIfNeeded()
@@ -397,6 +472,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         plugins.cancelAnswers()
         content.didHide()
         anchor = nil
+        onHide?()
     }
 
     func windowDidResignKey(_ notification: Notification) { hide() }
@@ -411,22 +487,25 @@ final class PanelController: NSObject, NSWindowDelegate {
         return NSPoint(x: frame.midX, y: frame.minY + frame.height * 0.66 + full.height / 2)
     }
 
-    /// Fit the panel to its results. Instant while hidden; a quick 80 ms ease while visible,
-    /// animated by Core Animation so typing never waits on it.
+    /// Fit the panel to its results. Shrinking, the preview's width and anything while hidden snap at once;
+    /// only growing taller eases (120 ms, Core Animation, so typing never waits on it), so new rows slide in
+    /// instead of the panel jumping.
     private func resize(to size: NSSize) {
         let top = anchor ?? topCenter()
         let frame = NSRect(x: (top.x - size.width / 2).rounded(), y: (top.y - size.height).rounded(), width: size.width, height: size.height)
         guard frame != panel.frame else { return }
-        if panel.isVisible {
+        let grows = frame.width == panel.frame.width && frame.height > panel.frame.height
+        if panel.isVisible, grows, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.08
+                ctx.duration = 0.12
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().setFrame(frame, display: true)
             } completionHandler: { [weak self] in
                 MainActor.assumeIsolated { self?.panel.invalidateShadow() }
             }
         } else {
-            panel.setFrame(frame, display: false)
+            panel.setFrame(frame, display: panel.isVisible)
+            if panel.isVisible { panel.invalidateShadow() }
         }
     }
 }

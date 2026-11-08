@@ -4,6 +4,8 @@ build/
 *.xcodeproj/
 DerivedData/
 .DS_Store
+sparkle.key
+.wrangler/
 !XcodeCloud/EuclidCI.xcodeproj/
 XcodeCloud/EuclidCI.xcodeproj/xcuserdata/
 XcodeCloud/EuclidCI.xcodeproj/project.xcworkspace/xcuserdata/

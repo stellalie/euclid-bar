@@ -6,7 +6,7 @@
 #   BUILD=n      stamp CFBundleVersion, which Sparkle compares (default: VERSION)
 #   SIGN_IDENTITY="Developer ID Application: …"  release signing (hardened runtime + timestamp)
 #   SPARKLE_PUBLIC_KEY=…  turn on auto-update (EdDSA public key from Sparkle's generate_keys)
-#   LICENCE_PUBLIC_KEY=…  turn on the 30-day trial and licence keys (from euclid-bar --licence-keygen)
+#   LICENCE_PUBLIC_KEY=…  override the licence public key in Resources/Info.plist (testing only)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,7 +26,7 @@ if [[ -n "${SPARKLE_PUBLIC_KEY:-}" ]]; then
   plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$APP/Contents/Info.plist"
 fi
 if [[ -n "${LICENCE_PUBLIC_KEY:-}" ]]; then
-  plutil -insert EuclidLicencePublicKey -string "$LICENCE_PUBLIC_KEY" "$APP/Contents/Info.plist"
+  plutil -replace EuclidLicencePublicKey -string "$LICENCE_PUBLIC_KEY" "$APP/Contents/Info.plist"
 fi
 if [[ -n "${VERSION:-}" ]]; then
   plutil -replace CFBundleShortVersionString -string "$VERSION" "$APP/Contents/Info.plist"
@@ -38,6 +38,15 @@ find "$BIN" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources
 # Sparkle (auto-update). SwiftPM finds it via @loader_path; the bundle needs ../Frameworks.
 ditto "$BIN/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 install_name_tool -add_rpath @executable_path/../Frameworks "$APP/Contents/MacOS/euclid-bar"
+
+# Local builds are their own app, "Euclid Dev" (dev.euclid.Euclid.dev). macOS keeps one
+# Accessibility grant per bundle ID, tied to one signature: a local build sharing the release's
+# ID takes that grant over, and the installed Euclid loses it and asks again.
+if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+  plutil -replace CFBundleIdentifier -string dev.euclid.Euclid.dev "$APP/Contents/Info.plist"
+  plutil -replace CFBundleName -string "Euclid Dev" "$APP/Contents/Info.plist"
+  plutil -replace CFBundleDisplayName -string "Euclid Dev" "$APP/Contents/Info.plist"
+fi
 
 # Release: Developer ID + hardened runtime + secure timestamp, as notarization requires.
 # Dev: the stable "Euclid Dev" identity if present (scripts/make-dev-cert.sh), so macOS

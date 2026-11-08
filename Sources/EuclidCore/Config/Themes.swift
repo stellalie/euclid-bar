@@ -55,7 +55,7 @@ public enum Themes {
     public static let defaultName = "default"
     public static let folderName = "themes"
 
-    /// Palettes from popular editor colour schemes (credits in README).
+    /// Palettes from popular editor colour schemes (credits in README), then Euclid's own.
     public static let builtIn: [String: ThemePalette] = [
         // Dracula, draculatheme.com (MIT)
         "dracula": ThemePalette(
@@ -108,6 +108,55 @@ public enum Themes {
             background: "#272822", text: "#f8f8f2", accent: "#f92672", muted: "#75715e", selection: "#49483e", border: "#3e3d32",
             colors: ["red": "#f92672", "orange": "#fd971f", "yellow": "#e6db74", "green": "#a6e22e",
                      "cyan": "#66d9ef", "blue": "#66d9ef", "purple": "#ae81ff", "pink": "#f92672"]),
+        // Euclid's own: tints sit at one OKLCH lightness and chroma per theme, so no chip shouts.
+        "aurora": ThemePalette(
+            background: "#0b1221", text: "#e3ebfa", accent: "#5eead4",
+            colors: ["red": "#ff9b93", "orange": "#fea668", "yellow": "#d8bd51", "green": "#7cd591",
+                     "cyan": "#28d6df", "blue": "#83c1ff", "purple": "#cbaaff", "pink": "#f99bd1"]),
+        "neon-noir": ThemePalette(
+            background: "#0d0717", text: "#f5edff", accent: "#ff3d8b",
+            colors: ["red": "#ff7871", "orange": "#ff8900", "yellow": "#d7ad00", "green": "#37d16c",
+                     "cyan": "#22e4f2", "blue": "#52b2ff", "purple": "#c590ff", "pink": "#ff78cc"]),
+        "ember": ThemePalette(
+            background: "#16110e", text: "#f3e8de", accent: "#ff7a3c",
+            colors: ["red": "#ff9189", "orange": "#fb9d59", "yellow": "#d3b63b", "green": "#6fd087",
+                     "cyan": "#00d1da", "blue": "#77baff", "purple": "#c5a2ff", "pink": "#f691cc"]),
+        "velvet": ThemePalette(
+            background: "#1a0c14", text: "#f8e7ee", accent: "#ff8fb0",
+            colors: ["red": "#fe9b93", "orange": "#f6a56d", "yellow": "#d3ba59", "green": "#7fd091",
+                     "cyan": "#3fd1d9", "blue": "#85beff", "purple": "#c6a9fc", "pink": "#f19bcc"]),
+        "phosphor": ThemePalette(
+            background: "#050b07", text: "#c4f5c8", accent: "#3dff8b", subtext: "#86c290", muted: "#4f7a58",
+            colors: ["red": "#ffa59d", "orange": "#ffaf76", "yellow": "#dcc363", "green": "#89da9b",
+                     "cyan": "#4cdbe3", "blue": "#8ec7ff", "purple": "#d0b2ff", "pink": "#fca4d6"]),
+        "amber": ThemePalette(
+            background: "#130c03", text: "#ffd78f", accent: "#ffb020", subtext: "#c9a265", muted: "#806640",
+            colors: ["red": "#ff9b93", "orange": "#fea668", "yellow": "#d8bd51", "green": "#7cd591",
+                     "cyan": "#28d6df", "blue": "#83c1ff", "purple": "#cbaaff", "pink": "#f99bd1"]),
+        "graphite": ThemePalette(
+            background: "#111113", text: "#ececee", accent: "#ffffff", selection: "#2a2a2e",
+            colors: ["red": "#eca19a", "orange": "#e5a880", "yellow": "#c9b773", "green": "#8ec899",
+                     "cyan": "#6ac9ce", "blue": "#90baf1", "purple": "#c0abe9", "pink": "#e2a0c5"]),
+        "paper": ThemePalette(
+            background: "#fbfaf7", text: "#141414", accent: "#ff4f00",
+            colors: ["red": "#d24c49", "orange": "#c95d00", "yellow": "#a07c00", "green": "#009b44",
+                     "cyan": "#009ba8", "blue": "#2a80e2", "purple": "#9163d5", "pink": "#c34e97"]),
+        "glacier": ThemePalette(
+            background: "#eef5fa", text: "#13263a", accent: "#0a84d0",
+            colors: ["red": "#bc504c", "orange": "#b45c03", "yellow": "#927400", "green": "#258d48",
+                     "cyan": "#008e98", "blue": "#3778c8", "purple": "#8561bd", "pink": "#af518a"]),
+        "matcha": ThemePalette(
+            background: "#f2f0e3", text: "#28311e", accent: "#4f7f2c",
+            colors: ["red": "#b14e49", "orange": "#aa5910", "yellow": "#8a6f00", "green": "#298646",
+                     "cyan": "#00878f", "blue": "#3772bb", "purple": "#7e5db1", "pink": "#a54f83"]),
+        "sakura": ThemePalette(
+            background: "#fff2f4", text: "#3b2430", accent: "#d6336c",
+            colors: ["red": "#c34f4b", "orange": "#bb5d00", "yellow": "#967700", "green": "#1b9247",
+                     "cyan": "#00929d", "blue": "#337bd0", "purple": "#8962c5", "pink": "#b6508e"]),
+        "sandstone": ThemePalette(
+            background: "#f4ece0", text: "#3a2a1e", accent: "#c2562b",
+            colors: ["red": "#b4514c", "orange": "#ad5c15", "yellow": "#8d7200", "green": "#2d8949",
+                     "cyan": "#008a92", "blue": "#3a75bf", "purple": "#8160b5", "pink": "#a85186"]),
     ]
 
     private static let solarized = ["red": "#dc322f", "orange": "#cb4b16", "yellow": "#b58900", "green": "#859900",

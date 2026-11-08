@@ -18,7 +18,7 @@ public enum PluginGuide {
 
     /// An example plugin's files, by name: `euclid-bar --plugin add github`.
     public static let examples: [String: [(name: String, text: String, executable: Bool)]] = [
-        "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true)],
+        "github": [("plugin.toml", githubManifest, false), ("items.sh", githubScript, true), ("search.sh", githubSearch, true)],
         "linear": [("plugin.toml", linearManifest, false), ("items.sh", linearScript, true)],
         "bitbucket": [("plugin.toml", bitbucketManifest, false), ("items.sh", bitbucketScript, true)],
         "jira": [("plugin.toml", jiraManifest, false), ("items.sh", jiraItems, true), ("open.sh", jiraOpen, true),
@@ -31,7 +31,18 @@ public enum PluginGuide {
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
-        "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true)],
+        "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true), ("continue.sh", aiContinue, true)],
+        "raycast": [("plugin.toml", raycastManifest, false), ("list.sh", raycastList, true), ("scan.awk", raycastScan, false),
+                    ("run.sh", raycastRun, true)],
+        "emoji": [("plugin.toml", emojiManifest, false), ("items.sh", emojiItems, true), ("grid.sh", emojiGrid, true),
+                  ("find.sh", emojiFind, true), ("emoji.tsv", emojiData + "\n", false)],
+        "volume": [("plugin.toml", volumeManifest, false), ("items.sh", volumeItems, true), ("find.sh", volumeFind, true),
+                   ("set.sh", volumeSet, true)],
+        "kill-process": [("plugin.toml", killManifest, false), ("items.sh", killItems, true), ("list.sh", killList, true),
+                         ("kill.sh", killKill, true)],
+        "docker": [("plugin.toml", dockerManifest, false), ("items.sh", dockerItems, true), ("containers.sh", dockerContainers, true),
+                   ("container.sh", dockerContainer, true), ("logs.sh", dockerLogs, true), ("act.sh", dockerAct, true),
+                   ("shell.sh", dockerShell, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -59,6 +70,10 @@ description = "Your open PRs, PRs waiting on your review, and issues assigned to
 run = "./items.sh"
 refresh_minutes = 5
 
+[answer]                  # `gh fix login`: issues and PRs as you type, right in the bar
+run    = './search.sh rows "$1"'
+prefix = "gh"
+
 [[action]]
 name = "Search GitHub code"
 run  = 'open "https://github.com/search?type=code&q=$EUCLID_QUERY_URL"'
@@ -73,7 +88,13 @@ limit = 30          # per list; override in config.toml with [plugin.github] lim
 set -eu
 command -v gh >/dev/null 2>&1 || { echo "needs the GitHub CLI: brew install gh && gh auth login" >&2; exit 1; }
 limit=${EUCLID_SETTING_LIMIT:-30}
-row='{title, subtitle: "\(.repository.nameWithOwner) · #\(.number)", open: .url, id: .url, icon: "arrow.triangle.pull"}'
+echo '{"title":"Search GitHub","subtitle":"Issues and PRs, as you type","run":"./search.sh open","icon":"magnifyingglass","id":"github:search"}'
+# ⌘K on a row: copy its URL, approve it, or comment (asks for the text first).
+row='{title, subtitle: "\(.repository.nameWithOwner) · #\(.number)", open: .url, id: .url, icon: "arrow.triangle.pull",
+  actions: [{title: "Copy URL", copy: .url, icon: "link"},
+            {title: "Approve", run: "./search.sh approve \(.url | @sh)", icon: "checkmark.circle"},
+            {title: "Comment…", run: "./search.sh comment \(.url | @sh)", icon: "text.bubble",
+             arguments: [{placeholder: "Comment"}]}]}'
 
 gh search prs --review-requested=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Review\", suggest: true} | tojson"
@@ -81,6 +102,32 @@ gh search prs --author=@me --state=open --limit "$limit" --json number,title,url
   --jq ".[] | $row + {label: \"Your PR\"} | tojson"
 gh search issues --assignee=@me --state=open --limit "$limit" --json number,title,url,repository \
   --jq ".[] | $row + {label: \"Issue\", icon: \"smallcircle.filled.circle\"} | tojson"
+"""#
+
+    static let githubSearch = #"""
+#!/bin/sh
+# ./search.sh open [words]   a view that searches your issues and PRs as you type (Euclid reruns
+#                            `./search.sh rows <what you typed>` after each pause)
+# ./search.sh approve <url>  approve a PR      ./search.sh comment <url> <text>  comment on it
+set -eu
+command -v gh >/dev/null 2>&1 || { echo "needs the GitHub CLI: brew install gh && gh auth login" >&2; exit 1; }
+what=${1:-open}
+case $what in
+  approve) gh pr review "$2" --approve >/dev/null; echo '{"notice":"Approved"}'; exit 0 ;;
+  comment) gh issue comment "$2" --body "$3" >/dev/null; echo '{"notice":"Commented"}'; exit 0 ;;
+  open) echo '{"view":"list","title":"GitHub","placeholder":"Search issues and PRs…","search":"./search.sh rows"}' ;;
+  rows) ;;
+  *) echo "usage: search.sh open|rows [words] | approve <url> | comment <url> <text>" >&2; exit 64 ;;
+esac
+words=${2:-}
+[ -n "$words" ] || words="involves:@me is:open"   # before you type: what involves you
+gh search issues --include-prs --limit 30 --json number,title,url,repository,isPullRequest,state --jq '.[] |
+  {title, subtitle: "\(.repository.nameWithOwner) · #\(.number) · \(.state)", open: .url, id: .url,
+   icon: (if .isPullRequest then "arrow.triangle.pull" else "smallcircle.filled.circle" end),
+   actions: ([{title: "Copy URL", copy: .url, icon: "link"}]
+     + (if .isPullRequest then [{title: "Approve", run: "./search.sh approve \(.url | @sh)", icon: "checkmark.circle"}] else [] end)
+     + [{title: "Comment…", run: "./search.sh comment \(.url | @sh)", icon: "text.bubble", arguments: [{placeholder: "Comment"}]}])}
+  | tojson' -- "$words"
 """#
 
     static let bitbucketManifest = #"""
@@ -536,11 +583,20 @@ name = "Explain"
 when = ["clip", "snippet"]
 run  = './ai.sh show "Explain the text below briefly and plainly. If it is code or an error, say what it does or what went wrong." "$1"'
 
+# On an answer: ⇧⌘↵ opens a terminal running your AI CLI with the question and answer, to keep going there.
+[[key]]
+key  = "cmd+shift+return"
+name = "Continue in terminal"
+when = ["ai"]
+run  = "./continue.sh"
+
 [settings]
 cli      = ""          # empty: Apple's on-device model (macOS 26, Apple Intelligence on), else the first
                        # of claude, codex, gemini on your PATH. Or any command that takes the prompt as
                        # its last argument, e.g. "ollama run llama3.2"
 language = "English"   # what Translate translates into
+terminal = ""          # how Continue in terminal opens one: empty = Ghostty if you have it, else Terminal;
+                       # or a command that runs its arguments, e.g. "ghostty-run window"
 """#
 
     static let aiScript = #"""
@@ -593,6 +649,50 @@ function run(argv) {
     copy: answer, preview: answer, icon: "sparkles", id: "ai-answer",
   })
 }' "$mode" "$cli" "$answer"
+"""#
+
+    static let aiContinue = #"""
+#!/bin/sh
+# ⇧⌘↵ on an `ai` answer: a terminal running your AI CLI, already told the question and the answer,
+# so you can keep going there. The bar keeps no chat history; the CLI has its own.
+set -eu
+question=${EUCLID_SEARCH:-}
+question=${question#ai }
+answer=${EUCLID_ITEM_TEXT:-}
+[ -n "$answer" ] || { echo "press ↵ for an answer first" >&2; exit 1; }
+cli=${EUCLID_SETTING_CLI:-}
+case $cli in claude*|codex*|gemini*) cli=${cli%% *} ;; *) cli= ;; esac  # Apple's model and others have no chat
+if [ -z "$cli" ]; then
+  for c in claude codex gemini; do
+    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+  done
+fi
+[ -n "$cli" ] || { echo "Continue in terminal needs the claude, codex or gemini CLI" >&2; exit 1; }
+prompt="I asked a quick question and got this answer. Keep it in mind and wait for my follow-up; reply only \"Go ahead.\" for now.
+
+Question: $question
+
+Answer: $answer"
+case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;; esac
+
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  $term "$@"
+else
+  # Terminal.app runs a command line: quote each argument for the shell, then for AppleScript.
+  line=$(for a in "$@"; do printf "'%s' " "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"; done)
+  osascript - "$line" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "Terminal"
+    do script (item 1 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
 """#
 
     public static let guide = marker + "\n" + #"""
@@ -660,14 +760,90 @@ One JSON object per line (or a single JSON array). Only `title` is required.
 | `paste` | `↵` pastes this text into the app you were in |
 | `copy` | `↵` copies this text (and `⌘C` copies it) |
 | `run` | `↵` runs this shell command in the plugin folder |
-| `icon` | SF Symbol name, e.g. `arrow.triangle.pull` |
+| `icon` | SF Symbol name (`arrow.triangle.pull`), an emoji (`🌤`) or an image file path (`~/pics/a.png`, or relative to the plugin folder) |
 | `label` | Shown on the right; default: the plugin's name |
 | `preview` | Text for the preview pane (`→`) |
 | `id` | Stable identity, so Euclid learns what you pick; default: `open`, then `title` |
 | `suggest` | `true` = also shown when the search box is empty (3 per plugin) |
+| `arguments` | Up to 3 fields to fill in before `run` runs (see below) |
+| `actions` | More things to do with it, shown by `⌘K`: a list of items like this one (up to 20) |
 
-`↵` does the first of `open`, `paste`, `copy`, `run` that is set. All fields are strings except
-`suggest`. Print errors to stderr and exit non-zero: Euclid shows the first stderr line.
+`↵` does the first of `open`, `paste`, `copy`, `run` that is set, else its first action. All fields are strings except
+`suggest` and `arguments`. Print errors to stderr and exit non-zero: Euclid shows the first stderr line.
+
+### Arguments: ask before running
+
+An item with `run` can ask for up to 3 values first. `↵` shows the fields in the search bar
+(`tab` moves between them, `↵` runs, `esc` cancels); the values reach `run` as `$1`–`$3` and
+`$EUCLID_ARG_1`–`3`. Same format as a Raycast script's `@raycast.argument1`:
+
+```json
+{"title":"Weather","run":"./weather.sh","arguments":[
+  {"type":"text","placeholder":"City"},
+  {"type":"dropdown","placeholder":"Units","optional":true,"data":[{"title":"Metric","value":"m"},{"title":"US","value":"u"}]}]}
+```
+
+`type` is `text` (default), `password` (hidden as you type) or `dropdown` (pick one of `data`;
+the script gets its `value`). `optional: true` fields may stay empty.
+
+### What `run` prints: effects and views
+
+When `↵` runs an item's `run` (or you click a badge), Euclid reads what it prints, like a key's
+output (see Mods below): `{"notice":"Volume 40%"}` shows in the footer with the panel still
+open, `{"copy":…}`, `{"paste":…}`, `{"open":…}` and `{"show":…}` work too. It waits up to 1 s
+with the panel open; a slower command keeps going in the background and its effects still apply.
+
+A script can also open a view in the panel by printing a header line first:
+
+```sh
+echo '{"view":"grid","title":"Emoji","placeholder":"Search emoji…","columns":8}'
+echo '{"title":"grinning face","icon":"😀","paste":"😀"}'     # items, as a source prints them
+```
+
+| View | Shows |
+|---|---|
+| `list` | The item lines after the header, as rows. Typing filters them. |
+| `grid` | The same, as tiles: big `icon` (emoji, image or symbol) with the title under it. `columns`: 3–10, default 6. |
+| `detail` | Everything printed after the header, as text to read; `"code":true` for monospaced output. `↵` or `⌘C` copies it. |
+
+`esc` goes back. Items in a view work like any item, so a `run` can open another view
+(a confirm step, a drill-down).
+
+**Actions.** An item's `actions` are items too (`open`, `copy`, `run`, `arguments`…). `⌘K` on it
+opens them as a list; `↵` runs one and goes back, and a live view under it reloads:
+
+```json
+{"title":"Fix login","open":"https://github.com/acme/web/pull/412","actions":[
+  {"title":"Copy URL","copy":"https://github.com/acme/web/pull/412"},
+  {"title":"Approve","run":"gh pr review https://github.com/acme/web/pull/412 --approve"},
+  {"title":"Comment…","run":"./comment.sh 412","arguments":[{"placeholder":"Comment"}]}]}
+```
+
+**Search as you type.** Add `"search":"./find.sh"` to a list or grid header and Euclid hands what
+you type to that command as `$1` after each pause (0.15 s), and shows exactly the rows it prints
+(no header needed). Use it when only the script can search: an API, a server, a big index.
+
+**Live views.** Add `"reload"` to the header, a command that prints the view again, and Euclid
+keeps it current without the script remembering anything: it reruns it after a `run` in the view
+that printed no new view (a kill, a stop), when you come back to it with `esc`, and every
+`refresh_seconds` (1–3600) while it's on screen. The rows change in place: your filter text stays
+and the selection follows its item (give items an `id`). Only one reload runs at a time, and none
+while the panel is closed. Keep `reload` fast (well under a second): it's the whole refresh.
+
+```sh
+echo '{"view":"list","title":"Processes","reload":"./list.sh","refresh_seconds":3}'
+```
+
+### dmenu: pick from any list
+
+`euclid-bar --pick` reads lines from stdin, opens the panel to pick one and prints it
+(exit 1 if you press `esc`). Lines can be plain text or JSON items (for icons and subtitles);
+the chosen line is printed exactly as it came in. `--grid` shows tiles, `--prompt "Branch"`
+sets the placeholder.
+
+```sh
+git branch --format='%(refname:short)' | euclid-bar --pick --prompt Branch | xargs git switch
+```
 
 ## What scripts get
 
@@ -693,7 +869,7 @@ run   = "./clean.sh"               # open: the panel opened ($1 = the app you we
                                    # app: you switched apps ($1 = the app's name)
 
 [[key]]                            # a shortcut in the panel, on the selected result
-key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘1…) are taken
+key  = "cmd+g"                     # needs a modifier; Euclid's own keys (⌘K, ⌘C, ⌘/, ⌘1…) are taken
 name = "Open in GitHub Desktop"    # shown in the footer when it applies
 when = ["github", "project"]       # optional: kinds it applies to, or a plugin's id
 run  = 'open -a "GitHub Desktop" "$1"'   # $1 = the result's URL, path or text
@@ -720,6 +896,25 @@ Hooks run in the background with a 10 s limit and never slow the panel down; key
 sample text: `euclid-bar --try-plugin <id> "https://example.com/?utm_source=x"`. Keys aren't run
 by `--try-plugin`; it checks them and lists them.
 
+## Port a Raycast extension
+
+Most Raycast extensions are an API or a CLI plus lists, and port to a plugin. Ask your agent:
+
+> Port the Raycast extension at <github.com/raycast/extensions/tree/main/extensions/NAME> to a
+> Euclid plugin in ~/.config/euclid/plugins/NAME. Read its package.json and src/ to see each
+> command and what it calls, then follow ~/.config/euclid/plugins/AGENTS.md:
+> a command with a list → a source row whose `run` opens a list view; `<List.Item>` → an item;
+> its `<ActionPanel>` → the item's `actions` (first one = ↵); `onSearchTextChange` that calls a
+> server → `"search"`; `useCachedPromise` / `setInterval` / `revalidate` → `"reload"` with
+> `refresh_seconds`; `<Detail markdown>` → a detail view; `<Form>` with ≤3 fields → `arguments`;
+> preferences → `[settings]`; tokens → the Keychain (`security find-generic-password`).
+> Prefer the service's CLI (gh, docker, brew, kubectl) over raw HTTP. Keep each script fast.
+> Check it with `euclid-bar --try-plugin NAME` until it runs clean, and tell me what you left out.
+
+What doesn't port: extensions that need Raycast's AI, a browser extension, window management, or
+forms with more than 3 fields. Worked examples: `docker` and `kill-process` (Raycast has both),
+`github` (search, actions).
+
 ## Rules of thumb
 
 - Keep sources fast and quiet: they run in the background with a 30 s limit, answers with 2 s.
@@ -734,7 +929,8 @@ by `--try-plugin`; it checks them and lists them.
 `euclid-bar --plugin add <name>` writes a working example into this folder. Read them, copy them,
 change them:
 
-- `github`: your PRs, review requests and issues, through the `gh` CLI (a source).
+- `github`: your PRs, review requests and issues, through the `gh` CLI; ⌘K copies, approves or
+  comments; `gh <words>` searches issues and PRs as you type (a source, `actions`, a `search` view).
 - `linear`: Linear issues assigned to you, through the GraphQL API (a source, key in the Keychain).
 - `bitbucket`: your PRs, review requests and repos, Cloud or Data Center (a source, token in the Keychain).
 - `jira`: your issues and ones you viewed; `ABC-123` opens any issue; ⇧⌘C copies a branch name
@@ -748,7 +944,19 @@ change them:
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
 - `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
-  ⇧⌘T translates, ⇧⌘E explains. Apple's on-device model by default, or the `claude`, `codex` or
-  `gemini` CLI you're logged into (an `on_enter` answer and `[[key]]`s).
+  ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues in a terminal with your AI CLI.
+  Apple's on-device model by default, or the `claude`, `codex` or `gemini` CLI you're logged into
+  (an `on_enter` answer and `[[key]]`s).
+- `raycast`: runs Raycast script commands from a folder (default `~/.config/euclid/raycast`):
+  each script is a row, `rc <name> <args>` runs one with arguments. Reads `@raycast.title`, `mode`
+  (silent, compact, fullOutput, inline), `argument1`–`3`, `needsConfirmation`, `icon`,
+  `packageName` and `currentDirectoryPath`. Clone github.com/raycast/script-commands and pick some
+  (a source, an answer, views and arguments).
+- `emoji`: “Emoji” opens a grid of every emoji; `emoji heart` lists matches. ↵ pastes (a grid view).
+- `volume`: Volume Up / Down / Mute rows, `vol 40`, and Set Volume with a dropdown (effects and arguments).
+- `kill-process`: your processes, busiest first, refreshing every 3 s; ↵ quits one, ↵ again
+  force-quits; `kill chrome` finds one (a live view and an answer).
+- `docker`: your containers, live: logs (live too), a shell, open its port, start, stop, restart
+  (live views that drill down).
 """#
 }

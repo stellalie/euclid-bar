@@ -2,7 +2,7 @@ import EuclidCore
 
 /// Something euclid-bar itself does, found by searching like anything else ("update").
 struct AppCommand: Equatable {
-    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleCrashReports, buyLicence, enterLicence, importLauncher, connectAgents, permissions }
+    enum Kind: String { case checkForUpdates, toggleAutoInstall, toggleExpansion, toggleOpenAtLogin, toggleDiagnostics, buyLicence, enterLicence, permissions, changeSettingsWithAI, fixSettings }
     let kind: Kind
     let title: String
     var detail = ""
@@ -10,11 +10,14 @@ struct AppCommand: Equatable {
     /// Right-hand label: "On"/"Off" for a toggle.
     var accessory = ""
 
-    static let importLauncher = AppCommand(kind: .importLauncher, title: "Import from Raycast or Alfred…",
-                                           detail: "Snippets and quicklinks into config.toml", symbol: "square.and.arrow.down")
-
-    static let connectAgents = AppCommand(kind: .connectAgents, title: "Connect Claude Code or Codex (MCP)…",
-                                          detail: "Let your agents search your clipboard, notes and history", symbol: "point.3.connected.trianglepath.dotted")
+    /// Vibe-coded settings: a prompt for any AI chat, whose reply you paste in Edit Config.
+    /// `problems`: the config has issues (adds Fix).
+    static func settingsWithAI(problems: Bool) -> [AppCommand] {
+        [AppCommand(kind: .changeSettingsWithAI, title: "Change Settings with AI…",
+                    detail: "A prompt for ChatGPT, Copilot, Claude or any AI chat", symbol: "wand.and.stars")]
+        + (problems ? [AppCommand(kind: .fixSettings, title: "Fix Settings with AI…",
+                                  detail: "A prompt with the problems and your config.toml, for any AI chat", symbol: "wrench.and.screwdriver")] : [])
+    }
 
     /// Every permission Euclid uses, in one row: ↵ opens the pane for the first one missing.
     static func permissions(_ needs: [Permissions.Need]) -> AppCommand {
@@ -28,10 +31,18 @@ struct AppCommand: Equatable {
                    symbol: "text.cursor", accessory: enabled ? "On" : "Off")
     }
 
-    /// Opt-in crash and error reports (`[privacy] crash_reports`).
-    static func crashReports(enabled: Bool) -> AppCommand {
-        AppCommand(kind: .toggleCrashReports, title: "Send Crash Reports", detail: "Stack and versions only, never your data · [privacy] crash_reports",
-                   symbol: "ladybug", accessory: enabled ? "On" : "Off")
+    /// Start at login (`[startup] open_at_login`), as macOS has it now.
+    static func openAtLogin(enabled: Bool) -> AppCommand {
+        AppCommand(kind: .toggleOpenAtLogin, title: "Open at Login", detail: "Start Euclid when you log in · [startup] open_at_login",
+                   symbol: "person.crop.circle", accessory: enabled ? "On" : "Off")
+    }
+
+    /// Opt-in crash reports and daily usage ping as one switch (`[privacy] crash_reports`, `usage_ping`).
+    static func diagnostics(crashReports: Bool, usagePing: Bool) -> AppCommand {
+        let accessory = crashReports && usagePing ? "On" : crashReports || usagePing ? "Partly on" : "Off"
+        return AppCommand(kind: .toggleDiagnostics, title: "Share Anonymous Diagnostics",
+                          detail: "Crash reports and a daily install ping, never your data · [privacy]",
+                          symbol: "stethoscope", accessory: accessory)
     }
 
     /// The update commands for the current `[updates]` settings.

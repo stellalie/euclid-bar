@@ -53,6 +53,7 @@ if [[ -n "$TAG" ]]; then
   gh release create "$TAG" --repo "$REPO" --title "Euclid $VERSION" --notes "Euclid $VERSION for macOS 14+ (Apple Silicon + Intel)." \
     build/release/*.dmg build/release/*.zip build/release/appcast.xml
   echo "Published Euclid $VERSION"
+  scripts/bump-cask.sh "$VERSION" "build/release/Euclid-$VERSION.zip" # Homebrew follows stable only
   exit 0
 fi
 

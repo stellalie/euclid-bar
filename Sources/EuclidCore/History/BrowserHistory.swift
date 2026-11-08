@@ -76,22 +76,35 @@ public enum BrowserHistory {
         return sources
     }
 
-    /// One footer line for failed sources, or nil. Each browser is named once, however many
-    /// profiles failed. Safari is left out: its Full Disk Access is shown on the Permissions row.
+    /// One footer line for sources that failed for a reason worth fixing, or nil. Each browser is
+    /// named once, however many profiles failed. Access denied (Safari without Full Disk Access, or
+    /// security software guarding browser files on a work Mac) goes on the Permissions row instead
+    /// (see `blocked`), so a block the user may not be able to lift doesn't fill the footer.
     public static func problem(_ errors: [(Source, Error)]) -> String? {
-        let failed = errors.filter { $0.0.key != "safari" }
+        let failed = errors.filter { $0.0.key != "safari" && !isDenied($0.1) }
         guard !failed.isEmpty else { return nil }
-        var names: [String] = []
-        for (source, _) in failed where !names.contains(source.browser) { names.append(source.browser) }
-        return "⚠︎ couldn't read \(names.joined(separator: ", ")) history: \(reason(failed[0].1))"
+        let reason = (failed[0].1 as? DatabaseError)?.message ?? failed[0].1.localizedDescription
+        return "⚠︎ couldn't read \(names(failed).joined(separator: ", ")) history: \(reason)"
     }
 
-    static func reason(_ error: Error) -> String {
-        if let db = error as? DatabaseError { return db.message ?? "unreadable database" }
+    /// Browsers (other than Safari) whose history macOS wouldn't let us read, each named once.
+    public static func blocked(_ errors: [(Source, Error)]) -> [String] {
+        names(errors.filter { $0.0.key != "safari" && isDenied($0.1) })
+    }
+
+    static func names(_ errors: [(Source, Error)]) -> [String] {
+        var names: [String] = []
+        for (source, _) in errors where !names.contains(source.browser) { names.append(source.browser) }
+        return names
+    }
+
+    /// A permission error, from Foundation ("couldn't be opened/copied because you don't have
+    /// permission") or POSIX, at any depth of underlying errors.
+    static func isDenied(_ error: Error) -> Bool {
         let ns = error as NSError
-        let denied = (ns.domain == NSCocoaErrorDomain && ns.code == NSFileReadNoPermissionError)
-            || (ns.domain == NSPOSIXErrorDomain && (ns.code == Int(EPERM) || ns.code == Int(EACCES)))
-        return denied ? "needs Full Disk Access (System Settings › Privacy & Security)" : ns.localizedDescription
+        if ns.domain == NSCocoaErrorDomain, [NSFileReadNoPermissionError, NSFileWriteNoPermissionError].contains(ns.code) { return true }
+        if ns.domain == NSPOSIXErrorDomain, [Int(EPERM), Int(EACCES)].contains(ns.code) { return true }
+        return (ns.userInfo[NSUnderlyingErrorKey] as? Error).map(isDenied) ?? false
     }
 
     /// Load the most recent pages from all sources, deduplicated (see `dedupe`).
@@ -170,16 +183,18 @@ public enum BrowserHistory {
     }
 
     /// Browsers keep their databases locked: copy the file (and its WAL) and read the copy.
+    /// The copy is bytes only: `FileManager.copyItem` also copies extended attributes and ACLs,
+    /// which managed Macs can refuse even when reading the file is allowed.
     static func readCopy<T>(of database: URL, _ body: (Database) throws -> T) throws -> T {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-history-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
         let copy = tmp.appendingPathComponent("copy.db")
-        try FileManager.default.copyItem(at: database, to: copy)
+        try Data(contentsOf: database, options: .mappedIfSafe).write(to: copy)
         for suffix in ["-wal", "-shm"] { // include uncheckpointed writes, if any
             let side = URL(fileURLWithPath: database.path + suffix)
-            if FileManager.default.fileExists(atPath: side.path) {
-                try? FileManager.default.copyItem(at: side, to: URL(fileURLWithPath: copy.path + suffix))
+            if let data = try? Data(contentsOf: side, options: .mappedIfSafe) {
+                try? data.write(to: URL(fileURLWithPath: copy.path + suffix))
             }
         }
         var config = Configuration()

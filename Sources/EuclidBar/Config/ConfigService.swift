@@ -31,10 +31,10 @@ final class ConfigService {
 
     /// One line for the footer when something needs attention, else nil.
     var problemSummary: String? {
-        if let loadError { return "⚠︎ \(loadError) — using last good config" }
+        if let loadError { return "⚠︎ \(loadError) — using last good config · search “fix” to fix it with AI" }
         guard let first = current.issues.first else { return nil }
-        let more = current.issues.count > 1 ? " (+\(current.issues.count - 1) more: --check-config)" : ""
-        return "⚠︎ config: \(first.message)\(more)"
+        let more = current.issues.count > 1 ? " (+\(current.issues.count - 1) more)" : ""
+        return "⚠︎ config: \(first.message)\(more) · search “fix” to fix it with AI"
     }
 
     func startWatching() {
@@ -92,19 +92,6 @@ final class ConfigService {
         }
         // In place, not atomically: a symlinked config.toml (dotfiles) stays a symlink.
         do { try edited.write(to: file, atomically: false, encoding: .utf8) } catch {
-            return "can't write \(file.path): \(error.localizedDescription)"
-        }
-        reload()
-        return nil
-    }
-
-    /// Add text to the end of config.toml (imported snippets and actions), then reload.
-    func append(_ text: String) -> String? {
-        let file = paths.configFile
-        guard let existing = try? String(contentsOf: file, encoding: .utf8) else { return "can't read \(file.path)" }
-        let separator = existing.isEmpty || existing.hasSuffix("\n") ? "" : "\n"
-        // In place, not atomically: a symlinked config.toml (dotfiles) stays a symlink.
-        do { try (existing + separator + text).write(to: file, atomically: false, encoding: .utf8) } catch {
             return "can't write \(file.path): \(error.localizedDescription)"
         }
         reload()

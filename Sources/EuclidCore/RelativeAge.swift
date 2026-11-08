@@ -16,4 +16,11 @@ public enum RelativeAge {
             return date.formatted(sameYear ? style : style.year())
         }
     }
+
+    /// Even shorter, for the right-hand column: "now", "5m", "2h", "3d", "6w", then a date.
+    public static func compact(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        let s = short(date, now: now, calendar: calendar)
+        if s == "just now" { return "now" }
+        return s.hasSuffix(" ago") ? String(s.dropLast(4)) : s
+    }
 }

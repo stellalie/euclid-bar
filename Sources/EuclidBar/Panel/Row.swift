@@ -29,6 +29,21 @@ enum Row {
 
     var isHeader: Bool { if case .header = self { true } else { false } }
 
+    /// The empty bar's row of source chips travels as a header with this title (never selectable, never shown as text).
+    static let scopeBarTitle = "\u{1}scopes"
+    static let scopeBar = Row.header(scopeBarTitle)
+    var isScopeBar: Bool { if case .header(let t) = self { t == Self.scopeBarTitle } else { false } }
+
+    /// Which `SearchScope` lists this row (⇥ filters by it).
+    func belongs(to scope: SearchScope) -> Bool {
+        switch (self, scope) {
+        case (.app, .apps), (.file, .files), (.clip, .clipboard), (.history, .history), (.project, .projects),
+             (.snippet, .snippets), (.content, .notes), (.action, .actions), (.aliasAction, .actions): true
+        case (.plugin(let e), .plugin(let id, _)): e.pluginID == id
+        default: false
+        }
+    }
+
     /// Stable identity for learned ranking. Nil for things that aren't worth learning
     /// (clips already reorder themselves on use; a calculation is never the same twice).
     var learnKey: String? {
@@ -83,7 +98,7 @@ enum Row {
         switch self {
         case .header(let t): t
         case .clip: "Clipboard"
-        case .history: "Browser History"
+        case .history: "Browser history"
         case .action, .aliasAction, .builtin: "Actions"
         case .app: "Applications"
         case .project: "Projects"

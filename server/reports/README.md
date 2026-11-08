@@ -1,7 +1,8 @@
-# Crash reports
+# Crash reports and usage ping
 
-Opt-in only: `[privacy] crash_reports = true` in config.toml, or **Send Crash Reports** in the menu bar icon
-or in search. Off by default; nothing is sent until the user turns it on, and nothing from before.
+Opt-in: `[privacy] crash_reports = true` in config.toml, or **Send Crash Reports** in the menu bar icon
+or in search. Off until the user says yes: on first launch Euclid asks once, with crash reports and the usage ping
+both pre-ticked. Nothing is sent before that, and nothing from before it was turned on.
 
 ## What's sent
 
@@ -41,3 +42,17 @@ A daily Claude routine reads open `crash-report` issues and, for each one withou
 3. Opens a PR that says `Fixes #<issue>`, and comments on the issue with the PR. Merges it once CI is
    green, as with any of Claude's PRs (CLAUDE.md).
 4. If it can't find a cause, comments what it checked and labels the issue `needs-info`, and leaves it.
+
+## Usage ping
+
+Opt-in, offered pre-ticked in the first-launch prompt: `[privacy] usage_ping = true`, or **Send Anonymous Usage Ping** in the menu bar
+icon or in search. Counts how many people use Euclid.
+
+- Sent once per UTC day while Euclid runs (`UsagePing`, `Sources/EuclidCore/Reports/UsagePing.swift`):
+  a random install ID, app version, build, channel, macOS version, CPU arch. The ID is made when the ping is
+  turned on and deleted when it's turned off. The last one sent is in `~/Library/Logs/Euclid/Reports/usage-ping.json`.
+- `POST /v1/ping` → one SQLite Durable Object (`src/pings.js`): one row per install per day (kept 90 days, macOS
+  major version only), plus each install's first and last day. No IPs. 10 pings a minute per address.
+- **Counts:** an hourly cron writes them to the issue "Install stats (opt-in usage ping)" in `stellalie/euclid-bar`
+  (made on the first run, then edited in place): installs, active today / 7 / 30 days, 14 days of active and
+  new installs, and last week's versions, macOS, channels and CPUs. Uses the same `GITHUB_TOKEN`.

@@ -38,7 +38,7 @@ import Testing
 
     @Test func editorFlipsTheValueAndKeepsTheLine() throws {
         let edited = try #require(ConfigEditor.set("auto_install", to: false, in: "updates", text: DefaultConfig.text))
-        #expect(edited.contains("auto_install = false             # download it in the background, install on quit"))
+        #expect(edited.contains("auto_install = false             # download it in the background, install it when the panel closes"))
         #expect(try ConfigLoader.parse(edited).config.updates.autoInstall == false)
         // Only that line changed.
         let diff = zip(edited.components(separatedBy: "\n"), DefaultConfig.text.components(separatedBy: "\n")).filter { $0 != $1 }

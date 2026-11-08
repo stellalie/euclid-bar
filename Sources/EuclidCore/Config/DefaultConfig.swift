@@ -4,6 +4,8 @@ public enum DefaultConfig {
 # Euclid configuration. Changes apply on save, no restart needed
 # (except clipboard.limit, which applies on next launch).
 # Check from a terminal: /Applications/Euclid.app/Contents/MacOS/euclid-bar --check-config
+# Rather say it in plain words? Search "settings" in Euclid: Change Settings with AI… gives you
+# a prompt for any AI chat, which replies with a whole config.toml to paste here.
 
 # Shared files (your team's actions, snippets, plugin settings) read underneath this one.
 # Settings here win; your own actions stay first. Relative paths are next to this file.
@@ -16,6 +18,10 @@ hotkey = "opt+space"
 # What Edit Config… opens this file with. Unset = your default text editor.
 # An app ("Sublime Text", "Zed", "Visual Studio Code") or a command ("subl", "code", "zed").
 # editor = "Sublime Text"
+
+# Start Euclid when you log in, so the hotkey works after a restart. Also in the menu bar icon.
+[startup]
+open_at_login = true
 
 [clipboard]
 limit = 5000                 # entries kept
@@ -60,15 +66,21 @@ limit   = 8
 [search]
 # Shown first when the search box is empty, by name (apps, projects or actions).
 favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
+# ⇥ narrows the search to one source. Optional typed prefixes do the same: "c kube" = Clipboard.
+# scopes = { c = "clipboard", f = "files", h = "history" }
 
 # Look and feel.
 [appearance]
-theme      = "default"           # or dracula, nord, tokyo-night, catppuccin-mocha, catppuccin-latte, gruvbox-dark,
-                                 # gruvbox-light, solarized-dark, solarized-light, monokai, or themes/<name>.toml
-# accent   = "#7c5cff"           # match highlight; default: the theme's, or your system accent colour
+theme      = "default"           # or aurora, neon-noir, ember, velvet, phosphor, amber, graphite, paper, glacier,
+                                 # matcha, sakura, sandstone, dracula, nord, tokyo-night, catppuccin-mocha,
+                                 # catppuccin-latte, gruvbox-dark, gruvbox-light, solarized-dark, solarized-light,
+                                 # monokai, or themes/<name>.toml
+# accent   = "#7c5cff"           # selection and caret; default: the theme's, or your system accent colour
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
 show_speed = true                # "12,431 items · 0.6 ms" in the footer
+auto_preview = true              # ↑/↓ through results opens the preview (false: only → or ⌘Y do)
+contrast   = 50                  # 0–100: how far apart text, dim text and borders sit
 
 # Search your Obsidian notes by title and text (↵ opens the note in Obsidian).
 [obsidian]
@@ -80,16 +92,24 @@ share = ["clipboard", "notes", "history"]
 
 # Updates (release builds). Also in the menu bar icon and in search: type "update".
 [updates]
-check        = true              # look for a new version once a day
-auto_install = true              # download it in the background, install on quit
+check        = true              # look for a new version (hourly on dev, every 6 hours on stable)
+auto_install = true              # download it in the background, install it when the panel closes
 channel      = "stable"          # "dev": a build of every change merged to main, for testing
 
-# Send crash reports and internal errors to the Euclid developer, so they get fixed. Off by default.
+# Euclid asks once, on first launch, with one unticked box for both. Your answer is saved here.
+# The menu's "Share Anonymous Diagnostics" switches both together.
+#
+# crash_reports: send crash reports and internal errors to the Euclid developer, so they get fixed.
 # Sent: app and macOS version, the crashed code's stack, the error message. Never your searches,
 # clipboard, files, config or anything that identifies you. A copy of each is kept in
 # ~/Library/Logs/Euclid/Reports, so you can read exactly what was sent.
+#
+# usage_ping: once a day, send a random install ID (made when you turn it on, forgotten when you
+# turn it off), the app and macOS version, so the developer can count how many people use Euclid.
+# Nothing else. The last one sent is in ~/Library/Logs/Euclid/Reports/usage-ping.json.
 [privacy]
 crash_reports = false
+usage_ping    = false
 
 # Type the alias to jump straight to an app, project or action.
 # For an action, "alias text" runs it on "text": `gh swift testing`.

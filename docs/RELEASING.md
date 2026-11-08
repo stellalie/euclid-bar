@@ -21,6 +21,12 @@ The bundle is `Euclid.app`; the binary inside stays `euclid-bar` (the CLI name).
 `CFBundleIdentifier` (`dev.euclid.Euclid`): Sparkle finds the new app in the update zip by it, and
 installs it at the old path, so copies installed as `euclid-bar.app` keep that folder name.
 
+**Homebrew.** After a stable release, `scripts/bump-cask.sh` sets `version` and `sha256` in
+`Casks/euclid.rb` in euclid-bar-releases, which doubles as the tap (`brew tap stellalie/euclid
+https://github.com/stellalie/euclid-bar-releases`). Dev builds don't touch it. The cask says
+`auto_updates true`, so `brew upgrade` leaves the update to Sparkle. If the bump step fails, the
+release is already out; re-run it by hand: `GH_TOKEN=… scripts/bump-cask.sh 1.4.1 Euclid-1.4.1.zip`.
+
 The tag sets the app version (`CFBundleVersion`), and Sparkle only offers versions newer than the
 installed one, so tags must keep going up.
 
@@ -76,14 +82,11 @@ Stable releases stay tag-only.
    repository access *Only euclid-bar-releases*, permission *Contents: Read and write*, expiry 1 year.
    Secret `RELEASES_TOKEN` = the token.
 
-5. **Licence keys.** After any `swift build`:
-   ```sh
-   .build/debug/euclid-bar --licence-keygen
-   ```
-   - Repository **variable** `LICENCE_PUBLIC_KEY` = the printed public key. Builds without it
-     have no trial and no licence menu.
-   - Keep `LICENCE_PRIVATE_KEY` in your password manager only. It is not a CI secret: the app
-     never signs anything. Losing it means you can't issue keys that existing builds accept.
+5. **Licence keys.** Done (1 Nov 2026). The public key is checked in as `EuclidLicencePublicKey`
+   in `Resources/Info.plist`, so every build can verify licences. The private key lives in the
+   login Keychain (service `euclid-licence`, account `private-key`) and as the `LICENCE_PRIVATE_KEY`
+   secret of the licence Worker at licences.lgtm.ninja. Never generate a new pair: keys already
+   sold would stop working.
 
 Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
 
@@ -101,13 +104,12 @@ Without the env vars you get a locally signed, un-notarized build for testing.
 
 ## Licence keys
 
-**Beta:** Personal use is free while `Evaluation.betaEnds` is `nil`. At launch, set it to the
-launch date: anyone who first ran Euclid before then keeps Personal free, and new installs get the trial.
+Personal use is free, forever (Stella's call, 1 Nov 2026): `Evaluation.betaEnds` stays `nil`, so
+every install is free Personal and nothing nags. Business licences are for work use, sold through
+Paddle; the licence Worker at licences.lgtm.ninja issues them after checkout. Setting `betaEnds`
+to a date would bring back the 30-day trial and "Unregistered" reminders for installs after it.
 
-Euclid is fully unlocked during and after its 30-day trial. Once the trial is over it shows
-"Unregistered" in the panel footer and a reminder every 3 days. A key turns both off.
-
-Issue a key for a Paddle sale (the order is the `txn_…` id from the Paddle notification):
+Issue a key by hand (e.g. a refund swap; the order is the Paddle `txn_…` id):
 
 ```sh
 LICENCE_PRIVATE_KEY=… .build/debug/euclid-bar --issue-licence "Ada Lovelace" personal 1 txn_01abc
