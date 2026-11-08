@@ -102,10 +102,10 @@ enum ScreensRenderer {
         try step("JSON: pretty or minified", hold: 1.4, name: "json")
 
         vc.demoSetQuery("docker")
-        vc.demoSelect(row: 0)
-        try step("↓ through results opens the preview", hold: 0.8)
-        vc.demoMove(by: 1)
-        try step("↓ through results opens the preview", hold: 2.0, name: "preview-clip")
+        vc.demoSelect(row: 1)
+        try step("↑/↓ through results opens the preview", hold: 0.8)
+        vc.demoMove(by: -1) // back up to the clip: the site's preview clip shows its code card
+        try step("↑/↓ through results opens the preview", hold: 2.0, name: "preview-clip")
         vc.demoTogglePreview()
         try step("esc closes it", hold: 0.8)
 
