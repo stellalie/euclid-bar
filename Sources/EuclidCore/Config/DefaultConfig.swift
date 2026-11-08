@@ -71,8 +71,10 @@ favorites = []                   # e.g. ["Ghostty", "euclid-bar", "Search web"]
 
 # Look and feel.
 [appearance]
-theme      = "default"           # or dracula, nord, tokyo-night, catppuccin-mocha, catppuccin-latte, gruvbox-dark,
-                                 # gruvbox-light, solarized-dark, solarized-light, monokai, or themes/<name>.toml
+theme      = "default"           # or aurora, neon-noir, ember, velvet, phosphor, amber, graphite, paper, glacier,
+                                 # matcha, sakura, sandstone, dracula, nord, tokyo-night, catppuccin-mocha,
+                                 # catppuccin-latte, gruvbox-dark, gruvbox-light, solarized-dark, solarized-light,
+                                 # monokai, or themes/<name>.toml
 # accent   = "#7c5cff"           # selection and caret; default: the theme's, or your system accent colour
 density    = "comfortable"       # or "compact": smaller rows, more results
 glass      = true                # Liquid Glass background on macOS 26+
