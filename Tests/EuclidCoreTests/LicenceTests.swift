@@ -37,6 +37,15 @@ import Testing
         }
     }
 
+    /// A key from the licence server (server/licences), signed with its test-only key, verifies here.
+    @Test func acceptsKeysFromTheLicenceServer() throws {
+        let key = "EUCLID-eyJlZGl0aW9uIjoiYnVzaW5lc3MiLCJpc3N1ZWQiOiIyMDI2LTEwLTMxIiwibmFtZSI6IkFkYSBMb3ZlbGFjZSIsIm9yZGVyIjoidHhuXzAxbTY4NmtiOWJiZDFwdDZleGJ6NnNhcXM4Iiwic2VhdHMiOjN9.MFWkRgdl0xOzQHKv2KEvlJnLhSi6WPRx8ML6L7tdeNPH_-TFn-YV7l-5fRcj-Li9ft2gTux6kWPOWYC0xmv5Dg"
+        let serverPublicKey = try #require(Data(base64URL: "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"))
+        let licence = try Licence.verify(key, publicKey: serverPublicKey)
+        #expect(licence == Licence(name: "Ada Lovelace", edition: .business, seats: 3, issued: "2026-10-31",
+                                   order: "txn_01m686kb9bbd1pt6exbz6saqs8"))
+    }
+
     @Test func trialRunsThirtyDaysThenNeverLocks() throws {
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let day: TimeInterval = 86_400
