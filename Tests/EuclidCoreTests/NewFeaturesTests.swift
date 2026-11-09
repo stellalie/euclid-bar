@@ -34,6 +34,10 @@ import Testing
         #expect(shown("dock", "do a check") == "[do] a [c]heck")
     }
 
+    @Test func acronymHighlightsWordStarts() {
+        #expect(marked("vsc", "Visual Studio Code") == "[V]isual [S]tudio [C]ode")
+    }
+
     @Test func foldsAccentsAndKeepsRangesValid() {
         #expect(marked("cafe", "Café au lait") == "[Café] au lait")
         #expect(marked("ok", "👍 ok") == "👍 [ok]")

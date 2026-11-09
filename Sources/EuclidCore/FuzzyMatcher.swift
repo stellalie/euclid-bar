@@ -2,6 +2,8 @@
 ///
 /// Ranking tiers (higher is better):
 /// - contiguous substring: 1000+ (bonus at start / word boundary, shorter titles win)
+/// - acronym:              ~1150, the first letter of every word ("am" → Activity Monitor), so it
+///                         beats a match inside a word ("am" in Teams) but not one at a word start
 /// - subsequence:          < 1000 (bonus for consecutive and word-boundary hits)
 public enum FuzzyMatcher {
     public static func search(_ query: String, in items: [SearchItem], limit: Int = 50) -> [SearchItem] {
@@ -31,7 +33,9 @@ public enum FuzzyMatcher {
         guard !q.isEmpty, q.count <= t.count else { return q.isEmpty ? 0 : nil }
         return q.withUnsafeBufferPointer { qb in
             t.withUnsafeBufferPointer { tb in
-                substringScore(qb, tb) ?? subsequenceScore(qb, tb)
+                let sub = substringScore(qb, tb)
+                if let acronym = acronymScore(qb, tb), acronym > sub ?? .min { return acronym }
+                return sub ?? subsequenceScore(qb, tb)
             }
         }
     }
@@ -65,6 +69,18 @@ public enum FuzzyMatcher {
             i += 1
         }
         return best
+    }
+
+    /// The query is exactly the first letter of each word, in order: "vsc" → Visual Studio Code.
+    /// Every word must take part, so long texts (clips, pages) rarely qualify by accident.
+    private static func acronymScore(_ q: UnsafeBufferPointer<UInt8>, _ t: UnsafeBufferPointer<UInt8>) -> Int? {
+        guard q.count >= 2 else { return nil }
+        var qi = 0
+        for i in 0..<t.count where isAlnum(t[i]) && isBoundary(t, i) {
+            guard qi < q.count, t[i] == q[qi] else { return nil }
+            qi += 1
+        }
+        return qi == q.count ? 1150 - min(t.count, 200) / 10 : nil
     }
 
     private static func subsequenceScore(_ q: UnsafeBufferPointer<UInt8>, _ t: UnsafeBufferPointer<UInt8>) -> Int? {
@@ -108,6 +124,12 @@ extension FuzzyMatcher {
             if first == nil { first = i }
         }
         if let first { return [range(first, qs.count)] }
+
+        // Acronym: one letter per word, every word ("vsc" → Visual Studio Code).
+        let starts = t.indices.filter { isBoundary($0) && (text[indices[$0]].isLetter || text[indices[$0]].isNumber) }
+        if qs.count >= 2, starts.count == qs.count, zip(starts, qs).allSatisfy({ t[$0] == $1 }) {
+            return starts.map { range($0, 1) }
+        }
 
         // Subsequence: leftmost, merged into runs.
         var hits: [Int] = []

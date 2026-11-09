@@ -27,6 +27,27 @@ let isDebugBuild = false
         #expect(word > middle)
     }
 
+    /// "am" means Activity Monitor, not the "am" inside Microsoft Teams; a word-start match still wins.
+    @Test func acronymBeatsMidWordButNotWordStart() throws {
+        let acronym = try #require(FuzzyMatcher.score(query: "am", in: "Activity Monitor"))
+        let middle = try #require(FuzzyMatcher.score(query: "am", in: "Microsoft Teams"))
+        let word = try #require(FuzzyMatcher.score(query: "am", in: "Amazon Music"))
+        #expect(acronym > middle)
+        #expect(word > acronym)
+        let items = ["Microsoft Teams", "Visual Studio Code", "Activity Monitor", "Google Chrome"].enumerated().map {
+            SearchItem(id: $0.offset, title: $0.element)
+        }
+        #expect(FuzzyMatcher.search("am", in: items).first?.title == "Activity Monitor")
+        #expect(FuzzyMatcher.search("vsc", in: items).first?.title == "Visual Studio Code")
+        #expect(FuzzyMatcher.search("gc", in: items).first?.title == "Google Chrome")
+    }
+
+    /// Every word must take part, so a long clip doesn't jump up by accident.
+    @Test func acronymNeedsEveryWord() throws {
+        let partial = try #require(FuzzyMatcher.score(query: "am", in: "a meeting about the roadmap"))
+        #expect(partial < 1000) // still a plain subsequence
+    }
+
     @Test func caseAndDiacriticInsensitive() {
         #expect(FuzzyMatcher.score(query: "CAFE", in: "Café au lait") != nil)
         #expect(FuzzyMatcher.score(query: "café", in: "CAFE") != nil)
