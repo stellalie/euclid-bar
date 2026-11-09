@@ -37,7 +37,8 @@ one keystroke away. Then Euclid gets out of your way.
 ## Features
 
 **One list, everything in it.** Results are grouped into sections with matched letters highlighted,
-and the list never reshuffles under your cursor.
+and the list never reshuffles under your cursor. Initials work too: `am` is Activity Monitor, `vsc` is
+Visual Studio Code.
 
 | Source | What you get |
 |---|---|
@@ -169,7 +170,8 @@ Then press **`⌥Space`**. Euclid updates itself, so `brew upgrade` skips it. Or
 1. **Download** `Euclid-<version>.dmg` from
    [Releases](https://github.com/stellalie/euclid-bar-releases/releases/latest) (Apple Silicon + Intel,
    macOS 14+). It's signed and notarized, so it opens without warnings.
-2. **Open** it and drag `Euclid.app` into `/Applications`.
+2. **Open** it, drag `Euclid.app` into `/Applications`, and open Euclid from there (a copy run from
+   the disk image is gone after eject, so Euclid asks you to move it first).
 3. **Command line** *(optional)*: the CLI inside is `euclid-bar`. To type it short:
    ```sh
    alias euclid-bar=/Applications/Euclid.app/Contents/MacOS/euclid-bar
