@@ -304,6 +304,12 @@ enum ScreensRenderer {
         vc.sourceOrder = []
         vc.prepareForShow()
 
+        // The first thing a new install shows (after the diagnostics question). Last, so the other shots keep their numbers.
+        vc.notice = AppDelegate.welcome(hotkey: "⌥Space")
+        vc.demoSetQuery("")
+        try step("First launch: one line on how to come back", hold: 2.0, name: "welcome")
+        vc.notice = nil
+
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
         let total = frames.reduce(0) { $0 + $1.duration }
         print("rendered \(shotNumber) screenshots and \(frames.count) frames (\(String(format: "%.1f", total))s) → \(dir.path)")

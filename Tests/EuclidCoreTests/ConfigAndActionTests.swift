@@ -267,17 +267,12 @@ import Testing
         #expect(try String(contentsOf: script, encoding: .utf8) == DefaultScripts.ghosttyRun)
     }
 
-    /// The exact v1 text, from git history (commit c92f825).
+    /// The exact v1 text (commit c92f825), kept as a file so shallow clones can run this test too.
     static var ghosttyRunV1: String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        p.arguments = ["-C", #filePath.components(separatedBy: "/Tests/")[0], "show", "c92f825:Sources/EuclidCore/Config/DefaultScripts.swift"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        try? p.run()
-        let src = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        p.waitUntilExit()
-        return src.components(separatedBy: "ghosttyRun = #\"\"\"\n")[1].components(separatedBy: "\n\"\"\"#")[0]
+        get throws {
+            let url = URL(fileURLWithPath: #filePath.components(separatedBy: "/Tests/")[0] + "/Tests/fixtures/ghostty-run-v1")
+            return String(try String(contentsOf: url, encoding: .utf8).dropLast()) // the file ends in a newline; the literal didn't
+        }
     }
 
     /// The herdr-run recipe (docs/recipes, no longer installed by default) against a fake `herdr`
