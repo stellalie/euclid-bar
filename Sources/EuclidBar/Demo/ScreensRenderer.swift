@@ -308,6 +308,8 @@ enum ScreensRenderer {
         vc.notice = AppDelegate.welcome(hotkey: "⌥Space")
         vc.demoSetQuery("")
         try step("First launch: one line on how to come back", hold: 2.0, name: "welcome")
+        vc.notice = PanelController.copiedOnlyNotice
+        try step("↵ on a clip without Accessibility copies, and says so next time", hold: 2.0, name: "copied-only")
         vc.notice = nil
 
         try writeGIF(frames, to: dir.appendingPathComponent("flow.gif"))
