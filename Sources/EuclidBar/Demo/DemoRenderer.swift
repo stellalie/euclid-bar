@@ -100,8 +100,11 @@ enum DemoRenderer {
         vc.setFileResults([
             FileHit(path: "/Users/me/Documents/rebase-cheatsheet.pdf", isFolder: false),
         ], for: "rebase")
-        shot(everything, 2.2)
+        shot(everything, 2.0)
         let posterFrame = frames.count - 1
+        vc.demoSelect(row: vc.demoRowCount - 1) // scroll down to the notes and files
+        shot(everything, 1.4, key: "↓")
+        vc.demoSelect(row: 0)
         shot("The footer times every search: 1.4 ms worst case over 10,000 items", 2.0)
 
         // 4. Preview as you arrow.
@@ -188,6 +191,7 @@ enum DemoRenderer {
         vc.commands = AppCommand.settingsWithAI(problems: false)
         let settingsCaption = "Change settings in plain words, with any AI chat"
         type("settings", caption: settingsCaption)
+        vc.demoSelect(row: 1) // below the System Settings app
         shot(settingsCaption, 1.4, key: "↵")
         scene(.chat(caption: settingsCaption, lines: [
             ChatLine(fromYou: true, text: "Use Tokyo Night, make it compact, and put Slack on ⌃⌥S"),
