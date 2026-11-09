@@ -8,8 +8,11 @@ enum LoginItem {
     /// What macOS has now. Someone can switch it off in System Settings → General → Login Items.
     static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
 
-    /// Only a real Euclid.app can be a login item, not `swift run` or a test binary.
-    static var isAvailable: Bool { Bundle.main.bundleURL.pathExtension == "app" }
+    /// Only a real, installed Euclid.app can be a login item: not `swift run`, a test binary, or a copy
+    /// opened from the disk image (it's gone after eject, and the setting would be marked as applied).
+    static var isAvailable: Bool {
+        Bundle.main.bundleURL.pathExtension == "app" && !InstallLocation.isTemporary(bundlePath: Bundle.main.bundleURL.path)
+    }
 
     private static let appliedKey = "appliedOpenAtLogin"
 
