@@ -31,8 +31,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel.isVisible }
     /// Asked each time the panel opens: a one-off footer message (the licence reminder).
     var reminder: (() -> String?)?
-    /// Shown in the footer the next time the panel opens, once (the first-launch welcome).
-    var welcome: String?
+    /// Shown in the footer the next time the panel opens, once (the first-launch welcome, or that ↵ only copied).
+    var nextNotice: String?
+    nonisolated static let copiedOnlyNotice = "Copied: ⌘V pastes it. For ↵ to paste, allow Euclid in Accessibility (search “permissions”)."
     /// "412 opens on 21 days · 120 apps, 38 actions" for the last 30 days, or nil before any use.
     /// Shown after the search speed while unregistered.
     var licenceNote: String {
@@ -423,7 +424,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func pasteIntoPreviousApp() {
         hide()
         guard Paster.isTrusted else {
+            // macOS asks only once; after that ↵ copies silently. Say so the next time the panel opens.
             Paster.requestPermission()
+            nextNotice = Self.copiedOnlyNotice
             return
         }
         // Give the previous app's window a beat to become key again.
@@ -455,9 +458,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         UserDefaults.standard.set(opens + 1, forKey: PanelController.tipOpensKey)
         content.tip = Tips.pick(opens: opens, used: Set(UserDefaults.standard.stringArray(forKey: PanelController.usedFeaturesKey) ?? []))
         content.prepareForShow() // sizes the panel for its first results
-        if let message = welcome {
+        if let message = nextNotice {
             content.notice = message
-            welcome = nil
+            nextNotice = nil
         } else if let message = reminder?() {
             content.notice = message
         }

@@ -100,7 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(true, forKey: asked)
         askAboutReports()
         let hotkey = config.current.config.hotkey?.symbols ?? "⌥Space"
-        panel.welcome = Self.welcome(hotkey: hotkey)
+        panel.nextNotice = Self.welcome(hotkey: hotkey)
         NSApp.activate()
         panel.show()
     }
