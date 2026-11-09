@@ -197,7 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.image = BrainMark.menuBarImage()
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "").target = self
+        let open = menu.addItem(withTitle: "Open Euclid", action: #selector(openPanel), keyEquivalent: "")
+        open.target = self
+        open.setShortcut(for: .togglePanel) // shows ⌥Space (or your hotkey) for anyone who forgot it; follows config changes
         menu.addItem(withTitle: "Edit Config…", action: #selector(editConfig), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Change Settings with AI…", action: #selector(changeSettingsWithAI), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Clear Clipboard History…", action: #selector(clearHistory), keyEquivalent: "").target = self
