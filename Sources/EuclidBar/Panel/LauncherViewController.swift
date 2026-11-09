@@ -89,7 +89,7 @@ final class LauncherViewController: NSViewController {
     var problem: String? { didSet { if isViewLoaded { updateFooter() } } }
     /// "Unregistered", after the search speed.
     var licenceNote = "" { didSet { if isViewLoaded, licenceNote != oldValue { updateFooter() } } }
-    /// One-off message (e.g. last action failed). Cleared when the panel hides.
+    /// One-off message (e.g. last action failed, the first-launch welcome). Cleared when you type or the panel hides.
     var notice: String? { didSet { if isViewLoaded { updateFooter() } } }
     /// The empty bar's footer tip (PanelController rotates it per open).
     var tip: Tip? { didSet { if isViewLoaded, tip != oldValue { updateFooter() } } }
@@ -421,7 +421,6 @@ final class LauncherViewController: NSViewController {
         applyLayerColors()
         searchField.textColor = theme.text
         modeLabel.textColor = theme.subtext
-        footer.textColor = theme.warning
         stats.textColor = theme.muted
         emptyLabel.textColor = theme.muted
         hints.theme = theme
@@ -1413,6 +1412,8 @@ final class LauncherViewController: NSViewController {
         stats.isHidden = stats.stringValue.isEmpty
         if let message = notice ?? problem {
             footer.stringValue = message
+            // Orange is for things that went wrong; a welcome or a plugin's "Copied" reads as plain text.
+            footer.textColor = notice == nil || message.hasPrefix("⚠︎") ? theme.warning : theme.subtext
             footer.isHidden = false
             hints.isHidden = true
             leadStack.isHidden = true
@@ -1767,6 +1768,8 @@ final class LauncherViewController: NSViewController {
 extension LauncherViewController: NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) {
         guard (obj.object as? NSTextField) === searchField else { return }
+        // A one-off message has been read once you type; the footer goes back to what ↵ does.
+        if notice != nil { notice = nil }
         runSearch()
         if mode == .view, views.last?.view.search != nil { scheduleSearch() }
     }

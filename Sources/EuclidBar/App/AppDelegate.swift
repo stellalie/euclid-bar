@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = MainMenu.make() // needed for ⌘C/⌘V/⌘A in the search field
+        guard !quitIfRunningFromDownload() else { return }
 
         config = ConfigService()
         licensing = Licensing(file: config.paths.licenceFile)
@@ -73,6 +74,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         firstLaunch()
     }
 
+    /// Opened straight from the disk image (or translocated from Downloads)? Say so before anything else:
+    /// that copy disappears on eject or restart, taking the login item and updates with it.
+    /// Returns true when you chose to quit and move it.
+    private func quitIfRunningFromDownload() -> Bool {
+        guard Bundle.main.bundleURL.pathExtension == "app",
+              InstallLocation.isTemporary(bundlePath: Bundle.main.bundleURL.path) else { return false }
+        let alert = NSAlert()
+        alert.messageText = "Move Euclid to Applications first"
+        alert.informativeText = "Euclid is running from the download, which goes away when you eject it or restart. "
+            + "Quit, drag Euclid into the Applications folder, then open it from there."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Keep Running")
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        NSApp.terminate(nil)
+        return true
+    }
+
     /// Once per Mac: ask about reports, then open the panel with a welcome, so a menu-bar-only app
     /// doesn't start silently and people learn the hotkey.
     private func firstLaunch() {
@@ -81,9 +100,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(true, forKey: asked)
         askAboutReports()
         let hotkey = config.current.config.hotkey?.symbols ?? "⌥Space"
-        panel.welcome = "Welcome! Press \(hotkey) in any app to open Euclid. Settings: menu bar icon → Edit Config…, or search “settings” to change them with AI"
+        panel.welcome = Self.welcome(hotkey: hotkey)
         NSApp.activate()
         panel.show()
+    }
+
+    /// One footer line (fits 680 pt): how to come back, and that typing is all it takes. Settings live in
+    /// the menu bar icon; ⌘/ and the tips teach the rest later.
+    nonisolated static func welcome(hotkey: String) -> String {
+        "Welcome to Euclid. Press \(hotkey) in any app to open it, type a few letters, ↵ to open."
     }
 
     /// Offer anonymous diagnostics (crash reports + the daily usage ping) in one unticked box:
