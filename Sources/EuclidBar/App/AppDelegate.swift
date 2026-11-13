@@ -162,10 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.commands = AppCommand.updates(settings.updates, version: Updater.version, enabled: updater.isEnabled)
             + (licensing.isEnabled ? AppCommand.licence(summary: licensing.summary, licensed: licensing.isLicensed) : [])
             + [.permissions(missingPermissions()), .expansion(enabled: settings.expansionEnabled)]
-            + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled)] : [])
+            + (LoginItem.isAvailable ? [.openAtLogin(enabled: LoginItem.isEnabled(default: settings.openAtLogin))] : [])
             + [.diagnostics(crashReports: settings.crashReports, usagePing: settings.usagePing)]
             + AppCommand.settingsWithAI(problems: config.loadError != nil || !config.current.issues.isEmpty)
-        openAtLoginItem.state = LoginItem.isEnabled ? .on : .off
+        openAtLoginItem.state = LoginItem.isEnabled(default: settings.openAtLogin) ? .on : .off
         openAtLoginItem.isEnabled = LoginItem.isAvailable
         panel.licenceNote = licensing.status == .unregistered ? "Unregistered" : ""
         licenceHeader.isHidden = !licensing.isEnabled
@@ -325,10 +325,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         config.set("crash_reports", to: on, in: "privacy") ?? config.set("usage_ping", to: on, in: "privacy")
     }
 
-    /// Flips what macOS has now (it may differ from config.toml if switched in System Settings), and saves it to
-    /// `[startup] open_at_login`.
+    /// Flips what Euclid last applied, and saves it to `[startup] open_at_login`.
     @objc private func toggleOpenAtLogin() {
-        let on = !LoginItem.isEnabled
+        let on = !LoginItem.isEnabled(default: config.current.config.openAtLogin)
         let problem = LoginItem.apply(on, force: true) ?? config.set("open_at_login", to: on, in: "startup")
         updateLicence()
         guard let problem else { return }
