@@ -23,6 +23,11 @@ jobs:
       - name: Launch the app and measure
         run: |
           scripts/bundle.sh release
+          # Measure a normal launch, not the first one: no once-per-Mac diagnostics alert left open,
+          # and no login item added at launch (first launch only).
+          ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' build/Euclid.app/Contents/Info.plist)
+          defaults write "$ID" askedAboutReports -bool true
+          defaults write "$ID" appliedOpenAtLogin -bool true
           export EUCLID_CONFIG_DIR="$RUNNER_TEMP/config" EUCLID_DATA_DIR="$RUNNER_TEMP/data"
           # Through Launch Services, so euclid:// reaches this copy.
           /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f build/Euclid.app
