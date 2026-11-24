@@ -15,7 +15,6 @@ is private, and private repos' release files can't be downloaded anonymously):
 | --- | --- |
 | `Euclid-<v>.dmg` | First install (website / Releases download) |
 | `Euclid-<v>.zip` | Sparkle update archive |
-| `Euclid-<v>.pkg` | IT teams: MDM deploys (Jamf, Intune, Kandji) or `sudo installer -pkg Euclid-<v>.pkg -target /`. Installs `/Applications/Euclid.app`. Ships only signed + notarized (step 6 below) |
 | `appcast.xml` | Sparkle feed; the app reads `releases/latest/download/appcast.xml` |
 
 The bundle is `Euclid.app`; the binary inside stays `euclid-bar` (the CLI name). Never change
@@ -88,14 +87,6 @@ Stable releases stay tag-only.
    login Keychain (service `euclid-licence`, account `private-key`) and as the `LICENCE_PRIVATE_KEY`
    secret of the licence Worker at licences.lgtm.ninja. Never generate a new pair: keys already
    sold would stop working.
-
-6. **Developer ID Installer certificate** (signs the `.pkg`; no secret needed). It's made from the
-   same private key as the Developer ID Application certificate, so the P12 secret already covers
-   it. Until it's checked in, each release build writes a signing request for that key and pushes it
-   to the `installer-csr` branch (`scripts/ci-signing.sh`). Upload `DeveloperIDInstaller.csr` at
-   [developer.apple.com › Certificates › +](https://developer.apple.com/account/resources/certificates/add)
-   › *Developer ID Installer* (Account Holder only), download the `.cer` and commit it as
-   `Resources/DeveloperIDInstaller.cer`. Builds without it publish everything except the `.pkg`.
 
 Add all of these under **GitHub › Settings › Secrets and variables › Actions** of this repo.
 
