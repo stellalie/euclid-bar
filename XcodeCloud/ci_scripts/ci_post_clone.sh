@@ -101,7 +101,20 @@ if (( ${+release} )); then
   touch "$signing/env"
   RUNNER_TEMP="$signing" GITHUB_ENV="$signing/env" P12="${MACOS_CERTIFICATE_P12:-}" \
     P12_PASSWORD="${MACOS_CERTIFICATE_PASSWORD:-}" NOTARY_KEY_P8="${NOTARY_KEY_P8:-}" scripts/ci-signing.sh
-  while IFS= read -r line; do export "$line"; done < "$signing/env" # SIGN_IDENTITY, NOTARY_KEY_PATH
+  while IFS= read -r line; do export "$line"; done < "$signing/env" # SIGN_IDENTITY, NOTARY_KEY_PATH, INSTALLER_*
+  if [[ -n "${INSTALLER_CSR:-}" ]]; then
+    # No installer certificate yet: publish the (public) signing request to the installer-csr branch
+    # for the one-time upload to Apple (scripts/ci-signing.sh). Never blocks the release.
+    cat "$INSTALLER_CSR"
+    if [[ -n "${GITHUB_SCREENS_TOKEN:-}" ]]; then
+      csr_dir="$(mktemp -d)"
+      cp "$INSTALLER_CSR" "$csr_dir/DeveloperIDInstaller.csr"
+      ( cd "$csr_dir" && git init -q -b installer-csr && git add . \
+        && git -c user.name="Xcode Cloud" -c user.email=noreply@lgtm.ninja commit -qm "Developer ID Installer signing request" \
+        && git push -qf "https://x-access-token:${GITHUB_SCREENS_TOKEN}@github.com/stellalie/euclid-bar.git" installer-csr ) \
+        || echo "Couldn't push the installer signing request"
+    fi
+  fi
   GH_TOKEN="$RELEASES_TOKEN" scripts/publish-release.sh "${release[@]}"
   exit 0
 fi
