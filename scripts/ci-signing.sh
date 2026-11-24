@@ -32,23 +32,13 @@ else
   else
     # Public: a certificate signing request for the P12's key, to upload at developer.apple.com ›
     # Certificates › + › Developer ID Installer. Save the .cer it gives as $DEVELOPER_ID_INSTALLER_CER.
-    # Never fails the build: without the request, releases just go out without the .pkg.
-    key="$RUNNER_TEMP/key.pem" csr="$RUNNER_TEMP/installer.csr"
-    for ssl in /usr/bin/openssl /opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
-      [[ -x "$ssl" ]] || continue
-      for legacy in "" -legacy; do
-        # shellcheck disable=SC2086 # $legacy is empty or one flag
-        "$ssl" pkcs12 $legacy -in "$RUNNER_TEMP/cert.p12" -nocerts -nodes -passin env:P12_PASSWORD -out "$key" 2>/dev/null &&
-          "$ssl" req -new -key "$key" -subj "/CN=LGTM Ninja/emailAddress=hello@lgtm.ninja/C=AU" -out "$csr" && break 2
-      done
-    done
+    key="$RUNNER_TEMP/key.pem"
+    openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -nocerts -nodes -passin env:P12_PASSWORD -out "$key" 2>/dev/null ||
+      openssl pkcs12 -legacy -in "$RUNNER_TEMP/cert.p12" -nocerts -nodes -passin env:P12_PASSWORD -out "$key"
+    openssl req -new -key "$key" -subj "/CN=LGTM Ninja/emailAddress=hello@lgtm.ninja/C=AU" -out "$RUNNER_TEMP/installer.csr"
     rm -f "$key"
-    if [[ -s "$csr" ]]; then
-      echo "INSTALLER_CSR=$csr" >> "$GITHUB_ENV"
-      echo "No Developer ID Installer certificate: the .pkg won't be signed (request: $csr)"
-    else
-      echo "No Developer ID Installer certificate, and couldn't write a signing request ($(openssl version))"
-    fi
+    echo "INSTALLER_CSR=$RUNNER_TEMP/installer.csr" >> "$GITHUB_ENV"
+    echo "No Developer ID Installer certificate: the .pkg won't be signed (request: $RUNNER_TEMP/installer.csr)"
   fi
   rm "$RUNNER_TEMP/cert.p12"
   ID="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"

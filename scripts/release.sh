@@ -86,16 +86,39 @@ fi
 
 # 4. Installer package for IT teams: MDM tools (Jamf, Intune, Kandji, Mosyle) deploy a signed .pkg,
 #    not a DMG. It puts Euclid.app in /Applications, never somewhere else an older copy sits.
-#    Optional: if any step fails, the release goes out without it.
 PKG="$OUT/Euclid-$VERSION.pkg"
-if scripts/build-pkg.sh "$APP" "$VERSION" "$PKG"; then
-  if [[ -n "${INSTALLER_SIGN_IDENTITY:-}" ]] && can_notarize; then
-    { notarize "$PKG" && staple "$PKG" && spctl --assess --type install --verbose "$PKG"; } ||
-      { echo "warning: .pkg notarization failed; releasing without it" >&2; rm -f "$PKG"; }
+PKGWORK="$(mktemp -d)"
+trap 'rm -rf "$STAGE" "$PKGWORK"' EXIT
+mkdir "$PKGWORK/root" "$PKGWORK/packages"
+ditto "$APP" "$PKGWORK/root/Euclid.app"
+pkgbuild --analyze --root "$PKGWORK/root" "$PKGWORK/component.plist"
+plutil -replace 0.BundleIsRelocatable -bool NO "$PKGWORK/component.plist"
+pkgbuild --root "$PKGWORK/root" --component-plist "$PKGWORK/component.plist" --install-location /Applications \
+  --identifier dev.euclid.Euclid.pkg --version "$VERSION" "$PKGWORK/packages/Euclid.pkg"
+cat > "$PKGWORK/distribution.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>Euclid</title>
+  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+  <domains enable_localSystem="true"/>
+  <volume-check><allowed-os-versions><os-version min="14.0"/></allowed-os-versions></volume-check>
+  <choices-outline><line choice="dev.euclid.Euclid.pkg"/></choices-outline>
+  <choice id="dev.euclid.Euclid.pkg" visible="false" title="Euclid"><pkg-ref id="dev.euclid.Euclid.pkg"/></choice>
+  <pkg-ref id="dev.euclid.Euclid.pkg" version="$VERSION" onConclusion="none">Euclid.pkg</pkg-ref>
+</installer-gui-script>
+XML
+if [[ -n "${INSTALLER_SIGN_IDENTITY:-}" ]]; then
+  productbuild --distribution "$PKGWORK/distribution.xml" --package-path "$PKGWORK/packages" \
+    --sign "$INSTALLER_SIGN_IDENTITY" --timestamp "$PKG"
+  pkgutil --check-signature "$PKG"
+  if can_notarize; then
+    notarize "$PKG"
+    staple "$PKG"
+    spctl --assess --type install --verbose "$PKG"
   fi
 else
-  echo "warning: .pkg build failed; releasing without it" >&2
-  rm -f "$PKG"
+  productbuild --distribution "$PKGWORK/distribution.xml" --package-path "$PKGWORK/packages" "$PKG"
+  echo "warning: .pkg not signed (set INSTALLER_SIGN_IDENTITY)" >&2
 fi
 
 # 5. Sparkle feed: signs the zip with the EdDSA key and points at this release's assets.
@@ -110,5 +133,5 @@ if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
   rm -rf "$FEED"
 fi
 
-shasum -a 256 "$OUT"/*.zip "$OUT"/*.dmg $(ls "$OUT"/*.pkg 2>/dev/null)
+shasum -a 256 "$OUT"/*.zip "$OUT"/*.dmg "$OUT"/*.pkg
 ls -l "$OUT"
