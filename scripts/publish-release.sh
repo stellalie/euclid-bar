@@ -49,7 +49,7 @@ done
 # The .pkg ships only signed + notarized (needs the Developer ID Installer certificate,
 # scripts/ci-signing.sh). Until then releases go out without it.
 pkg=(build/release/*.pkg)
-if [[ -e "${pkg[0]}" ]] && ! { pkgutil --check-signature "${pkg[0]}" | grep -q 'Developer ID Installer' && xcrun stapler validate "${pkg[0]}"; }; then
+if [[ -e "${pkg[0]}" ]] && ! { pkgutil --check-signature "${pkg[0]}" | grep 'Developer ID Installer' >/dev/null && xcrun stapler validate "${pkg[0]}"; }; then
   echo "warning: $(basename "${pkg[0]}") isn't signed and notarized; publishing without it" >&2
   rm -f build/release/*.pkg
 fi
