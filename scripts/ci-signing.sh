@@ -2,14 +2,10 @@
 # CI only: put the Developer ID certificate and notary key from CI secrets where
 # scripts/release.sh finds them. Missing secrets mean an unsigned or un-notarized build.
 #   env P12, P12_PASSWORD, NOTARY_KEY_P8  → SIGN_IDENTITY, NOTARY_KEY_PATH in $GITHUB_ENV
-# The .pkg is signed with a Developer ID Installer certificate made from the same private key as the
-# P12's, so it needs no secret of its own: the certificate is checked in (DEVELOPER_ID_INSTALLER_CER)
-# → INSTALLER_SIGN_IDENTITY. Until it is, this writes the request Apple needs → INSTALLER_CSR.
 # NOTARY_KEY_P8 is the .p8 text (line breaks optional: Xcode Cloud's field can drop them), or that
 # text base64-encoded.
 # Outside Actions, set RUNNER_TEMP and GITHUB_ENV to a temp dir and an env file to read back.
 set -euo pipefail
-DEVELOPER_ID_INSTALLER_CER="$(cd "$(dirname "$0")/.." && pwd)/Resources/DeveloperIDInstaller.cer"
 
 if [[ -z "${P12:-}" ]]; then
   echo "No certificate secret: building unsigned."
@@ -20,26 +16,9 @@ else
   security create-keychain -p "$PASS" "$KEYCHAIN"
   security set-keychain-settings -lut 21600 "$KEYCHAIN"
   security unlock-keychain -p "$PASS" "$KEYCHAIN"
-  security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+  security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign
   security set-key-partition-list -S apple-tool:,apple: -s -k "$PASS" "$KEYCHAIN" >/dev/null
   security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
-  if [[ -f "$DEVELOPER_ID_INSTALLER_CER" ]]; then
-    security import "$DEVELOPER_ID_INSTALLER_CER" -k "$KEYCHAIN" # pairs with the P12's private key
-  fi
-  INSTALLER_ID="$(security find-identity -v "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Installer: .*\)"/\1/p' | head -1)"
-  if [[ -n "$INSTALLER_ID" ]]; then
-    echo "INSTALLER_SIGN_IDENTITY=$INSTALLER_ID" >> "$GITHUB_ENV"
-  else
-    # Public: a certificate signing request for the P12's key, to upload at developer.apple.com ›
-    # Certificates › + › Developer ID Installer. Save the .cer it gives as $DEVELOPER_ID_INSTALLER_CER.
-    key="$RUNNER_TEMP/key.pem"
-    openssl pkcs12 -in "$RUNNER_TEMP/cert.p12" -nocerts -nodes -passin env:P12_PASSWORD -out "$key" 2>/dev/null ||
-      openssl pkcs12 -legacy -in "$RUNNER_TEMP/cert.p12" -nocerts -nodes -passin env:P12_PASSWORD -out "$key"
-    openssl req -new -key "$key" -subj "/CN=LGTM Ninja/emailAddress=hello@lgtm.ninja/C=AU" -out "$RUNNER_TEMP/installer.csr"
-    rm -f "$key"
-    echo "INSTALLER_CSR=$RUNNER_TEMP/installer.csr" >> "$GITHUB_ENV"
-    echo "No Developer ID Installer certificate: the .pkg won't be signed (request: $RUNNER_TEMP/installer.csr)"
-  fi
   rm "$RUNNER_TEMP/cert.p12"
   ID="$(security find-identity -v -p codesigning "$KEYCHAIN" | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)"
   [[ -n "$ID" ]] || { echo "No Developer ID Application identity in the certificate" >&2; exit 1; }

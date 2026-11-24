@@ -46,21 +46,12 @@ for wait in 10 20 40 0; do
   [[ $wait == 0 ]] && exit 1
   sleep "$wait"
 done
-# The .pkg ships only signed + notarized (needs the Developer ID Installer certificate,
-# scripts/ci-signing.sh). Until then releases go out without it.
-pkg=(build/release/*.pkg)
-if [[ -e "${pkg[0]}" ]] && ! { pkgutil --check-signature "${pkg[0]}" | grep -q 'Developer ID Installer' && xcrun stapler validate "${pkg[0]}"; }; then
-  echo "warning: $(basename "${pkg[0]}") isn't signed and notarized; publishing without it" >&2
-  rm -f build/release/*.pkg
-fi
 [[ -f build/release/appcast.xml ]] || { echo "No appcast.xml: set SPARKLE_PRIVATE_KEY" >&2; exit 1; }
 superseded && exit 0 # a newer build may have landed while this one notarized
-# shellcheck disable=SC2207 # file names have no spaces
-assets=($(ls build/release/*.dmg build/release/*.zip build/release/*.pkg 2>/dev/null))
 
 if [[ -n "$TAG" ]]; then
   gh release create "$TAG" --repo "$REPO" --title "Euclid $VERSION" --notes "Euclid $VERSION for macOS 14+ (Apple Silicon + Intel)." \
-    "${assets[@]}" build/release/appcast.xml
+    build/release/*.dmg build/release/*.zip build/release/appcast.xml
   echo "Published Euclid $VERSION"
   scripts/bump-cask.sh "$VERSION" "build/release/Euclid-$VERSION.zip" # Homebrew follows stable only
   exit 0
@@ -69,7 +60,7 @@ fi
 gh release view dev --repo "$REPO" >/dev/null 2>&1 ||
   gh release create dev --repo "$REPO" --prerelease --target main --title "Dev build" --notes "Rolling build of main."
 # The new archive goes up before the feed that points at it.
-gh release upload dev --repo "$REPO" --clobber "${assets[@]}"
+gh release upload dev --repo "$REPO" --clobber build/release/*.zip build/release/*.dmg
 gh release upload dev --repo "$REPO" --clobber build/release/appcast.xml
 for asset in $(gh release view dev --repo "$REPO" --json assets -q '.assets[].name'); do
   case "$asset" in appcast.xml|"Euclid-$VERSION".*) ;; *) gh release delete-asset dev "$asset" --repo "$REPO" --yes ;; esac

@@ -3,12 +3,10 @@
 # Usage: scripts/release.sh 1.2.0
 #   → build/release/Euclid-1.2.0.dmg   (download from the website / GitHub release)
 #     build/release/Euclid-1.2.0.zip   (Sparkle update archive)
-#     build/release/Euclid-1.2.0.pkg   (installer for IT: Jamf, Intune, Kandji, `installer -pkg`)
 #     build/release/appcast.xml            (Sparkle feed, attached to the GitHub release)
 #
 # Env (all optional; without them you get a locally signed, un-notarized build):
 #   SIGN_IDENTITY       "Developer ID Application: Name (TEAMID)"
-#   INSTALLER_SIGN_IDENTITY  "Developer ID Installer: Name (TEAMID)"; without it the .pkg is unsigned
 #   NOTARY_PROFILE      notarytool keychain profile (xcrun notarytool store-credentials), or
 #   NOTARY_KEY_PATH + NOTARY_KEY_ID + NOTARY_ISSUER_ID   App Store Connect API key
 #   SPARKLE_PUBLIC_KEY  turns on auto-update in the app
@@ -84,44 +82,7 @@ if can_notarize; then
   spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 fi
 
-# 4. Installer package for IT teams: MDM tools (Jamf, Intune, Kandji, Mosyle) deploy a signed .pkg,
-#    not a DMG. It puts Euclid.app in /Applications, never somewhere else an older copy sits.
-PKG="$OUT/Euclid-$VERSION.pkg"
-PKGWORK="$(mktemp -d)"
-trap 'rm -rf "$STAGE" "$PKGWORK"' EXIT
-mkdir "$PKGWORK/root" "$PKGWORK/packages"
-ditto "$APP" "$PKGWORK/root/Euclid.app"
-pkgbuild --analyze --root "$PKGWORK/root" "$PKGWORK/component.plist"
-plutil -replace 0.BundleIsRelocatable -bool NO "$PKGWORK/component.plist"
-pkgbuild --root "$PKGWORK/root" --component-plist "$PKGWORK/component.plist" --install-location /Applications \
-  --identifier dev.euclid.Euclid.pkg --version "$VERSION" "$PKGWORK/packages/Euclid.pkg"
-cat > "$PKGWORK/distribution.xml" <<XML
-<?xml version="1.0" encoding="utf-8"?>
-<installer-gui-script minSpecVersion="2">
-  <title>Euclid</title>
-  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>
-  <domains enable_localSystem="true"/>
-  <volume-check><allowed-os-versions><os-version min="14.0"/></allowed-os-versions></volume-check>
-  <choices-outline><line choice="dev.euclid.Euclid.pkg"/></choices-outline>
-  <choice id="dev.euclid.Euclid.pkg" visible="false" title="Euclid"><pkg-ref id="dev.euclid.Euclid.pkg"/></choice>
-  <pkg-ref id="dev.euclid.Euclid.pkg" version="$VERSION" onConclusion="none">Euclid.pkg</pkg-ref>
-</installer-gui-script>
-XML
-if [[ -n "${INSTALLER_SIGN_IDENTITY:-}" ]]; then
-  productbuild --distribution "$PKGWORK/distribution.xml" --package-path "$PKGWORK/packages" \
-    --sign "$INSTALLER_SIGN_IDENTITY" --timestamp "$PKG"
-  pkgutil --check-signature "$PKG"
-  if can_notarize; then
-    notarize "$PKG"
-    staple "$PKG"
-    spctl --assess --type install --verbose "$PKG"
-  fi
-else
-  productbuild --distribution "$PKGWORK/distribution.xml" --package-path "$PKGWORK/packages" "$PKG"
-  echo "warning: .pkg not signed (set INSTALLER_SIGN_IDENTITY)" >&2
-fi
-
-# 5. Sparkle feed: signs the zip with the EdDSA key and points at this release's assets.
+# 4. Sparkle feed: signs the zip with the EdDSA key and points at this release's assets.
 if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
   TOOLS="$(dirname "$(find .build/artifacts -type f -name generate_appcast -path '*Sparkle*' | head -1)")"
   [[ -x "$TOOLS/generate_appcast" ]] || { echo "error: Sparkle's generate_appcast not found under .build/artifacts" >&2; exit 1; }
@@ -133,5 +94,5 @@ if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
   rm -rf "$FEED"
 fi
 
-shasum -a 256 "$OUT"/*.zip "$OUT"/*.dmg "$OUT"/*.pkg
+shasum -a 256 "$OUT"/*.zip "$OUT"/*.dmg
 ls -l "$OUT"
