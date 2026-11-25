@@ -46,6 +46,8 @@ public enum PluginGuide {
         "herdr": [("plugin.toml", herdrManifest, false), ("lib.sh", herdrLib, false), ("items.sh", herdrItems, true),
                   ("agents.sh", herdrAgents, true), ("badge.sh", herdrBadge, true), ("focus.sh", herdrFocus, true),
                   ("explain.sh", herdrExplain, true)],
+        "claude-sessions": [("plugin.toml", claudeSessionsManifest, false), ("items.sh", claudeSessionsItems, true),
+                            ("resume.sh", claudeSessionsResume, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -963,5 +965,7 @@ change them:
   (live views that drill down).
 - `herdr`: your herdr coding agents, the ones waiting on you first, live; ↵ jumps to the pane;
   a badge says how many need you (a source, a badge and a live view).
+- `claude-sessions`: your recent Claude Code sessions by title, folder and age; ↵ resumes one
+  in a terminal, in its own folder (a source that reads local files).
 """#
 }

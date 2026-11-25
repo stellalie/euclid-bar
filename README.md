@@ -76,6 +76,7 @@ with `euclid-bar --plugin add <name>`:
 | `kill-process` *(plugin)* | Your processes, busiest first, refreshing live; `↵` quits one, `↵` again force-quits; `kill chrome` finds one |
 | `docker` *(plugin)* | Your containers, live: logs (live too), a shell, open its port, start, stop, restart |
 | `herdr` *(plugin)* | Your [herdr](https://herdr.dev) coding agents, live, the ones waiting on you first; `↵` jumps to the agent's pane; the bar's badge says `1 needs you · 2 working` |
+| `claude-sessions` *(plugin)* | Your recent Claude Code sessions by title, folder and age; `↵` resumes one in Ghostty, right where you left it |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its

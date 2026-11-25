@@ -457,6 +457,53 @@ import Testing
         }
     }
 
+    /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func claudeSessionsListAndResume() async throws {
+        let cs = try install("claude-sessions")
+        defer { try? FileManager.default.removeItem(at: cs.dir) }
+        let home = cs.dir.appendingPathComponent("claude")
+        let project = home.appendingPathComponent("projects/-code-api")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let older = "11111111-aaaa-bbbb-cccc-000000000001", newer = "22222222-aaaa-bbbb-cccc-000000000002"
+        try """
+            {"type":"user","cwd":"\(cs.dir.path)","gitBranch":"main","message":{"role":"user","content":"fix the login bug"}}
+            {"type":"ai-title","aiTitle":"Fix login on Safari"}
+            {"type":"user","message":{"content":"a line that mentions \\"type\\":\\"ai-title\\" in passing"}}
+            """.write(to: project.appendingPathComponent("\(older).jsonl"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-7200)],
+                                              ofItemAtPath: project.appendingPathComponent("\(older).jsonl").path)
+        try """
+            {"type":"user","cwd":"/no/such/folder","gitBranch":"HEAD","message":{"content":[]}}
+            {"type":"last-prompt","lastPrompt":"why is   CI red"}
+            """.write(to: project.appendingPathComponent("\(newer).jsonl"), atomically: true, encoding: .utf8)
+        try "not a session".write(to: project.appendingPathComponent("notes.jsonl"), atomically: true, encoding: .utf8)
+
+        let env = ["CLAUDE_CONFIG_DIR": home.path]
+        let rows = PluginOutput.parse(Data(try await cs.run("./items.sh", env: env).utf8)).items
+        #expect(rows.map(\.title) == ["why is CI red", "Fix login on Safari"]) // newest first; no title → last prompt
+        #expect(rows.map(\.id) == ["claude:\(newer)", "claude:\(older)"])
+        #expect(rows[0].subtitle == "/no/such/folder · just now")            // HEAD isn't a branch
+        #expect(rows[1].subtitle?.hasSuffix(" · main · 2 h ago") == true)
+        #expect(rows[1].run == "./resume.sh \(older)")
+        #expect(rows[1].actions?.map(\.title) == ["Resume in Terminal", "Copy Session ID", "Open Folder"])
+
+        // ↵ hands the terminal the folder and id as arguments.
+        let bin = cs.dir.appendingPathComponent("bin")
+        try script(bin, "term", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/args\"\n")
+        let resume = try install("claude-sessions", settings: ["terminal": bin.appendingPathComponent("term").path])
+        defer { try? FileManager.default.removeItem(at: resume.dir) }
+        _ = try await resume.run("./resume.sh \(older)", env: env)
+        let args = try String(contentsOf: bin.appendingPathComponent("args"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(args.suffix(4) == ["sh", cs.dir.path, "claude", older])
+        _ = try await resume.run("./resume.sh \(newer)", env: env)  // its folder is gone: home instead
+        let args2 = try String(contentsOf: bin.appendingPathComponent("args"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(args2.suffix(3).first == ProcessInfo.processInfo.environment["HOME"])
+        // Ids go into commands, so only UUID characters are accepted.
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await resume.run("./resume.sh 'a;b'", env: env) }
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await resume.run("./resume.sh 0000", env: env) }
+    }
+
     /// The `github` example against a fake `gh` that answers with canned JSON through the real `jq`.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
     func githubActionsAndSearch() async throws {

@@ -2501,4 +2501,91 @@ valid_target "${1:-}"
 echo '{"view":"detail","title":"Why this status","code":true}'
 herdr agent explain "$1" 2>&1
 """#
+
+    // MARK: - claude-sessions
+
+    static let claudeSessionsManifest = #"""
+name = "Claude Sessions"
+description = "Your recent Claude Code sessions by title, folder and age; ↵ resumes one in a terminal where you left it. Reads ~/.claude locally."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 2
+
+[settings]
+limit    = "40"      # sessions shown, newest first
+command  = "claude"  # the CLI that resumes: `<command> --resume <id>`
+terminal = ""        # empty = Ghostty if you have it, else Terminal;
+                     # or a command that runs its arguments, e.g. "ghostty-run split"
+"""#
+
+    static let claudeSessionsItems = #"""
+#!/bin/sh
+# Recent sessions, newest first: one row each, titled by Claude Code's own session title
+# (else your last prompt). Reads only the lines it needs, so big transcripts stay fast.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
+[ -d "$dir" ] || exit 0
+limit=${EUCLID_SETTING_LIMIT:-40}
+case $limit in ''|*[!0-9]*) limit=40 ;; esac
+now=$(date +%s)
+mtime() { date -r "$1" +%s; }  # macOS and GNU alike
+# shellcheck disable=SC2012 # session file names are UUIDs
+ls -t "$dir"/*/*.jsonl 2>/dev/null | head -n "$limit" | while IFS= read -r f; do
+  id=$(basename "$f" .jsonl)
+  case $id in *[!0-9a-fA-F-]*) continue ;; esac
+  {
+    grep -m 1 '"cwd":' "$f" || echo '{}'
+    grep '"type":"ai-title"' "$f" | tail -n 1 || true
+    grep '"type":"summary"' "$f" | tail -n 1 || true
+    grep '"lastPrompt":' "$f" | tail -n 1 || true
+  } | jq -cs --arg id "$id" --argjson age "$(( now - $(mtime "$f") ))" '
+    def clip: gsub("\\s+"; " ") | if length > 90 then .[:89] + "…" else . end;
+    (map(.cwd // empty) | first // "") as $cwd
+    | (map(.gitBranch // empty) | first // "") as $branch
+    | ((map(.aiTitle // empty) | last) // (map(.summary // empty) | last) // (map(.lastPrompt // empty) | last)
+       // ("Session " + $id[:8])) as $title
+    | (if $age < 60 then "just now" elif $age < 3600 then "\($age / 60 | floor) min ago"
+       elif $age < 86400 then "\($age / 3600 | floor) h ago" else "\($age / 86400 | floor) d ago" end) as $when
+    | ($cwd | sub("^" + env.HOME; "~")) as $where
+    | {title: ($title | clip),
+       subtitle: ([$where, $branch, $when] | map(select(. != "" and . != "HEAD")) | join(" · ")),
+       icon: "sparkles", run: ("./resume.sh " + $id), id: ("claude:" + $id), label: "Claude",
+       actions: ([{title: "Resume in Terminal", run: ("./resume.sh " + $id), icon: "terminal"},
+                  {title: "Copy Session ID", copy: $id, icon: "doc.on.doc"}]
+                 + (if $cwd != "" then [{title: "Open Folder", open: $cwd, icon: "folder"}] else [] end))}'
+done
+"""#
+
+    static let claudeSessionsResume = #"""
+#!/bin/sh
+# ./resume.sh <session id>: `claude --resume <id>` in a new terminal, in the session's own folder.
+set -eu
+id=${1:-}
+case $id in ''|*[!0-9a-fA-F-]*) echo "usage: resume.sh <session id>" >&2; exit 64 ;; esac
+dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
+f=$(ls "$dir"/*/"$id".jsonl 2>/dev/null | head -n 1) || true
+[ -n "$f" ] || { echo "no Claude Code session $id" >&2; exit 1; }
+cwd=$(grep -m 1 '"cwd":' "$f" | jq -r '.cwd // empty' 2>/dev/null) || true
+[ -d "${cwd:-/nonexistent}" ] || cwd=$HOME
+cli=${EUCLID_SETTING_COMMAND:-claude}
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  # The folder and id are arguments, never part of the command text.
+  $term sh -c 'cd "$1" && exec $2 --resume "$3"' sh "$cwd" "$cli" "$id"
+else
+  osascript - "$cwd" "$cli" "$id" >/dev/null <<'APPLESCRIPT'
+on run argv
+  tell application "Terminal"
+    do script "cd " & quoted form of (item 1 of argv) & " && " & (item 2 of argv) & " --resume " & (item 3 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
+"""#
 }
