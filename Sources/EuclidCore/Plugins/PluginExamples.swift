@@ -2361,4 +2361,144 @@ else
             -e 'tell application "Terminal" to activate' >/dev/null
 fi
 """#
+
+    // MARK: - herdr
+
+    static let herdrManifest = #"""
+name = "Herdr"
+description = "Your herdr coding agents, live: the ones waiting on you come first, ↵ jumps to the agent's pane. Needs herdr (brew install herdr) and jq."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 1
+
+[badge]                    # e.g. "1 needs you · 2 working"; hidden while no agent runs
+run   = "./badge.sh"
+icon  = "person.2.wave.2"
+refresh_minutes = 1
+click = "./focus.sh next"  # jumps to the agent that needs you
+
+[settings]
+app = "Ghostty"   # the terminal running herdr, brought to the front on ↵ (empty = don't)
+"""#
+
+    /// Shared by every herdr script: `agents` prints one agent per line, the ones that need you first:
+    /// rank, status, target (pane id), name, where (cwd or terminal title), all tab-separated.
+    static let herdrLib = #"""
+# Sourced by the herdr scripts. Reads `herdr agent list` (JSON) through jq.
+command -v herdr >/dev/null 2>&1 || { echo "needs herdr: brew install herdr" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+
+agents() {
+  out=$(herdr agent list 2>&1) || { echo "herdr isn't running: $(printf '%s\n' "$out" | head -n 1)" >&2; return 1; }
+  printf '%s\n' "$out" | jq -r '
+    def str: if type == "string" then . elif type == "object" then (.name // .label // .id // "") | tostring
+             elif . == null then "" else tostring end;
+    def rank: {"blocked": 0, "done": 1, "working": 2, "idle": 3}[.] // 4;
+    [(.result.agents // .result.panes // .agents // .panes // (if type == "array" then . else [] end))[]
+    | ((.agent_status // .status // .state) | str | ascii_downcase) as $st
+    | ($st | if . == "" then "unknown" else . end) as $st
+    | ((.pane_id // .pane.pane_id // .target // .id) | str) as $target
+    | select($target != "")
+    | [($st | rank), $st, $target,
+       (((.name // .agent_name // .agent_session // .agent // .label) | str) | if . == "" then $target else . end),
+       ((.foreground_cwd // .cwd // .terminal_title) | str)]]
+    | sort_by(.[0])[] | map(tostring | gsub("[\t\n]"; " ")) | @tsv'
+}
+
+# "1 needs you · 2 working · 1 done" from agents' lines; empty when none is running.
+summary() {
+  awk -F '\t' 'NF { n[$2]++ }
+    END { s = ""; if (n["blocked"]) s = n["blocked"] (n["blocked"] == 1 ? " needs" : " need") " you"
+          if (n["working"]) s = s (s ? " · " : "") n["working"] " working"
+          if (n["done"]) s = s (s ? " · " : "") n["done"] " done"
+          print s }'
+}
+
+icon() {
+  case $1 in blocked) echo "🔴" ;; done) echo "🟢" ;; working) echo "🟡" ;; idle) echo "⚪️" ;; *) echo "❔" ;; esac
+}
+
+status_text() {
+  case $1 in blocked) echo "needs you" ;; done) echo "done" ;; working) echo "working" ;; idle) echo "idle" ;; *) echo "unknown" ;; esac
+}
+
+# A pane id goes into commands, so only plain ids are accepted (w1:p2, my-agent).
+valid_target() {
+  case $1 in ''|-*|*[!A-Za-z0-9:_.-]*) echo "not a herdr agent: $1" >&2; exit 64 ;; esac
+}
+
+# One agent as a JSON item, with ⌘K actions.
+row() { # rank status target name where
+  jq -cn --arg st "$2" --arg t "$3" --arg n "$4" --arg w "$5" --arg i "$(icon "$2")" --arg s "$(status_text "$2")" '
+    {title: $n, subtitle: ([$s, ($w | sub("^" + env.HOME; "~"))] | map(select(. != "")) | join(" · ")),
+     icon: $i, run: ("./focus.sh " + $t), id: ("herdr:" + $t), label: "Herdr",
+     actions: [{title: "Jump to Pane", run: ("./focus.sh " + $t), icon: "arrow.up.right.square"},
+               {title: "Why This Status?", run: ("./explain.sh " + $t), icon: "questionmark.circle"},
+               {title: "Copy Pane ID", copy: $t, icon: "doc.on.doc"}]}'
+}
+"""#
+
+    static let herdrItems = #"""
+#!/bin/sh
+# In search: "Herdr Agents" (opens the live list) and one row per agent, so typing its name finds it.
+set -eu
+. ./lib.sh
+list=$(agents)
+summary=$(printf '%s\n' "$list" | summary)
+echo "{\"title\":\"Herdr Agents\",\"subtitle\":\"${summary:-No agent needs you}\",\"run\":\"./agents.sh\",\"icon\":\"person.2.wave.2\",\"id\":\"herdr:agents\"}"
+printf '%s\n' "$list" | while IFS="$(printf '\t')" read -r rank st target name where; do
+  [ -n "$target" ] && row "$rank" "$st" "$target" "$name" "$where"
+done
+exit 0
+"""#
+
+    static let herdrAgents = #"""
+#!/bin/sh
+# Every agent, the ones that need you first, as a live list (reloads every 2 s).
+set -eu
+. ./lib.sh
+list=$(agents)
+echo '{"view":"list","title":"Herdr Agents","placeholder":"Filter agents…","reload":"./agents.sh","refresh_seconds":2}'
+[ -n "$list" ] || { echo '{"title":"No agents running","subtitle":"Start one in herdr, e.g. claude or codex in a pane","icon":"person.2.wave.2","id":"herdr:none"}'; exit 0; }
+printf '%s\n' "$list" | while IFS="$(printf '\t')" read -r rank st target name where; do
+  [ -n "$target" ] && row "$rank" "$st" "$target" "$name" "$where"
+done
+exit 0
+"""#
+
+    static let herdrBadge = #"""
+#!/bin/sh
+# The badge: "1 needs you · 2 working". Prints nothing (hidden) while herdr or its agents aren't running.
+. ./lib.sh 2>/dev/null || exit 0
+list=$(agents 2>/dev/null) || exit 0
+printf '%s\n' "$list" | summary
+"""#
+
+    static let herdrFocus = #"""
+#!/bin/sh
+# ./focus.sh <pane id>: show that agent's pane in herdr and bring its terminal to the front.
+# ./focus.sh next: the agent that needs you (blocked first, then done).
+set -eu
+. ./lib.sh
+target=${1:-}
+if [ "$target" = next ]; then
+  target=$(agents | awk -F '\t' '$2 == "blocked" || $2 == "done" { print $3; exit }')
+  [ -n "$target" ] || { echo '{"notice":"No agent needs you"}'; exit 0; }
+fi
+valid_target "$target"
+herdr agent focus "$target" >/dev/null
+app=${EUCLID_SETTING_APP-Ghostty}
+[ -z "$app" ] || open -a "$app" 2>/dev/null || true
+"""#
+
+    static let herdrExplain = #"""
+#!/bin/sh
+# ./explain.sh <pane id>: why herdr gave that agent its status (`herdr agent explain`).
+set -eu
+. ./lib.sh
+valid_target "${1:-}"
+echo '{"view":"detail","title":"Why this status","code":true}'
+herdr agent explain "$1" 2>&1
+"""#
 }

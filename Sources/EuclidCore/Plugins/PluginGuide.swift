@@ -43,6 +43,9 @@ public enum PluginGuide {
         "docker": [("plugin.toml", dockerManifest, false), ("items.sh", dockerItems, true), ("containers.sh", dockerContainers, true),
                    ("container.sh", dockerContainer, true), ("logs.sh", dockerLogs, true), ("act.sh", dockerAct, true),
                    ("shell.sh", dockerShell, true)],
+        "herdr": [("plugin.toml", herdrManifest, false), ("lib.sh", herdrLib, false), ("items.sh", herdrItems, true),
+                  ("agents.sh", herdrAgents, true), ("badge.sh", herdrBadge, true), ("focus.sh", herdrFocus, true),
+                  ("explain.sh", herdrExplain, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -958,5 +961,7 @@ change them:
   force-quits; `kill chrome` finds one (a live view and an answer).
 - `docker`: your containers, live: logs (live too), a shell, open its port, start, stop, restart
   (live views that drill down).
+- `herdr`: your herdr coding agents, the ones waiting on you first, live; ↵ jumps to the pane;
+  a badge says how many need you (a source, a badge and a live view).
 """#
 }

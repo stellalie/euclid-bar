@@ -395,6 +395,68 @@ import Testing
         }
     }
 
+    /// The `herdr` example against a fake `herdr` through the real `jq`: who needs you first, ↵ focuses.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func herdrAgentsNeedYouFirst() async throws {
+        let hd = try install("herdr", settings: ["app": ""])
+        defer { try? FileManager.default.removeItem(at: hd.dir) }
+        let bin = hd.dir.appendingPathComponent("bin")
+        try script(bin, "herdr", #"""
+            #!/bin/sh
+            echo "$*" >> "$(dirname "$0")/calls"
+            case "$1 $2" in
+              "agent list") cat <<'JSON'
+            {"result":{"type":"agent_list","agents":[
+              {"pane_id":"w1:p1","name":"claude","agent_status":"working","foreground_cwd":"/tmp/api"},
+              {"pane_id":"w1:p2","name":"codex","agent_status":"blocked","foreground_cwd":"/tmp/web"},
+              {"pane_id":"w2:p1","name":"pi","agent_status":"done","terminal_title":"pi: fix tests"},
+              {"pane_id":"w2:p2","agent_status":"idle"}]}}
+            JSON
+              ;;
+              "agent focus") ;;
+              "agent explain") echo "matched approval prompt" ;;
+            esac
+            """#)
+        func open(_ command: String) async throws -> PluginResult { PluginResult.parse(Data(try await hd.run(command, bin: bin).utf8)) }
+
+        let rows = PluginOutput.parse(Data(try await hd.run("./items.sh", bin: bin).utf8)).items
+        #expect(rows.first?.title == "Herdr Agents")
+        #expect(rows.first?.subtitle == "1 needs you · 1 working · 1 done")
+        #expect(rows.dropFirst().map(\.title) == ["codex", "pi", "claude", "w2:p2"]) // blocked, done, working, idle
+        #expect(rows[1].icon == "🔴")
+        #expect(rows[1].subtitle == "needs you · /tmp/web")
+        #expect(rows[1].run == "./focus.sh w1:p2")
+        #expect(rows[1].actions?.map(\.title) == ["Jump to Pane", "Why This Status?", "Copy Pane ID"])
+
+        let list = try #require(try await open("./agents.sh").view)
+        #expect(list.reload == "./agents.sh")
+        #expect(list.refreshSeconds == 2)
+        #expect(list.items.map(\.id) == ["herdr:w1:p2", "herdr:w2:p1", "herdr:w1:p1", "herdr:w2:p2"])
+
+        #expect(try await hd.run("./badge.sh", bin: bin).trimmingCharacters(in: .whitespacesAndNewlines)
+                == "1 needs you · 1 working · 1 done")
+        _ = try await hd.run("./focus.sh next", bin: bin) // the blocked one
+        _ = try await hd.run("./focus.sh w2:p1", bin: bin)
+        let calls = try String(contentsOf: bin.appendingPathComponent("calls"), encoding: .utf8)
+        #expect(calls.contains("agent focus w1:p2\n"))
+        #expect(calls.contains("agent focus w2:p1\n"))
+        let why = try #require(try await open("./explain.sh w1:p2").view)
+        #expect(why.text == "matched approval prompt")
+        // Ids go into commands, so only plain ids are accepted.
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await hd.run("./focus.sh 'a;b'", bin: bin) }
+
+        // herdr not running: the badge hides, the list says why.
+        let down = hd.dir.appendingPathComponent("down")
+        try script(down, "herdr", "#!/bin/sh\necho 'no herdr server' >&2\nexit 1\n")
+        #expect(try await hd.run("./badge.sh", bin: down).isEmpty)
+        do {
+            _ = try await hd.run("./agents.sh", bin: down)
+            Issue.record("expected a failure")
+        } catch let failure as PluginRunner.Failure {
+            #expect(failure.description.contains("herdr isn't running: no herdr server"))
+        }
+    }
+
     /// The `github` example against a fake `gh` that answers with canned JSON through the real `jq`.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
     func githubActionsAndSearch() async throws {
