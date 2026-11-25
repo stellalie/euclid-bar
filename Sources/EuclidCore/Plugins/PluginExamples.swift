@@ -2379,7 +2379,8 @@ refresh_minutes = 1
 click = "./focus.sh next"  # jumps to the agent that needs you
 
 [settings]
-app = "Ghostty"   # the terminal running herdr, brought to the front on ↵ (empty = don't)
+app    = "Ghostty"  # the terminal running herdr, brought to the front on ↵ (empty = don't)
+notify = "true"     # a notification when an agent starts waiting on you ("false" = badge only)
 """#
 
     /// Shared by every herdr script: `agents` prints one agent per line, the ones that need you first:
@@ -2470,9 +2471,28 @@ exit 0
     static let herdrBadge = #"""
 #!/bin/sh
 # The badge: "1 needs you · 2 working". Prints nothing (hidden) while herdr or its agents aren't running.
+# With notify = "true", also a macOS notification for each agent that started waiting on you since the
+# last check (the first check after install only takes note, so you aren't flooded).
 . ./lib.sh 2>/dev/null || exit 0
 list=$(agents 2>/dev/null) || exit 0
 printf '%s\n' "$list" | summary
+[ "${EUCLID_SETTING_NOTIFY:-true}" = true ] || exit 0
+tab=$(printf '\t')
+blocked=$(printf '%s\n' "$list" | awk -F '\t' '$2 == "blocked" { print $3 "\t" $4 }')
+# Kept outside the plugin folder, so writing it never looks like an edit to Euclid.
+seen="${TMPDIR:-/tmp}/euclid-herdr-notified-$(printf %s "$PWD" | cksum | cut -d ' ' -f 1)"
+if [ -f "$seen" ]; then
+  printf '%s\n' "$blocked" | while IFS="$tab" read -r target name; do
+    [ -n "$target" ] && ! grep -qxF "$target" "$seen" || continue
+    # The name is an argument, never part of the script text.
+    osascript - "Herdr" "$name needs you" >/dev/null 2>&1 <<'APPLESCRIPT' || true
+on run argv
+  display notification (item 2 of argv) with title (item 1 of argv)
+end run
+APPLESCRIPT
+  done
+fi
+printf '%s\n' "$blocked" | cut -f 1 > "$seen"
 """#
 
     static let herdrFocus = #"""

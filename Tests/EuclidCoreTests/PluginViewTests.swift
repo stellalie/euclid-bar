@@ -457,6 +457,46 @@ import Testing
         }
     }
 
+    /// The herdr badge notifies once per agent that starts waiting on you, never on its first check.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func herdrNotifiesWhenAnAgentNeedsYou() async throws {
+        let hd = try install("herdr", settings: ["app": ""])
+        defer { try? FileManager.default.removeItem(at: hd.dir) }
+        let bin = hd.dir.appendingPathComponent("bin")
+        try script(bin, "herdr", "#!/bin/sh\ncat \"$(dirname \"$0\")/agents.json\"\n")
+        try script(bin, "osascript", "#!/bin/sh\necho \"$3\" >> \"$(dirname \"$0\")/notified\"\n")
+        func agents(_ list: [(String, String, String)]) throws {
+            let rows = list.map { #"{"pane_id":"\#($0.0)","name":"\#($0.1)","agent_status":"\#($0.2)"}"# }
+            try #"{"result":{"agents":[\#(rows.joined(separator: ","))]}}"#
+                .write(to: bin.appendingPathComponent("agents.json"), atomically: true, encoding: .utf8)
+        }
+        func notified() -> [String] {
+            ((try? String(contentsOf: bin.appendingPathComponent("notified"), encoding: .utf8)) ?? "")
+                .split(separator: "\n").map(String.init)
+        }
+
+        try agents([("w1:p1", "claude", "blocked")])
+        #expect(try await hd.run("./badge.sh", bin: bin) == "1 needs you\n")
+        #expect(notified().isEmpty) // the first check only takes note
+        try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you"])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you"]) // once
+        try agents([("w1:p1", "claude", "working"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you", "claude needs you"]) // blocked again after working
+
+        let quiet = try install("herdr", settings: ["app": "", "notify": "false"])
+        defer { try? FileManager.default.removeItem(at: quiet.dir) }
+        _ = try await quiet.run("./badge.sh", bin: bin)
+        try agents([("w1:p3", "pi", "blocked")])
+        _ = try await quiet.run("./badge.sh", bin: bin)
+        #expect(notified().count == 2)
+    }
+
     /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
     func claudeSessionsListAndResume() async throws {
