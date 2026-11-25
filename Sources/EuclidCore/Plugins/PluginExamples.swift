@@ -2380,7 +2380,8 @@ click = "./focus.sh next"  # jumps to the agent that needs you
 
 [settings]
 app    = "Ghostty"  # the terminal running herdr, brought to the front on ↵ (empty = don't)
-notify = "true"     # a notification when an agent starts waiting on you ("false" = badge only)
+notify = "true"     # a notification when an agent starts waiting on you ("false" = badge only);
+                    # with terminal-notifier installed, clicking it jumps to the agent
 """#
 
     /// Shared by every herdr script: `agents` prints one agent per line, the ones that need you first:
@@ -2480,16 +2481,28 @@ printf '%s\n' "$list" | summary
 tab=$(printf '\t')
 blocked=$(printf '%s\n' "$list" | awk -F '\t' '$2 == "blocked" { print $3 "\t" $4 }')
 # Kept outside the plugin folder, so writing it never looks like an edit to Euclid.
+# terminal-notifier (brew install terminal-notifier) makes a click jump to the agent; else osascript.
+notifier=$(command -v terminal-notifier 2>/dev/null || true)
+herdr=$(command -v herdr)
+app=${EUCLID_SETTING_APP-Ghostty}
 seen="${TMPDIR:-/tmp}/euclid-herdr-notified-$(printf %s "$PWD" | cksum | cut -d ' ' -f 1)"
 if [ -f "$seen" ]; then
   printf '%s\n' "$blocked" | while IFS="$tab" read -r target name; do
     [ -n "$target" ] && ! grep -qxF "$target" "$seen" || continue
-    # The name is an argument, never part of the script text.
-    osascript - "Herdr" "$name needs you" >/dev/null 2>&1 <<'APPLESCRIPT' || true
+    case $target in -*|*[!A-Za-z0-9:_.-]*) continue ;; esac
+    if [ -n "$notifier" ]; then
+      # A click jumps to the agent. The target is a plain id (checked above); the app is quoted.
+      jump="'$herdr' agent focus '$target'"
+      case $app in *"'"*) ;; ?*) jump="$jump && open -a '$app'" ;; esac
+      "$notifier" -title Herdr -message "$name needs you" -group "herdr-$target" -execute "$jump" >/dev/null 2>&1 || true
+    else
+      # The name is an argument, never part of the script text.
+      osascript - "Herdr" "$name needs you" >/dev/null 2>&1 <<'APPLESCRIPT' || true
 on run argv
   display notification (item 2 of argv) with title (item 1 of argv)
 end run
 APPLESCRIPT
+    fi
   done
 fi
 printf '%s\n' "$blocked" | cut -f 1 > "$seen"
