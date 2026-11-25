@@ -304,6 +304,40 @@ enum ScreensRenderer {
         vc.sourceOrder = []
         vc.prepareForShow()
 
+        // Agents: the herdr plugin (who needs you, live) and claude-sessions (pick a session back up).
+        vc.badges = [.init(pluginID: "herdr", text: "1 needs you · 2 working", icon: "person.2.wave.2", hasClick: true)]
+        vc.demoSetQuery("")
+        try step("herdr plugin: the badge says when an agent needs you; click it to jump there", hold: 2.0, name: "herdr-badge")
+        let agents = [
+            PluginItem(title: "codex", subtitle: "needs you · ~/code/web", run: "./focus.sh w1:p2", icon: "🔴", id: "herdr:w1:p2"),
+            PluginItem(title: "pi", subtitle: "done · ~/code/euclid", run: "./focus.sh w2:p1", icon: "🟢", id: "herdr:w2:p1"),
+            PluginItem(title: "claude", subtitle: "working · ~/code/api", run: "./focus.sh w1:p1", icon: "🟡", id: "herdr:w1:p1"),
+            PluginItem(title: "claude", subtitle: "working · ~/code/infra", run: "./focus.sh w3:p1", icon: "🟡", id: "herdr:w3:p1"),
+            PluginItem(title: "shell", subtitle: "idle · ~", run: "./focus.sh w2:p2", icon: "⚪️", id: "herdr:w2:p2"),
+        ]
+        vc.present(PluginView(layout: .list, title: "Herdr Agents", placeholder: "Filter agents…", items: agents,
+                              reload: "./agents.sh", refreshSeconds: 2), pluginID: "herdr", pluginName: "Herdr")
+        try step("herdr plugin: your agents, live, the ones waiting on you first; ↵ jumps to the pane", hold: 2.2, name: "live-herdr")
+        vc.prepareForShow()
+        vc.badges = []
+        func session(_ id: String, _ title: String, _ subtitle: String) -> PluginService.Entry {
+            entry("claude-sessions", "Claude Sessions", PluginItem(title: title, subtitle: subtitle, run: "./resume.sh \(id)",
+                                                                   icon: "sparkles", label: "Claude", id: "claude:\(id)"))
+        }
+        let sessions = [
+            session("1", "Fix login redirect on Safari", "~/code/web · fix/safari-login · 2 h ago"),
+            session("2", "Login rate limiting for the API", "~/code/api · main · 1 d ago"),
+            session("3", "Why is CI red on the login tests", "~/code/web · main · 3 d ago"),
+        ]
+        let sessionItems = sessions.enumerated().map { $0.element.item.searchItem(id: $0.offset) }
+        vc.pluginProvider = { sessionItems }
+        vc.pluginEntry = { sessions[safe: $0] }
+        vc.demoSetQuery("")
+        try type("login", caption: "claude-sessions plugin: find a Claude Code session by what it was about")
+        try step("claude-sessions plugin: ↵ resumes it in Ghostty, in its own folder", hold: 2.2, name: "claude-sessions")
+        vc.pluginProvider = { [] }
+        vc.prepareForShow()
+
         // The first thing a new install shows (after the diagnostics question). Last, so the other shots keep their numbers.
         vc.notice = AppDelegate.welcome(hotkey: "⌥Space")
         vc.demoSetQuery("")
