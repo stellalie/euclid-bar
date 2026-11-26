@@ -2,7 +2,7 @@ import Foundation
 import EuclidCore
 
 /// `euclid-bar --mcp`: an MCP server on stdin/stdout so Claude Code, Codex and other agents can
-/// search what Euclid indexed. Runs as its own process next to the app; reads the same files.
+/// search what Euclid indexed, and learn the user's Euclid setup (`EuclidSkill`). Runs as its own process next to the app; reads the same files.
 @MainActor
 enum AgentServer {
     static func run() -> Int32 {
@@ -37,8 +37,10 @@ enum AgentServer {
                 ? " Safari history needs Full Disk Access for the app that runs your agent (your terminal or editor)." : ""
             return "couldn't read \(unreadable.joined(separator: ", ")) history.\(safari)"
         }
-        let tools = AgentTools.make(store, share: config.agentShare)
-        MCPServer(tools: tools, name: "euclid", version: Updater.version).serve()
+        let tools = EuclidSkill.tools(paths: paths) + AgentTools.make(store, share: config.agentShare)
+        let cli = Bundle.main.executablePath ?? "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
+        MCPServer(tools: tools, prompts: EuclidSkill.prompts, instructions: EuclidSkill.instructions(paths: paths, cli: cli),
+                  name: "euclid", version: Updater.version).serve()
         return 0
     }
 }

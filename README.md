@@ -494,12 +494,18 @@ args    = ["--mcp"]
 | `search_clipboard`, `recent_clipboard` | Text you copied, newest first |
 | `search_notes`, `read_note` | Full text of your Obsidian notes |
 | `search_browser_history` | Titles and URLs from every browser |
+| `euclid_config` | Your config.toml, plugins and any problems Euclid finds |
+| `euclid_guide` | The settings or plugin guide (the same as `AGENTS.md`) |
+
+Connected agents also learn your Euclid setup as they start: ask "open Euclid with ⌥Space" or
+"add my GitLab MRs to Euclid" and they read your files, edit them and check the change. In
+Claude Code, `/mcp__euclid__settings` and `/mcp__euclid__plugin` do the same as slash commands.
 
 Choose what's shared:
 
 ```toml
 [agents]
-share = ["clipboard", "notes", "history"]   # the default; [] shares nothing
+share = ["clipboard", "notes", "history"]   # the default; [] shares none of these
 ```
 
 ## Plugins
