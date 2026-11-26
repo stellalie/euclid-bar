@@ -1,7 +1,8 @@
 import Foundation
 
 /// A minimal Model Context Protocol server over stdio (newline-delimited JSON-RPC 2.0):
-/// enough for agents like Claude Code and Codex to list and call tools.
+/// enough for agents like Claude Code and Codex to list and call tools and prompts, plus
+/// `instructions` the client adds to the agent's context as soon as it connects.
 public final class MCPServer {
     public struct Tool {
         public let name: String
@@ -18,6 +19,32 @@ public final class MCPServer {
         }
     }
 
+    /// A prompt template: Claude Code shows each as a slash command (`/mcp__euclid__<name>`).
+    public struct Prompt {
+        public struct Argument {
+            public let name: String
+            public let description: String
+            public let required: Bool
+            public init(name: String, description: String, required: Bool = false) {
+                self.name = name
+                self.description = description
+                self.required = required
+            }
+        }
+        public let name: String
+        public let description: String
+        public let arguments: [Argument]
+        /// The user message the prompt expands to, from its arguments.
+        public let render: ([String: String]) -> String
+
+        public init(name: String, description: String, arguments: [Argument] = [], render: @escaping ([String: String]) -> String) {
+            self.name = name
+            self.description = description
+            self.arguments = arguments
+            self.render = render
+        }
+    }
+
     public struct ToolError: Error, CustomStringConvertible {
         public let description: String
         public init(_ description: String) { self.description = description }
@@ -27,11 +54,15 @@ public final class MCPServer {
     /// as the spec says, and decides itself whether it can go on.
     static let supportedProtocols = ["2025-06-18", "2025-03-26", "2024-11-05"]
     let tools: [Tool]
+    let prompts: [Prompt]
+    let instructions: String?
     let name: String
     let version: String
 
-    public init(tools: [Tool], name: String, version: String) {
+    public init(tools: [Tool], prompts: [Prompt] = [], instructions: String? = nil, name: String, version: String) {
         self.tools = tools
+        self.prompts = prompts
+        self.instructions = instructions
         self.name = name
         self.version = version
     }
@@ -60,11 +91,15 @@ public final class MCPServer {
         switch message["method"] as? String {
         case "initialize":
             let asked = params["protocolVersion"] as? String
-            return reply(id, [
+            var capabilities: [String: Any] = ["tools": [String: Any]()]
+            if !prompts.isEmpty { capabilities["prompts"] = [String: Any]() }
+            var result: [String: Any] = [
                 "protocolVersion": asked.flatMap { Self.supportedProtocols.contains($0) ? $0 : nil } ?? Self.supportedProtocols[0],
-                "capabilities": ["tools": [String: Any]()],
+                "capabilities": capabilities,
                 "serverInfo": ["name": name, "version": version],
-            ])
+            ]
+            if let instructions { result["instructions"] = instructions }
+            return reply(id, result)
         case "ping":
             return reply(id, [String: Any]())
         case "tools/list":
@@ -79,6 +114,21 @@ public final class MCPServer {
             } catch {
                 return reply(id, ["content": [["type": "text", "text": "\(error)"]], "isError": true])
             }
+        case "prompts/list":
+            return reply(id, ["prompts": prompts.map { p in
+                ["name": p.name, "description": p.description,
+                 "arguments": p.arguments.map { ["name": $0.name, "description": $0.description, "required": $0.required] }]
+            }])
+        case "prompts/get":
+            guard let promptName = params["name"] as? String, let prompt = prompts.first(where: { $0.name == promptName }) else {
+                return error(id, code: -32602, "Unknown prompt: \(params["name"] ?? "")")
+            }
+            let args = (params["arguments"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+            if let missing = prompt.arguments.first(where: { $0.required && (args[$0.name] ?? "").isEmpty }) {
+                return error(id, code: -32602, "Missing argument: \(missing.name)")
+            }
+            return reply(id, ["description": prompt.description,
+                              "messages": [["role": "user", "content": ["type": "text", "text": prompt.render(args)]]]])
         default:
             return error(id, code: -32601, "Method not found: \(message["method"] ?? "")")
         }
