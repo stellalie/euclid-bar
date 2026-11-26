@@ -175,6 +175,27 @@ import Testing
         #expect(throws: CommandRunner.Failure(status: 3, stderr: "boom")) { try r.get() }
     }
 
+    /// The message is never lost, even when the exit arrives while the last chunk is being read.
+    @Test func failureMessageSurvivesManyRuns() async {
+        let results = await withTaskGroup(of: Result<Void, CommandRunner.Failure>.self) { group in
+            for _ in 0..<200 { group.addTask { await self.run("echo boom >&2; exit 3", query: "") } }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        let lost = results.filter { if case .failure(let f) = $0 { return f.stderr != "boom" } else { return true } }
+        #expect(lost.isEmpty, "\(lost.count) of 200 runs lost their message")
+    }
+
+    /// A background child that keeps stderr open doesn't hold the result back. macOS only: on Linux,
+    /// Foundation reports a Process as ended only once its background children have ended too.
+    #if os(macOS)
+    @Test func backgroundChildDoesNotHoldTheResult() async {
+        let started = Date()
+        let r = await run("echo late >&2; sleep 5 >&2 & exit 4", query: "")
+        #expect(throws: CommandRunner.Failure(status: 4, stderr: "late")) { try r.get() }
+        #expect(Date().timeIntervalSince(started) < 3)
+    }
+    #endif
+
     @Test func loginShellFindsUserPath() async {
         // Mimics a GUI launch: minimal environment, PATH must come from the login shell.
         let r = await withCheckedContinuation { c in
