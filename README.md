@@ -497,6 +497,14 @@ args    = ["--mcp"]
 | `euclid_config` | Your config.toml, plugins and any problems Euclid finds |
 | `euclid_guide` | The settings or plugin guide (the same as `AGENTS.md`) |
 
+The same tools work from a shell or a script, no agent needed:
+
+```sh
+euclid-bar --tool                                   # lists them
+euclid-bar --tool search_clipboard query=kubectl limit=3
+euclid-bar --tool search_browser_history query="rebase" | head
+```
+
 Connected agents also learn your Euclid setup as they start: ask "open Euclid with ⌥Space" or
 "add my GitLab MRs to Euclid" and they read your files, edit them and check the change. In
 Claude Code, `/mcp__euclid__settings` and `/mcp__euclid__plugin` do the same as slash commands.

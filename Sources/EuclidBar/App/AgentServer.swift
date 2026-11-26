@@ -7,6 +7,21 @@ import EuclidCore
 enum AgentServer {
     static func run() -> Int32 {
         let paths = EuclidPaths()
+        let cli = Bundle.main.executablePath ?? "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
+        MCPServer(tools: tools(paths: paths), prompts: EuclidSkill.prompts, instructions: EuclidSkill.instructions(paths: paths, cli: cli),
+                  name: "euclid", version: Updater.version).serve()
+        return 0
+    }
+
+    /// `euclid-bar --tool [<name> key=value…]`: the same tools, from a shell.
+    static func tool(_ args: [String]) -> Int32 {
+        let (output, status) = ToolCommand.run(args, tools: tools(paths: EuclidPaths()))
+        if status == 0 { print(output) } else { FileHandle.standardError.write(Data((output + "\n").utf8)) }
+        return status
+    }
+
+    /// Everything an agent can call: the Euclid skill and the sources config.toml shares.
+    static func tools(paths: EuclidPaths) -> [MCPServer.Tool] {
         // Read-only: never write a default config.toml from here; the app does that on first launch.
         let config = FileManager.default.fileExists(atPath: paths.configFile.path)
             ? (try? ConfigLoader.loadOrCreate(at: paths.configFile))?.config ?? EuclidConfig()
@@ -37,10 +52,6 @@ enum AgentServer {
                 ? " Safari history needs Full Disk Access for the app that runs your agent (your terminal or editor)." : ""
             return "couldn't read \(unreadable.joined(separator: ", ")) history.\(safari)"
         }
-        let tools = EuclidSkill.tools(paths: paths) + AgentTools.make(store, share: config.agentShare)
-        let cli = Bundle.main.executablePath ?? "/Applications/Euclid.app/Contents/MacOS/euclid-bar"
-        MCPServer(tools: tools, prompts: EuclidSkill.prompts, instructions: EuclidSkill.instructions(paths: paths, cli: cli),
-                  name: "euclid", version: Updater.version).serve()
-        return 0
+        return EuclidSkill.tools(paths: paths) + AgentTools.make(store, share: config.agentShare)
     }
 }
