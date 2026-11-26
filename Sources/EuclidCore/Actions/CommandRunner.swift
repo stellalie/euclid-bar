@@ -79,20 +79,31 @@ public enum CommandRunner {
         p.standardError = stderr
         if p.standardInput == nil { p.standardInput = FileHandle.nullDevice }
         if p.standardOutput == nil { p.standardOutput = FileHandle.nullDevice }
-        // Drain continuously so a chatty command can't fill the pipe and block.
-        stderr.fileHandleForReading.readabilityHandler = { h in collected.append(h.availableData) }
+        // Read stderr to the end on its own thread (a chatty command can't fill the pipe and block),
+        // and report only once that read is done. A readabilityHandler could still be holding the
+        // last chunk when the exit arrived, so a failure lost its message ("exit 3" without "boom").
+        let read = DispatchGroup()
+        read.enter()
+        DispatchQueue.global().async {
+            while case let d = stderr.fileHandleForReading.availableData, !d.isEmpty { collected.append(d) }
+            read.leave()
+        }
         p.terminationHandler = { proc in
-            stderr.fileHandleForReading.readabilityHandler = nil
-            collected.append(stderr.fileHandleForReading.readDataToEndOfFile())
-            if proc.terminationStatus == 0 {
-                completion(.success(()))
-            } else {
-                completion(.failure(Failure(status: proc.terminationStatus, stderr: collected.string)))
+            let status = proc.terminationStatus
+            DispatchQueue.global().async {
+                // A background child that kept stderr open can't hold the result back for long.
+                _ = read.wait(timeout: .now() + 1)
+                if status == 0 {
+                    completion(.success(()))
+                } else {
+                    completion(.failure(Failure(status: status, stderr: collected.string)))
+                }
             }
         }
         do {
             try p.run()
         } catch {
+            try? stderr.fileHandleForWriting.close() // ends the read
             let path = p.executableURL?.path ?? "?"
             completion(.failure(Failure(status: -1, stderr: "can't start \(path): \(error.localizedDescription)")))
         }

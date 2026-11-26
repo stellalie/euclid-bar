@@ -69,12 +69,15 @@ with `euclid-bar --plugin add <name>`:
 | `tokens` *(plugin)* | Today's Claude Code tokens and cost on the bar, from `ccusage` |
 | `cleanlinks` *(mod)* | Strips tracking parameters from links you copy |
 | `reveal` *(mod)* | ⇧⌘R shows the selected file, project or app in Finder |
+| `handoff` *(mod)* | ⇧⌘A on any result (a PR, an issue, a clip, a file, a project) opens your `claude`, `codex` or `gemini` CLI in a new Ghostty tab, already told what it is |
 | `ai` *(mod)* | Your own AI, no API key: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back, ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues the chat in a terminal with your AI CLI. Apple's on-device model by default (free, private; macOS 26), or the `claude`, `codex` or `gemini` CLI you're logged into, or any command (`ollama run …`) |
 | `raycast` *(plugin)* | Runs your Raycast script commands: each is a row, `rc <name> <args>` runs one. Modes silent, compact, fullOutput and inline; typed arguments; confirmation |
 | `emoji` *(plugin)* | An emoji grid; `emoji heart` lists matches. `↵` pastes |
 | `volume` *(plugin)* | Volume Up, Down and Mute rows, `vol 40`, and Set Volume with a dropdown |
 | `kill-process` *(plugin)* | Your processes, busiest first, refreshing live; `↵` quits one, `↵` again force-quits; `kill chrome` finds one |
 | `docker` *(plugin)* | Your containers, live: logs (live too), a shell, open its port, start, stop, restart |
+| `herdr` *(plugin)* | Your [herdr](https://herdr.dev) coding agents, live, the ones waiting on you first (and on the empty bar); `↵` jumps to the agent's pane; the bar's badge says `1 needs you · 2 working`, and a notification when one starts waiting on you (click it to jump there, with `terminal-notifier`) |
+| `claude-sessions` *(plugin)* | Your recent Claude Code sessions by title, folder and age; `↵` resumes one in Ghostty, right where you left it |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet
 (`[expansion] enabled`: opt-in, needs Accessibility). Give any app, project, action or snippet its

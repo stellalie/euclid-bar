@@ -31,6 +31,7 @@ public enum PluginGuide {
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
+        "handoff": [("plugin.toml", handoffManifest, false), ("handoff.sh", handoffScript, true)],
         "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true), ("continue.sh", aiContinue, true)],
         "raycast": [("plugin.toml", raycastManifest, false), ("list.sh", raycastList, true), ("scan.awk", raycastScan, false),
                     ("run.sh", raycastRun, true)],
@@ -43,6 +44,11 @@ public enum PluginGuide {
         "docker": [("plugin.toml", dockerManifest, false), ("items.sh", dockerItems, true), ("containers.sh", dockerContainers, true),
                    ("container.sh", dockerContainer, true), ("logs.sh", dockerLogs, true), ("act.sh", dockerAct, true),
                    ("shell.sh", dockerShell, true)],
+        "herdr": [("plugin.toml", herdrManifest, false), ("lib.sh", herdrLib, false), ("items.sh", herdrItems, true),
+                  ("agents.sh", herdrAgents, true), ("badge.sh", herdrBadge, true), ("focus.sh", herdrFocus, true),
+                  ("explain.sh", herdrExplain, true)],
+        "claude-sessions": [("plugin.toml", claudeSessionsManifest, false), ("items.sh", claudeSessionsItems, true),
+                            ("resume.sh", claudeSessionsResume, true)],
     ]
 
     /// Write an example into `<plugins>/<name>`. Fails if that folder already exists.
@@ -55,11 +61,27 @@ public enum PluginGuide {
         guard !fm.fileExists(atPath: folder.path) else { throw PluginRunner.Failure("\(folder.path) already exists") }
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         for file in files {
-            let url = folder.appendingPathComponent(file.name)
-            try file.text.write(to: url, atomically: true, encoding: .utf8)
-            if file.executable { try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
+            try writeScript(file.text, to: folder.appendingPathComponent(file.name), executable: file.executable)
         }
         return folder
+    }
+
+    /// Write a file that may be run right away. The descriptor is close-on-exec, so a process another
+    /// thread spawns meanwhile never inherits it: on Linux an inherited write handle makes running the
+    /// script fail with "text file busy" (ETXTBSY) for as long as that process lives.
+    static func writeScript(_ text: String, to url: URL, executable: Bool) throws {
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { throw PluginRunner.Failure("couldn't write \(url.path): \(String(cString: strerror(errno)))") }
+        defer { close(fd) }
+        let bytes = Array(text.utf8)
+        var written = 0
+        while written < bytes.count {
+            let n = bytes[written...].withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            if n < 0 && errno == EINTR { continue }
+            guard n > 0 else { throw PluginRunner.Failure("couldn't write \(url.path): \(String(cString: strerror(errno)))") }
+            written += n
+        }
+        if executable { guard fchmod(fd, 0o755) == 0 else { throw PluginRunner.Failure("couldn't make \(url.path) executable") } }
     }
 
     static let githubManifest = #"""
@@ -943,6 +965,8 @@ change them:
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
+- `handoff`: ⇧⌘A on any result opens your agent CLI (claude, codex, gemini) in a new terminal,
+  already told about it; projects and files open in their folder (a `[[key]]` on every kind).
 - `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
   ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues in a terminal with your AI CLI.
   Apple's on-device model by default, or the `claude`, `codex` or `gemini` CLI you're logged into
@@ -958,5 +982,17 @@ change them:
   force-quits; `kill chrome` finds one (a live view and an answer).
 - `docker`: your containers, live: logs (live too), a shell, open its port, start, stop, restart
   (live views that drill down).
+- `herdr`: your herdr coding agents, the ones waiting on you first, live; ↵ jumps to the pane;
+  agents that need you show on the empty bar, and a badge says how many (a source with
+  `suggest`, a badge and a live view).
+- `claude-sessions`: your recent Claude Code sessions by title, folder and age; ↵ resumes one
+  in a terminal, in its own folder (a source that reads local files).
 """#
+}
+
+extension String {
+    /// Write this text as a script that may be run right away (see `PluginGuide.writeScript`).
+    func writeScript(to url: URL, executable: Bool = true) throws {
+        try PluginGuide.writeScript(self, to: url, executable: executable)
+    }
 }

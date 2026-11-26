@@ -2361,4 +2361,344 @@ else
             -e 'tell application "Terminal" to activate' >/dev/null
 fi
 """#
+
+    // MARK: - herdr
+
+    static let herdrManifest = #"""
+name = "Herdr"
+description = "Your herdr coding agents, live: the ones waiting on you come first, ↵ jumps to the agent's pane. Needs herdr (brew install herdr) and jq."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 1
+
+[badge]                    # e.g. "1 needs you · 2 working"; hidden while no agent runs
+run   = "./badge.sh"
+icon  = "person.2.wave.2"
+refresh_minutes = 1
+click = "./focus.sh next"  # jumps to the agent that needs you
+
+[settings]
+app    = "Ghostty"  # the terminal running herdr, brought to the front on ↵ (empty = don't)
+notify = "true"     # a notification when an agent starts waiting on you ("false" = badge only);
+                    # with terminal-notifier installed, clicking it jumps to the agent
+"""#
+
+    /// Shared by every herdr script: `agents` prints one agent per line, the ones that need you first:
+    /// rank, status, target (pane id), name, where (cwd or terminal title), all tab-separated.
+    static let herdrLib = #"""
+# Sourced by the herdr scripts. Reads `herdr agent list` (JSON) through jq.
+command -v herdr >/dev/null 2>&1 || { echo "needs herdr: brew install herdr" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+
+agents() {
+  out=$(herdr agent list 2>&1) || { echo "herdr isn't running: $(printf '%s\n' "$out" | head -n 1)" >&2; return 1; }
+  printf '%s\n' "$out" | jq -r '
+    def str: if type == "string" then . elif type == "object" then (.name // .label // .id // "") | tostring
+             elif . == null then "" else tostring end;
+    def rank: {"blocked": 0, "done": 1, "working": 2, "idle": 3}[.] // 4;
+    [(.result.agents // .result.panes // .agents // .panes // (if type == "array" then . else [] end))[]
+    | ((.agent_status // .status // .state) | str | ascii_downcase) as $st
+    | ($st | if . == "" then "unknown" else . end) as $st
+    | ((.pane_id // .pane.pane_id // .target // .id) | str) as $target
+    | select($target != "")
+    | [($st | rank), $st, $target,
+       (((.name // .agent_name // .agent_session // .agent // .label) | str) | if . == "" then $target else . end),
+       ((.foreground_cwd // .cwd // .terminal_title) | str)]]
+    | sort_by(.[0])[] | map(tostring | gsub("[\t\n]"; " ")) | @tsv'
+}
+
+# "1 needs you · 2 working · 1 done" from agents' lines; empty when none is running.
+summary() {
+  awk -F '\t' 'NF { n[$2]++ }
+    END { s = ""; if (n["blocked"]) s = n["blocked"] (n["blocked"] == 1 ? " needs" : " need") " you"
+          if (n["working"]) s = s (s ? " · " : "") n["working"] " working"
+          if (n["done"]) s = s (s ? " · " : "") n["done"] " done"
+          print s }'
+}
+
+icon() {
+  case $1 in blocked) echo "🔴" ;; done) echo "🟢" ;; working) echo "🟡" ;; idle) echo "⚪️" ;; *) echo "❔" ;; esac
+}
+
+status_text() {
+  case $1 in blocked) echo "needs you" ;; done) echo "done" ;; working) echo "working" ;; idle) echo "idle" ;; *) echo "unknown" ;; esac
+}
+
+# A pane id goes into commands, so only plain ids are accepted (w1:p2, my-agent).
+valid_target() {
+  case $1 in ''|-*|*[!A-Za-z0-9:_.-]*) echo "not a herdr agent: $1" >&2; exit 64 ;; esac
+}
+
+# One agent as a JSON item, with ⌘K actions.
+row() { # rank status target name where
+  jq -cn --arg st "$2" --arg t "$3" --arg n "$4" --arg w "$5" --arg i "$(icon "$2")" --arg s "$(status_text "$2")" '
+    {title: $n, subtitle: ([$s, ($w | sub("^" + env.HOME; "~"))] | map(select(. != "")) | join(" · ")),
+     icon: $i, run: ("./focus.sh " + $t), id: ("herdr:" + $t), label: "Herdr",
+     suggest: ($st == "blocked"),   # agents waiting on you show on the empty bar
+     actions: [{title: "Jump to Pane", run: ("./focus.sh " + $t), icon: "arrow.up.right.square"},
+               {title: "Why This Status?", run: ("./explain.sh " + $t), icon: "questionmark.circle"},
+               {title: "Copy Pane ID", copy: $t, icon: "doc.on.doc"}]}'
+}
+"""#
+
+    static let herdrItems = #"""
+#!/bin/sh
+# In search: "Herdr Agents" (opens the live list) and one row per agent, so typing its name finds it.
+set -eu
+. ./lib.sh
+list=$(agents)
+summary=$(printf '%s\n' "$list" | summary)
+echo "{\"title\":\"Herdr Agents\",\"subtitle\":\"${summary:-No agent needs you}\",\"run\":\"./agents.sh\",\"icon\":\"person.2.wave.2\",\"id\":\"herdr:agents\"}"
+printf '%s\n' "$list" | while IFS="$(printf '\t')" read -r rank st target name where; do
+  [ -n "$target" ] && row "$rank" "$st" "$target" "$name" "$where"
+done
+exit 0
+"""#
+
+    static let herdrAgents = #"""
+#!/bin/sh
+# Every agent, the ones that need you first, as a live list (reloads every 2 s).
+set -eu
+. ./lib.sh
+list=$(agents)
+echo '{"view":"list","title":"Herdr Agents","placeholder":"Filter agents…","reload":"./agents.sh","refresh_seconds":2}'
+[ -n "$list" ] || { echo '{"title":"No agents running","subtitle":"Start one in herdr, e.g. claude or codex in a pane","icon":"person.2.wave.2","id":"herdr:none"}'; exit 0; }
+printf '%s\n' "$list" | while IFS="$(printf '\t')" read -r rank st target name where; do
+  [ -n "$target" ] && row "$rank" "$st" "$target" "$name" "$where"
+done
+exit 0
+"""#
+
+    static let herdrBadge = #"""
+#!/bin/sh
+# The badge: "1 needs you · 2 working". Prints nothing (hidden) while herdr or its agents aren't running.
+# With notify = "true", also a macOS notification for each agent that started waiting on you since the
+# last check (the first check after install only takes note, so you aren't flooded).
+. ./lib.sh 2>/dev/null || exit 0
+list=$(agents 2>/dev/null) || exit 0
+printf '%s\n' "$list" | summary
+[ "${EUCLID_SETTING_NOTIFY:-true}" = true ] || exit 0
+tab=$(printf '\t')
+blocked=$(printf '%s\n' "$list" | awk -F '\t' '$2 == "blocked" { print $3 "\t" $4 }')
+# Kept outside the plugin folder, so writing it never looks like an edit to Euclid.
+# terminal-notifier (brew install terminal-notifier) makes a click jump to the agent; else osascript.
+notifier=$(command -v terminal-notifier 2>/dev/null || true)
+herdr=$(command -v herdr)
+app=${EUCLID_SETTING_APP-Ghostty}
+seen="${TMPDIR:-/tmp}/euclid-herdr-notified-$(printf %s "$PWD" | cksum | cut -d ' ' -f 1)"
+if [ -f "$seen" ]; then
+  printf '%s\n' "$blocked" | while IFS="$tab" read -r target name; do
+    [ -n "$target" ] && ! grep -qxF "$target" "$seen" || continue
+    case $target in -*|*[!A-Za-z0-9:_.-]*) continue ;; esac
+    if [ -n "$notifier" ]; then
+      # A click jumps to the agent. The target is a plain id (checked above); the app is quoted.
+      jump="'$herdr' agent focus '$target'"
+      case $app in *"'"*) ;; ?*) jump="$jump && open -a '$app'" ;; esac
+      "$notifier" -title Herdr -message "$name needs you" -group "herdr-$target" -execute "$jump" >/dev/null 2>&1 || true
+    else
+      # The name is an argument, never part of the script text.
+      osascript - "Herdr" "$name needs you" >/dev/null 2>&1 <<'APPLESCRIPT' || true
+on run argv
+  display notification (item 2 of argv) with title (item 1 of argv)
+end run
+APPLESCRIPT
+    fi
+  done
+fi
+printf '%s\n' "$blocked" | cut -f 1 > "$seen"
+"""#
+
+    static let herdrFocus = #"""
+#!/bin/sh
+# ./focus.sh <pane id>: show that agent's pane in herdr and bring its terminal to the front.
+# ./focus.sh next: the agent that needs you (blocked first, then done).
+set -eu
+. ./lib.sh
+target=${1:-}
+if [ "$target" = next ]; then
+  target=$(agents | awk -F '\t' '$2 == "blocked" || $2 == "done" { print $3; exit }')
+  [ -n "$target" ] || { echo '{"notice":"No agent needs you"}'; exit 0; }
+fi
+valid_target "$target"
+herdr agent focus "$target" >/dev/null
+app=${EUCLID_SETTING_APP-Ghostty}
+[ -z "$app" ] || open -a "$app" 2>/dev/null || true
+"""#
+
+    static let herdrExplain = #"""
+#!/bin/sh
+# ./explain.sh <pane id>: why herdr gave that agent its status (`herdr agent explain`).
+set -eu
+. ./lib.sh
+valid_target "${1:-}"
+echo '{"view":"detail","title":"Why this status","code":true}'
+herdr agent explain "$1" 2>&1
+"""#
+
+    // MARK: - claude-sessions
+
+    static let claudeSessionsManifest = #"""
+name = "Claude Sessions"
+description = "Your recent Claude Code sessions by title, folder and age; ↵ resumes one in a terminal where you left it. Reads ~/.claude locally."
+
+[source]
+run = "./items.sh"
+refresh_minutes = 2
+
+[settings]
+limit    = "40"      # sessions shown, newest first
+command  = "claude"  # the CLI that resumes: `<command> --resume <id>`
+terminal = ""        # empty = Ghostty if you have it, else Terminal;
+                     # or a command that runs its arguments, e.g. "ghostty-run split"
+"""#
+
+    static let claudeSessionsItems = #"""
+#!/bin/sh
+# Recent sessions, newest first: one row each, titled by Claude Code's own session title
+# (else your last prompt). Reads only the lines it needs, so big transcripts stay fast.
+set -eu
+command -v jq >/dev/null 2>&1 || { echo "needs jq: brew install jq" >&2; exit 1; }
+dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
+[ -d "$dir" ] || exit 0
+limit=${EUCLID_SETTING_LIMIT:-40}
+case $limit in ''|*[!0-9]*) limit=40 ;; esac
+now=$(date +%s)
+mtime() { date -r "$1" +%s; }  # macOS and GNU alike
+# shellcheck disable=SC2012 # session file names are UUIDs
+ls -t "$dir"/*/*.jsonl 2>/dev/null | head -n "$limit" | while IFS= read -r f; do
+  id=$(basename "$f" .jsonl)
+  case $id in *[!0-9a-fA-F-]*) continue ;; esac
+  {
+    grep -m 1 '"cwd":' "$f" || echo '{}'
+    grep '"type":"ai-title"' "$f" | tail -n 1 || true
+    grep '"type":"summary"' "$f" | tail -n 1 || true
+    grep '"lastPrompt":' "$f" | tail -n 1 || true
+  } | jq -cs --arg id "$id" --argjson age "$(( now - $(mtime "$f") ))" '
+    def clip: gsub("\\s+"; " ") | if length > 90 then .[:89] + "…" else . end;
+    (map(.cwd // empty) | first // "") as $cwd
+    | (map(.gitBranch // empty) | first // "") as $branch
+    | ((map(.aiTitle // empty) | last) // (map(.summary // empty) | last) // (map(.lastPrompt // empty) | last)
+       // ("Session " + $id[:8])) as $title
+    | (if $age < 60 then "just now" elif $age < 3600 then "\($age / 60 | floor) min ago"
+       elif $age < 86400 then "\($age / 3600 | floor) h ago" else "\($age / 86400 | floor) d ago" end) as $when
+    | ($cwd | sub("^" + env.HOME; "~")) as $where
+    | {title: ($title | clip),
+       subtitle: ([$where, $branch, $when] | map(select(. != "" and . != "HEAD")) | join(" · ")),
+       icon: "sparkles", run: ("./resume.sh " + $id), id: ("claude:" + $id), label: "Claude",
+       actions: ([{title: "Resume in Terminal", run: ("./resume.sh " + $id), icon: "terminal"},
+                  {title: "Copy Session ID", copy: $id, icon: "doc.on.doc"}]
+                 + (if $cwd != "" then [{title: "Open Folder", open: $cwd, icon: "folder"}] else [] end))}'
+done
+"""#
+
+    static let claudeSessionsResume = #"""
+#!/bin/sh
+# ./resume.sh <session id>: `claude --resume <id>` in a new terminal, in the session's own folder.
+set -eu
+id=${1:-}
+case $id in ''|*[!0-9a-fA-F-]*) echo "usage: resume.sh <session id>" >&2; exit 64 ;; esac
+dir=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
+f=$(ls "$dir"/*/"$id".jsonl 2>/dev/null | head -n 1) || true
+[ -n "$f" ] || { echo "no Claude Code session $id" >&2; exit 1; }
+cwd=$(grep -m 1 '"cwd":' "$f" | jq -r '.cwd // empty' 2>/dev/null) || true
+[ -d "${cwd:-/nonexistent}" ] || cwd=$HOME
+cli=${EUCLID_SETTING_COMMAND:-claude}
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  # The folder and id are arguments, never part of the command text.
+  $term sh -c 'cd "$1" && exec $2 --resume "$3"' sh "$cwd" "$cli" "$id"
+else
+  osascript - "$cwd" "$cli" "$id" >/dev/null <<'APPLESCRIPT'
+on run argv
+  tell application "Terminal"
+    do script "cd " & quoted form of (item 1 of argv) & " && " & (item 2 of argv) & " --resume " & (item 3 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
+"""#
+
+    // MARK: - handoff
+
+    static let handoffManifest = #"""
+name = "Hand off"
+description = "A mod: ⇧⌘A on any result opens your coding agent in a new terminal, already told about it: a PR, an issue, a clip, a file, a project. Uses the claude, codex or gemini CLI you're logged into."
+
+[[key]]
+key  = "cmd+shift+a"
+name = "Hand off to agent"
+run  = "./handoff.sh"
+
+[settings]
+cli      = ""   # claude, codex or gemini; empty = the first of them on your PATH
+terminal = ""   # empty = Ghostty if you have it, else Terminal; or a command that runs its
+                # arguments, e.g. "ghostty-run split"
+"""#
+
+    static let handoffScript = #"""
+#!/bin/sh
+# ⇧⌘A on a result: your agent CLI in a new terminal, told what the result is and waiting for you.
+# Projects and files open in their own folder, so the agent can read the code around them.
+# Everything about the result is passed as text, never run.
+set -eu
+kind=${EUCLID_ITEM_KIND:-} title=${EUCLID_ITEM_TITLE:-} subtitle=${EUCLID_ITEM_SUBTITLE:-}
+url=${EUCLID_ITEM_URL:-} path=${EUCLID_ITEM_PATH:-} text=${EUCLID_ITEM_TEXT:-}
+[ -n "$title$url$path$text" ] || { echo "select a result first" >&2; exit 1; }
+
+cli=${EUCLID_SETTING_CLI:-}
+cli=${cli%% *}
+if [ -z "$cli" ]; then
+  for c in claude codex gemini; do
+    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+  done
+fi
+case $cli in claude|codex|gemini) ;; *) echo "Hand off needs the claude, codex or gemini CLI (or set [plugin.handoff] cli)" >&2; exit 1 ;; esac
+
+dir=$HOME
+if [ -n "$path" ]; then
+  if [ -d "$path" ]; then dir=$path; elif [ -e "$path" ]; then dir=$(dirname "$path"); fi
+fi
+
+text=$(printf '%s' "$text" | head -c 8000)
+prompt="Here is something I'm looking at in my launcher. Read it, say in one line what it is, then wait for my question.
+
+Kind: ${kind:-result}
+Title: $title"
+[ -z "$subtitle" ] || prompt="$prompt
+Details: $subtitle"
+[ -z "$url" ] || prompt="$prompt
+Link: $url"
+[ -z "$path" ] || prompt="$prompt
+Path: $path"
+[ -z "$text" ] || [ "$text" = "$title" ] || prompt="$prompt
+
+$text"
+
+case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;; esac
+set -- sh -c 'cd "$1" && shift && exec "$@"' sh "$dir" "$@"
+
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  $term "$@"
+else
+  # Terminal.app runs a command line: quote each argument for the shell, then for AppleScript.
+  line=$(for a in "$@"; do printf "'%s' " "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"; done)
+  osascript - "$line" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "Terminal"
+    do script (item 1 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
+"""#
 }

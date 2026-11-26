@@ -32,8 +32,7 @@ import Testing
               case $url in *"$pat"*) tail -n +2 "$f"; printf '\\n\(status)'; exit 0 ;; esac
             done
             printf '\\n404'
-            """.write(to: curl, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: curl.path)
+            """.writeScript(to: curl)
 
         var issues: [ConfigIssue] = []
         let text = try String(contentsOf: folder.appendingPathComponent("plugin.toml"), encoding: .utf8)

@@ -175,6 +175,29 @@ import Testing
         #expect(throws: CommandRunner.Failure(status: 3, stderr: "boom")) { try r.get() }
     }
 
+    /// The message is never lost, even when the exit arrives while the last chunk is being read.
+    @Test func failureMessageSurvivesManyRuns() async {
+        let results = await withTaskGroup(of: Result<Void, CommandRunner.Failure>.self) { group in
+            for _ in 0..<200 { group.addTask { await self.run("echo boom >&2; exit 3", query: "") } }
+            return await group.reduce(into: []) { $0.append($1) }
+        }
+        let lost = results.filter { if case .failure(let f) = $0 { return f.stderr != "boom" } else { return true } }
+        #expect(lost.isEmpty, "\(lost.count) of 200 runs lost their message")
+    }
+
+    /// A background child that keeps stderr open doesn't hold the result back. macOS only: on Linux,
+    /// Foundation reports a Process as ended only once its background children have ended too.
+    #if os(macOS)
+    @Test func backgroundChildDoesNotHoldTheResult() async {
+        let started = Date()
+        // The child outlives the shell by 30 s; the result comes ~1 s after the exit. 10 s leaves room
+        // for a slow login shell on a busy runner and still fails if the runner waits for the child.
+        let r = await run("echo late >&2; sleep 30 >&2 & exit 4", query: "")
+        #expect(throws: CommandRunner.Failure(status: 4, stderr: "late")) { try r.get() }
+        #expect(Date().timeIntervalSince(started) < 10)
+    }
+    #endif
+
     @Test func loginShellFindsUserPath() async {
         // Mimics a GUI launch: minimal environment, PATH must come from the login shell.
         let r = await withCheckedContinuation { c in
@@ -190,8 +213,7 @@ import Testing
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: bin) }
         let shadow = bin.appendingPathComponent("ls") // collides with /bin/ls
-        try "#!/bin/sh\necho fake\n".write(to: shadow, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shadow.path)
+        try "#!/bin/sh\necho fake\n".writeScript(to: shadow)
         let p = CommandRunner.makeProcess(shell: "/bin/zsh", command: "command -v ls", query: "",
                                           pathPrefix: bin.path, baseEnvironment: ["HOME": NSHomeDirectory()])
         let pipe = Pipe()
@@ -298,8 +320,7 @@ import Testing
           "pane split") print '{"result":{"pane":{"pane_id":"w:p2"}}}' ;;
           "pane run")   EUCLID_CMD="$(<$state/env)" /bin/zsh -c "$4" ;;
         esac
-        """#.write(to: fake, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+        """#.writeScript(to: fake)
 
         let env = ["HOME": NSHomeDirectory(), "HERDR_RUN_APP": ""]
         // Safety first: never let this test reach the user's real herdr session.

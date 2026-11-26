@@ -188,8 +188,7 @@ import Testing
     func script(_ dir: URL, _ name: String, _ text: String) throws {
         let url = dir.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        try PluginGuide.writeScript(text, to: url, executable: true) // never "text file busy" on Linux
     }
 
     @Test func raycastScriptCommands() async throws {
@@ -393,6 +392,214 @@ import Testing
         } catch let failure as PluginRunner.Failure {
             #expect(failure.description.contains("Docker isn't running: Cannot connect to the Docker daemon"))
         }
+    }
+
+    /// The `herdr` example against a fake `herdr` through the real `jq`: who needs you first, ↵ focuses.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func herdrAgentsNeedYouFirst() async throws {
+        let hd = try install("herdr", settings: ["app": ""])
+        defer { try? FileManager.default.removeItem(at: hd.dir) }
+        let bin = hd.dir.appendingPathComponent("bin")
+        try script(bin, "herdr", #"""
+            #!/bin/sh
+            echo "$*" >> "$(dirname "$0")/calls"
+            case "$1 $2" in
+              "agent list") cat <<'JSON'
+            {"result":{"type":"agent_list","agents":[
+              {"pane_id":"w1:p1","name":"claude","agent_status":"working","foreground_cwd":"/tmp/api"},
+              {"pane_id":"w1:p2","name":"codex","agent_status":"blocked","foreground_cwd":"/tmp/web"},
+              {"pane_id":"w2:p1","name":"pi","agent_status":"done","terminal_title":"pi: fix tests"},
+              {"pane_id":"w2:p2","agent_status":"idle"}]}}
+            JSON
+              ;;
+              "agent focus") ;;
+              "agent explain") echo "matched approval prompt" ;;
+            esac
+            """#)
+        func open(_ command: String) async throws -> PluginResult { PluginResult.parse(Data(try await hd.run(command, bin: bin).utf8)) }
+
+        let rows = PluginOutput.parse(Data(try await hd.run("./items.sh", bin: bin).utf8)).items
+        #expect(rows.first?.title == "Herdr Agents")
+        #expect(rows.first?.subtitle == "1 needs you · 1 working · 1 done")
+        #expect(rows.dropFirst().map(\.title) == ["codex", "pi", "claude", "w2:p2"]) // blocked, done, working, idle
+        #expect(rows[1].icon == "🔴")
+        #expect(rows[1].subtitle == "needs you · /tmp/web")
+        #expect(rows[1].run == "./focus.sh w1:p2")
+        #expect(rows[1].actions?.map(\.title) == ["Jump to Pane", "Why This Status?", "Copy Pane ID"])
+        #expect(rows.filter { $0.suggest == true }.map(\.title) == ["codex"]) // only who needs you, on the empty bar
+
+        let list = try #require(try await open("./agents.sh").view)
+        #expect(list.reload == "./agents.sh")
+        #expect(list.refreshSeconds == 2)
+        #expect(list.items.map(\.id) == ["herdr:w1:p2", "herdr:w2:p1", "herdr:w1:p1", "herdr:w2:p2"])
+
+        #expect(try await hd.run("./badge.sh", bin: bin).trimmingCharacters(in: .whitespacesAndNewlines)
+                == "1 needs you · 1 working · 1 done")
+        _ = try await hd.run("./focus.sh next", bin: bin) // the blocked one
+        _ = try await hd.run("./focus.sh w2:p1", bin: bin)
+        let calls = try String(contentsOf: bin.appendingPathComponent("calls"), encoding: .utf8)
+        #expect(calls.contains("agent focus w1:p2\n"))
+        #expect(calls.contains("agent focus w2:p1\n"))
+        let why = try #require(try await open("./explain.sh w1:p2").view)
+        #expect(why.text == "matched approval prompt")
+        // Ids go into commands, so only plain ids are accepted.
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await hd.run("./focus.sh 'a;b'", bin: bin) }
+
+        // herdr not running: the badge hides, the list says why.
+        let down = hd.dir.appendingPathComponent("down")
+        try script(down, "herdr", "#!/bin/sh\necho 'no herdr server' >&2\nexit 1\n")
+        #expect(try await hd.run("./badge.sh", bin: down).isEmpty)
+        do {
+            _ = try await hd.run("./agents.sh", bin: down)
+            Issue.record("expected a failure")
+        } catch let failure as PluginRunner.Failure {
+            #expect(failure.description.contains("herdr isn't running: no herdr server"))
+        }
+    }
+
+    /// The herdr badge notifies once per agent that starts waiting on you, never on its first check.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func herdrNotifiesWhenAnAgentNeedsYou() async throws {
+        let hd = try install("herdr", settings: ["app": ""])
+        defer { try? FileManager.default.removeItem(at: hd.dir) }
+        let bin = hd.dir.appendingPathComponent("bin")
+        try script(bin, "herdr", "#!/bin/sh\ncat \"$(dirname \"$0\")/agents.json\"\n")
+        // A fake terminal-notifier, first on PATH: a real one (CI runners have it) never runs.
+        try script(bin, "terminal-notifier", """
+            #!/bin/sh
+            printf '%s\\n' "$@" > "$(dirname "$0")/clicked"
+            echo "$4" >> "$(dirname "$0")/notified"
+            """)
+        func agents(_ list: [(String, String, String)]) throws {
+            let rows = list.map { #"{"pane_id":"\#($0.0)","name":"\#($0.1)","agent_status":"\#($0.2)"}"# }
+            try #"{"result":{"agents":[\#(rows.joined(separator: ","))]}}"#
+                .write(to: bin.appendingPathComponent("agents.json"), atomically: true, encoding: .utf8)
+        }
+        func notified() -> [String] {
+            ((try? String(contentsOf: bin.appendingPathComponent("notified"), encoding: .utf8)) ?? "")
+                .split(separator: "\n").map(String.init)
+        }
+
+        try agents([("w1:p1", "claude", "blocked")])
+        #expect(try await hd.run("./badge.sh", bin: bin) == "1 needs you\n")
+        #expect(notified().isEmpty) // the first check only takes note
+        try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you"])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you"]) // once
+        try agents([("w1:p1", "claude", "working"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked")])
+        _ = try await hd.run("./badge.sh", bin: bin)
+        #expect(notified() == ["codex needs you", "claude needs you"]) // blocked again after working
+
+        // A click runs `herdr agent focus` on that agent, then brings the app forward.
+        let clicky = try install("herdr", settings: ["app": "Ghostty"])
+        defer { try? FileManager.default.removeItem(at: clicky.dir) }
+        _ = try await clicky.run("./badge.sh", bin: bin)
+        try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked"), ("w9:p1", "pi", "blocked")])
+        _ = try await clicky.run("./badge.sh", bin: bin)
+        let clicked = try String(contentsOf: bin.appendingPathComponent("clicked"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(clicked == ["-title", "Herdr", "-message", "pi needs you", "-group", "herdr-w9:p1", "-execute",
+                            "'\(bin.path)/herdr' agent focus 'w9:p1' && open -a 'Ghostty'"])
+        #expect(notified() == ["codex needs you", "claude needs you", "pi needs you"])
+
+        let quiet = try install("herdr", settings: ["app": "", "notify": "false"])
+        defer { try? FileManager.default.removeItem(at: quiet.dir) }
+        _ = try await quiet.run("./badge.sh", bin: bin)
+        try agents([("w1:p3", "pi", "blocked")])
+        _ = try await quiet.run("./badge.sh", bin: bin)
+        #expect(notified().count == 3)
+    }
+
+    /// The `handoff` mod: ⇧⌘A hands the selected result to the agent CLI, in its folder, as text only.
+    @Test func handoffGivesTheAgentTheResult() async throws {
+        let ho = try install("handoff", settings: ["terminal": #"printf %s\n"#]) // the "terminal" prints what it would run
+        defer { try? FileManager.default.removeItem(at: ho.dir) }
+        let key = try #require(ho.plugin.keys.first)
+        #expect(key.name == "Hand off to agent")
+        let bin = ho.dir.appendingPathComponent("bin")
+        try script(bin, "claude", "#!/bin/sh\nexit 0\n")
+        let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
+        func handoff(_ item: [String: String], with mod: Installed? = nil) async throws -> [String] {
+            try await (mod ?? ho).run(key.run, env: item, bin: bin).components(separatedBy: "\n")
+        }
+
+        // A PR: the agent starts in your home folder and is told the title, details, link and text.
+        let pr = try await handoff(["EUCLID_ITEM_KIND": "github", "EUCLID_ITEM_TITLE": "Fix login on Safari",
+                                    "EUCLID_ITEM_SUBTITLE": "acme/web · #412", "EUCLID_ITEM_URL": "https://github.com/acme/web/pull/412",
+                                    "EUCLID_ITEM_TEXT": "Reviewers: $(whoami)"])
+        #expect(Array(pr.prefix(2)) == ["sh", "-c"])
+        #expect(Array(pr[3...5]) == ["sh", home, "claude"])
+        let prompt = pr[6...].joined(separator: "\n")
+        #expect(prompt.hasPrefix("Here is something I'm looking at in my launcher."))
+        #expect(prompt.contains("\nKind: github\nTitle: Fix login on Safari\nDetails: acme/web · #412\nLink: https://github.com/acme/web/pull/412\n"))
+        #expect(prompt.contains("\nReviewers: $(whoami)")) // passed as text, never run
+
+        // A project starts in its own folder; a file in the folder it's in.
+        let project = try await handoff(["EUCLID_ITEM_KIND": "project", "EUCLID_ITEM_TITLE": "plugin", "EUCLID_ITEM_PATH": ho.dir.path])
+        #expect(project[4] == ho.dir.path)
+        let file = try await handoff(["EUCLID_ITEM_KIND": "file", "EUCLID_ITEM_TITLE": "handoff.sh",
+                                      "EUCLID_ITEM_PATH": ho.dir.appendingPathComponent("plugins/handoff/handoff.sh").path])
+        #expect(file[4] == ho.dir.appendingPathComponent("plugins/handoff").path)
+
+        // gemini wants -i for a chat; anything else is refused rather than run.
+        try script(bin, "gemini", "#!/bin/sh\nexit 0\n")
+        let gemini = try install("handoff", settings: ["terminal": #"printf %s\n"#, "cli": "gemini"])
+        let other = try install("handoff", settings: ["terminal": #"printf %s\n"#, "cli": "rm -rf"])
+        defer { for m in [gemini, other] { try? FileManager.default.removeItem(at: m.dir) } }
+        let gem = try await handoff(["EUCLID_ITEM_TITLE": "x"], with: gemini)
+        #expect(Array(gem[5...6]) == ["gemini", "-i"])
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await handoff(["EUCLID_ITEM_TITLE": "x"], with: other) }
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await handoff([:]) } // nothing selected
+    }
+
+    /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
+    @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
+    func claudeSessionsListAndResume() async throws {
+        let cs = try install("claude-sessions")
+        defer { try? FileManager.default.removeItem(at: cs.dir) }
+        let home = cs.dir.appendingPathComponent("claude")
+        let project = home.appendingPathComponent("projects/-code-api")
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let older = "11111111-aaaa-bbbb-cccc-000000000001", newer = "22222222-aaaa-bbbb-cccc-000000000002"
+        try """
+            {"type":"user","cwd":"\(cs.dir.path)","gitBranch":"main","message":{"role":"user","content":"fix the login bug"}}
+            {"type":"ai-title","aiTitle":"Fix login on Safari"}
+            {"type":"user","message":{"content":"a line that mentions \\"type\\":\\"ai-title\\" in passing"}}
+            """.write(to: project.appendingPathComponent("\(older).jsonl"), atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(-7200)],
+                                              ofItemAtPath: project.appendingPathComponent("\(older).jsonl").path)
+        try """
+            {"type":"user","cwd":"/no/such/folder","gitBranch":"HEAD","message":{"content":[]}}
+            {"type":"last-prompt","lastPrompt":"why is   CI red"}
+            """.write(to: project.appendingPathComponent("\(newer).jsonl"), atomically: true, encoding: .utf8)
+        try "not a session".write(to: project.appendingPathComponent("notes.jsonl"), atomically: true, encoding: .utf8)
+
+        let env = ["CLAUDE_CONFIG_DIR": home.path]
+        let rows = PluginOutput.parse(Data(try await cs.run("./items.sh", env: env).utf8)).items
+        #expect(rows.map(\.title) == ["why is CI red", "Fix login on Safari"]) // newest first; no title → last prompt
+        #expect(rows.map(\.id) == ["claude:\(newer)", "claude:\(older)"])
+        #expect(rows[0].subtitle == "/no/such/folder · just now")            // HEAD isn't a branch
+        #expect(rows[1].subtitle?.hasSuffix(" · main · 2 h ago") == true)
+        #expect(rows[1].run == "./resume.sh \(older)")
+        #expect(rows[1].actions?.map(\.title) == ["Resume in Terminal", "Copy Session ID", "Open Folder"])
+
+        // ↵ hands the terminal the folder and id as arguments.
+        let bin = cs.dir.appendingPathComponent("bin")
+        try script(bin, "term", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/args\"\n")
+        let resume = try install("claude-sessions", settings: ["terminal": bin.appendingPathComponent("term").path])
+        defer { try? FileManager.default.removeItem(at: resume.dir) }
+        _ = try await resume.run("./resume.sh \(older)", env: env)
+        let args = try String(contentsOf: bin.appendingPathComponent("args"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(args.suffix(4) == ["sh", cs.dir.path, "claude", older])
+        _ = try await resume.run("./resume.sh \(newer)", env: env)  // its folder is gone: home instead
+        let args2 = try String(contentsOf: bin.appendingPathComponent("args"), encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(args2.suffix(3).first == ProcessInfo.processInfo.environment["HOME"])
+        // Ids go into commands, so only UUID characters are accepted.
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await resume.run("./resume.sh 'a;b'", env: env) }
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await resume.run("./resume.sh 0000", env: env) }
     }
 
     /// The `github` example against a fake `gh` that answers with canned JSON through the real `jq`.
