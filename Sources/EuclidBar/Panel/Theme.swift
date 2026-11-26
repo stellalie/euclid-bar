@@ -9,8 +9,9 @@ struct Theme {
     var accent: NSColor = .controlAccentColor
     var text: NSColor = .labelColor
     var subtext: NSColor = .secondaryLabelColor
-    /// tertiaryLabelColor is too faint on a light panel (section names nearly vanish), so light mode is darker.
-    var muted: NSColor = Theme.dynamic(dark: .tertiaryLabelColor, light: .black.withAlphaComponent(0.42))
+    /// Section names, paths and the right-hand column. tertiaryLabelColor (~25%) all but vanished on the
+    /// dark panel and on light, so both are a fixed, readable step below `subtext`.
+    var muted: NSColor = Theme.dynamic(dark: .white.withAlphaComponent(0.46), light: .black.withAlphaComponent(0.5))
     /// Over the glass or blur; nil = a faint accent tint (`surfaceTint`).
     var background: NSColor?
     var selection: NSColor?
@@ -21,6 +22,8 @@ struct Theme {
     var cardFill: NSColor = Theme.dynamic(dark: .black.withAlphaComponent(0.20), light: .black.withAlphaComponent(0.045))
     /// The plate behind a symbol icon.
     var chipFill: NSColor = Theme.dynamic(dark: .white.withAlphaComponent(0.07), light: .black.withAlphaComponent(0.055))
+    /// The hairline round that plate, so it reads as a raised key rather than a smudge.
+    var chipEdge: NSColor = Theme.dynamic(dark: .white.withAlphaComponent(0.09), light: .black.withAlphaComponent(0.07))
     /// The 1 pt light along the panel's top edge.
     var glow: NSColor = Theme.dynamic(dark: .white.withAlphaComponent(0.10), light: .white.withAlphaComponent(0.6))
     /// Forced light or dark controls; nil = follow the system.
@@ -47,6 +50,7 @@ struct Theme {
             footerFill = Self.color(c.footer).withAlphaComponent(p.opacity)
             cardFill = Self.color(c.card).withAlphaComponent(p.opacity)
             chipFill = Self.color(c.chip)
+            chipEdge = Self.color(c.border).withAlphaComponent(0.6)
             glow = c.mode == .dark ? .white.withAlphaComponent(0.08) : .white.withAlphaComponent(0.5)
             appearance = NSAppearance(named: c.mode == .dark ? .darkAqua : .aqua)
             colors = p.colors.mapValues(Self.color)

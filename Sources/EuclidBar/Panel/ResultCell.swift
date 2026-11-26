@@ -20,7 +20,8 @@ final class ResultCell: NSTableCellView {
         super.init(frame: .zero)
         identifier = Self.id
         chip.wantsLayer = true
-        chip.layer?.cornerRadius = 6
+        chip.layer?.cornerRadius = 7
+        chip.layer?.borderWidth = 0.5
         icon.imageScaling = .scaleProportionallyUpOrDown
         title.lineBreakMode = .byTruncatingTail
         title.maximumNumberOfLines = 1
@@ -89,13 +90,17 @@ final class ResultCell: NSTableCellView {
             icon.contentTintColor = nil
             icon.symbolConfiguration = nil
             chip.layer?.backgroundColor = nil
+            chip.layer?.borderColor = nil
             iconWidth.constant = iconSize
             iconHeight.constant = iconSize
         } else {
             icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
             icon.contentTintColor = tint
             icon.symbolConfiguration = .init(pointSize: iconSize * 0.56, weight: .medium)
-            resolving { chip.layer?.backgroundColor = theme.chipFill.cgColor }
+            resolving {
+                chip.layer?.backgroundColor = theme.chipFill.cgColor
+                chip.layer?.borderColor = theme.chipEdge.cgColor
+            }
             iconWidth.constant = iconSize * 0.72
             iconHeight.constant = iconSize * 0.72
         }
@@ -142,7 +147,7 @@ final class SectionHeaderCell: NSTableCellView {
     init() {
         super.init(frame: .zero)
         identifier = Self.id
-        label.font = .systemFont(ofSize: 11.5, weight: .medium)
+        label.font = .systemFont(ofSize: 11.5, weight: .semibold)
         label.textColor = .tertiaryLabelColor
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(label)
@@ -161,8 +166,10 @@ final class SectionHeaderCell: NSTableCellView {
     }
 
     func configure(_ text: String, theme: Theme) {
-        label.stringValue = text
-        label.textColor = theme.muted
+        // A hair of tracking keeps the small semibold title from looking cramped.
+        label.attributedStringValue = NSAttributedString(string: text, attributes: [
+            .font: label.font!, .foregroundColor: theme.muted, .kern: 0.2,
+        ])
     }
 }
 
@@ -185,11 +192,15 @@ final class ResultRowView: NSTableRowView {
         let rect = bounds.insetBy(dx: 2, dy: 1)
         // On a light surface a faint tint and ring all but vanish, so both are a step stronger there.
         let light = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .aqua
-        (fill ?? accent.withAlphaComponent(light ? 0.22 : 0.16)).setFill()
-        NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8).fill()
+        let base = fill ?? accent.withAlphaComponent(light ? 0.22 : 0.18)
+        let pill = NSBezierPath(roundedRect: rect, xRadius: 8, yRadius: 8)
+        // A soft top-to-bottom sheen (a touch lighter on top) so the pill looks lit, not painted on.
+        let rgb = base.usingColorSpace(.sRGB) ?? base
+        let top = light ? rgb : rgb.blended(withFraction: 0.06, of: .white) ?? rgb
+        NSGradient(starting: top, ending: rgb)?.draw(in: pill, angle: isFlipped ? 90 : -90)
         let ring = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: 7.5, yRadius: 7.5)
         ring.lineWidth = 1
-        accent.withAlphaComponent(light ? 0.55 : 0.3).setStroke()
+        accent.withAlphaComponent(light ? 0.55 : 0.42).setStroke()
         ring.stroke()
     }
 }
