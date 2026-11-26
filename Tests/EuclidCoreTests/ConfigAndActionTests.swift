@@ -190,9 +190,11 @@ import Testing
     #if os(macOS)
     @Test func backgroundChildDoesNotHoldTheResult() async {
         let started = Date()
-        let r = await run("echo late >&2; sleep 5 >&2 & exit 4", query: "")
+        // The child outlives the shell by 30 s; the result comes ~1 s after the exit. 10 s leaves room
+        // for a slow login shell on a busy runner and still fails if the runner waits for the child.
+        let r = await run("echo late >&2; sleep 30 >&2 & exit 4", query: "")
         #expect(throws: CommandRunner.Failure(status: 4, stderr: "late")) { try r.get() }
-        #expect(Date().timeIntervalSince(started) < 3)
+        #expect(Date().timeIntervalSince(started) < 10)
     }
     #endif
 
