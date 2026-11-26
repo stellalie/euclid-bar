@@ -75,7 +75,7 @@ with `euclid-bar --plugin add <name>`:
 | `volume` *(plugin)* | Volume Up, Down and Mute rows, `vol 40`, and Set Volume with a dropdown |
 | `kill-process` *(plugin)* | Your processes, busiest first, refreshing live; `↵` quits one, `↵` again force-quits; `kill chrome` finds one |
 | `docker` *(plugin)* | Your containers, live: logs (live too), a shell, open its port, start, stop, restart |
-| `herdr` *(plugin)* | Your [herdr](https://herdr.dev) coding agents, live, the ones waiting on you first; `↵` jumps to the agent's pane; the bar's badge says `1 needs you · 2 working`, and a notification when one starts waiting on you (click it to jump there, with `terminal-notifier`) |
+| `herdr` *(plugin)* | Your [herdr](https://herdr.dev) coding agents, live, the ones waiting on you first (and on the empty bar); `↵` jumps to the agent's pane; the bar's badge says `1 needs you · 2 working`, and a notification when one starts waiting on you (click it to jump there, with `terminal-notifier`) |
 | `claude-sessions` *(plugin)* | Your recent Claude Code sessions by title, folder and age; `↵` resumes one in Ghostty, right where you left it |
 
 **Without opening the panel.** Type a snippet's keyword in any app and it turns into the snippet

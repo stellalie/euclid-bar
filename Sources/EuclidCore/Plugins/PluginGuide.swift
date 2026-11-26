@@ -964,7 +964,8 @@ change them:
 - `docker`: your containers, live: logs (live too), a shell, open its port, start, stop, restart
   (live views that drill down).
 - `herdr`: your herdr coding agents, the ones waiting on you first, live; ↵ jumps to the pane;
-  a badge says how many need you (a source, a badge and a live view).
+  agents that need you show on the empty bar, and a badge says how many (a source with
+  `suggest`, a badge and a live view).
 - `claude-sessions`: your recent Claude Code sessions by title, folder and age; ↵ resumes one
   in a terminal, in its own folder (a source that reads local files).
 """#

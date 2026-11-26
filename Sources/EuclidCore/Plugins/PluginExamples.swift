@@ -2435,6 +2435,7 @@ row() { # rank status target name where
   jq -cn --arg st "$2" --arg t "$3" --arg n "$4" --arg w "$5" --arg i "$(icon "$2")" --arg s "$(status_text "$2")" '
     {title: $n, subtitle: ([$s, ($w | sub("^" + env.HOME; "~"))] | map(select(. != "")) | join(" · ")),
      icon: $i, run: ("./focus.sh " + $t), id: ("herdr:" + $t), label: "Herdr",
+     suggest: ($st == "blocked"),   # agents waiting on you show on the empty bar
      actions: [{title: "Jump to Pane", run: ("./focus.sh " + $t), icon: "arrow.up.right.square"},
                {title: "Why This Status?", run: ("./explain.sh " + $t), icon: "questionmark.circle"},
                {title: "Copy Pane ID", copy: $t, icon: "doc.on.doc"}]}'

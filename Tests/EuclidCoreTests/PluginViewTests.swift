@@ -427,6 +427,7 @@ import Testing
         #expect(rows[1].subtitle == "needs you · /tmp/web")
         #expect(rows[1].run == "./focus.sh w1:p2")
         #expect(rows[1].actions?.map(\.title) == ["Jump to Pane", "Why This Status?", "Copy Pane ID"])
+        #expect(rows.filter { $0.suggest == true }.map(\.title) == ["codex"]) // only who needs you, on the empty bar
 
         let list = try #require(try await open("./agents.sh").view)
         #expect(list.reload == "./agents.sh")
