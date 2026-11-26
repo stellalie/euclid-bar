@@ -188,8 +188,7 @@ import Testing
     func script(_ dir: URL, _ name: String, _ text: String) throws {
         let url = dir.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try text.write(to: url, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        try PluginGuide.writeScript(text, to: url, executable: true) // never "text file busy" on Linux
     }
 
     @Test func raycastScriptCommands() async throws {

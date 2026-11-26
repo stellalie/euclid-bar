@@ -11,8 +11,7 @@ import Testing
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             for (name, text) in files {
                 let url = folder.appendingPathComponent(name)
-                try text.write(to: url, atomically: true, encoding: .utf8)
-                if name.hasSuffix(".sh") { try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
+                try text.writeScript(to: url, executable: name.hasSuffix(".sh"))
             }
         }
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -60,11 +60,27 @@ public enum PluginGuide {
         guard !fm.fileExists(atPath: folder.path) else { throw PluginRunner.Failure("\(folder.path) already exists") }
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)
         for file in files {
-            let url = folder.appendingPathComponent(file.name)
-            try file.text.write(to: url, atomically: true, encoding: .utf8)
-            if file.executable { try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path) }
+            try writeScript(file.text, to: folder.appendingPathComponent(file.name), executable: file.executable)
         }
         return folder
+    }
+
+    /// Write a file that may be run right away. The descriptor is close-on-exec, so a process another
+    /// thread spawns meanwhile never inherits it: on Linux an inherited write handle makes running the
+    /// script fail with "text file busy" (ETXTBSY) for as long as that process lives.
+    static func writeScript(_ text: String, to url: URL, executable: Bool) throws {
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o644)
+        guard fd >= 0 else { throw PluginRunner.Failure("couldn't write \(url.path): \(String(cString: strerror(errno)))") }
+        defer { close(fd) }
+        let bytes = Array(text.utf8)
+        var written = 0
+        while written < bytes.count {
+            let n = bytes[written...].withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            if n < 0 && errno == EINTR { continue }
+            guard n > 0 else { throw PluginRunner.Failure("couldn't write \(url.path): \(String(cString: strerror(errno)))") }
+            written += n
+        }
+        if executable { guard fchmod(fd, 0o755) == 0 else { throw PluginRunner.Failure("couldn't make \(url.path) executable") } }
     }
 
     static let githubManifest = #"""
@@ -969,4 +985,11 @@ change them:
 - `claude-sessions`: your recent Claude Code sessions by title, folder and age; ↵ resumes one
   in a terminal, in its own folder (a source that reads local files).
 """#
+}
+
+extension String {
+    /// Write this text as a script that may be run right away (see `PluginGuide.writeScript`).
+    func writeScript(to url: URL, executable: Bool = true) throws {
+        try PluginGuide.writeScript(self, to: url, executable: executable)
+    }
 }

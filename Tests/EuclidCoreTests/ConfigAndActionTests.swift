@@ -190,8 +190,7 @@ import Testing
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: bin) }
         let shadow = bin.appendingPathComponent("ls") // collides with /bin/ls
-        try "#!/bin/sh\necho fake\n".write(to: shadow, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shadow.path)
+        try "#!/bin/sh\necho fake\n".writeScript(to: shadow)
         let p = CommandRunner.makeProcess(shell: "/bin/zsh", command: "command -v ls", query: "",
                                           pathPrefix: bin.path, baseEnvironment: ["HOME": NSHomeDirectory()])
         let pipe = Pipe()
@@ -298,8 +297,7 @@ import Testing
           "pane split") print '{"result":{"pane":{"pane_id":"w:p2"}}}' ;;
           "pane run")   EUCLID_CMD="$(<$state/env)" /bin/zsh -c "$4" ;;
         esac
-        """#.write(to: fake, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+        """#.writeScript(to: fake)
 
         let env = ["HOME": NSHomeDirectory(), "HERDR_RUN_APP": ""]
         // Safety first: never let this test reach the user's real herdr session.

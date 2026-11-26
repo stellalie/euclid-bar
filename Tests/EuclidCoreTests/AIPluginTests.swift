@@ -19,8 +19,7 @@ struct AIPluginTests {
         let bin = dir.appendingPathComponent("bin")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         let claude = bin.appendingPathComponent("claude")
-        try "#!/bin/sh\n[ \"$1\" = -p ] || exit 2\nprintf 'ANSWER\\n%s\\n' \"$2\"\n".write(to: claude, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: claude.path)
+        try "#!/bin/sh\n[ \"$1\" = -p ] || exit 2\nprintf 'ANSWER\\n%s\\n' \"$2\"\n".writeScript(to: claude)
         return bin
     }
 
