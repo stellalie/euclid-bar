@@ -31,6 +31,7 @@ public enum PluginGuide {
         "shortcuts": [("plugin.toml", shortcutsManifest, false), ("list.sh", shortcutsScript, true)],
         "cleanlinks": [("plugin.toml", cleanlinksManifest, false), ("clean.sh", cleanlinksScript, true)],
         "reveal": [("plugin.toml", revealManifest, false)],
+        "handoff": [("plugin.toml", handoffManifest, false), ("handoff.sh", handoffScript, true)],
         "ai": [("plugin.toml", aiManifest, false), ("ai.sh", aiScript, true), ("continue.sh", aiContinue, true)],
         "raycast": [("plugin.toml", raycastManifest, false), ("list.sh", raycastList, true), ("scan.awk", raycastScan, false),
                     ("run.sh", raycastRun, true)],
@@ -964,6 +965,8 @@ change them:
 - `shortcuts`: run your Shortcuts, through the `shortcuts` CLI (a source and an action).
 - `cleanlinks`: strips tracking parameters from links you copy (a `clipboard` hook).
 - `reveal`: ⇧⌘R shows the selected file, project or app in Finder (a `[[key]]`).
+- `handoff`: ⇧⌘A on any result opens your agent CLI (claude, codex, gemini) in a new terminal,
+  already told about it; projects and files open in their folder (a `[[key]]` on every kind).
 - `ai`: `ai <question>` answers in the bar; on a clip ⇧⌘F fixes the writing and pastes it back,
   ⇧⌘T translates, ⇧⌘E explains; ⇧⌘↵ on an answer continues in a terminal with your AI CLI.
   Apple's on-device model by default, or the `claude`, `codex` or `gemini` CLI you're logged into

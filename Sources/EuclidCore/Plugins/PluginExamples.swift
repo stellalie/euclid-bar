@@ -2622,4 +2622,83 @@ end run
 APPLESCRIPT
 fi
 """#
+
+    // MARK: - handoff
+
+    static let handoffManifest = #"""
+name = "Hand off"
+description = "A mod: ⇧⌘A on any result opens your coding agent in a new terminal, already told about it: a PR, an issue, a clip, a file, a project. Uses the claude, codex or gemini CLI you're logged into."
+
+[[key]]
+key  = "cmd+shift+a"
+name = "Hand off to agent"
+run  = "./handoff.sh"
+
+[settings]
+cli      = ""   # claude, codex or gemini; empty = the first of them on your PATH
+terminal = ""   # empty = Ghostty if you have it, else Terminal; or a command that runs its
+                # arguments, e.g. "ghostty-run split"
+"""#
+
+    static let handoffScript = #"""
+#!/bin/sh
+# ⇧⌘A on a result: your agent CLI in a new terminal, told what the result is and waiting for you.
+# Projects and files open in their own folder, so the agent can read the code around them.
+# Everything about the result is passed as text, never run.
+set -eu
+kind=${EUCLID_ITEM_KIND:-} title=${EUCLID_ITEM_TITLE:-} subtitle=${EUCLID_ITEM_SUBTITLE:-}
+url=${EUCLID_ITEM_URL:-} path=${EUCLID_ITEM_PATH:-} text=${EUCLID_ITEM_TEXT:-}
+[ -n "$title$url$path$text" ] || { echo "select a result first" >&2; exit 1; }
+
+cli=${EUCLID_SETTING_CLI:-}
+cli=${cli%% *}
+if [ -z "$cli" ]; then
+  for c in claude codex gemini; do
+    if command -v "$c" >/dev/null 2>&1; then cli=$c; break; fi
+  done
+fi
+case $cli in claude|codex|gemini) ;; *) echo "Hand off needs the claude, codex or gemini CLI (or set [plugin.handoff] cli)" >&2; exit 1 ;; esac
+
+dir=$HOME
+if [ -n "$path" ]; then
+  if [ -d "$path" ]; then dir=$path; elif [ -e "$path" ]; then dir=$(dirname "$path"); fi
+fi
+
+text=$(printf '%s' "$text" | head -c 8000)
+prompt="Here is something I'm looking at in my launcher. Read it, say in one line what it is, then wait for my question.
+
+Kind: ${kind:-result}
+Title: $title"
+[ -z "$subtitle" ] || prompt="$prompt
+Details: $subtitle"
+[ -z "$url" ] || prompt="$prompt
+Link: $url"
+[ -z "$path" ] || prompt="$prompt
+Path: $path"
+[ -z "$text" ] || [ "$text" = "$title" ] || prompt="$prompt
+
+$text"
+
+case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;; esac
+set -- sh -c 'cd "$1" && shift && exec "$@"' sh "$dir" "$@"
+
+term=${EUCLID_SETTING_TERMINAL:-}
+if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+  term="ghostty-run tab"
+fi
+if [ -n "$term" ]; then
+  $term "$@"
+else
+  # Terminal.app runs a command line: quote each argument for the shell, then for AppleScript.
+  line=$(for a in "$@"; do printf "'%s' " "$(printf '%s' "$a" | sed "s/'/'\\\\''/g")"; done)
+  osascript - "$line" <<'APPLESCRIPT' >/dev/null
+on run argv
+  tell application "Terminal"
+    do script (item 1 of argv)
+    activate
+  end tell
+end run
+APPLESCRIPT
+fi
+"""#
 }

@@ -513,6 +513,48 @@ import Testing
         #expect(notified().count == 3)
     }
 
+    /// The `handoff` mod: ⇧⌘A hands the selected result to the agent CLI, in its folder, as text only.
+    @Test func handoffGivesTheAgentTheResult() async throws {
+        let ho = try install("handoff", settings: ["terminal": #"printf %s\n"#]) // the "terminal" prints what it would run
+        defer { try? FileManager.default.removeItem(at: ho.dir) }
+        let key = try #require(ho.plugin.keys.first)
+        #expect(key.name == "Hand off to agent")
+        let bin = ho.dir.appendingPathComponent("bin")
+        try script(bin, "claude", "#!/bin/sh\nexit 0\n")
+        let home = ProcessInfo.processInfo.environment["HOME"] ?? ""
+        func handoff(_ item: [String: String], with mod: Installed? = nil) async throws -> [String] {
+            try await (mod ?? ho).run(key.run, env: item, bin: bin).components(separatedBy: "\n")
+        }
+
+        // A PR: the agent starts in your home folder and is told the title, details, link and text.
+        let pr = try await handoff(["EUCLID_ITEM_KIND": "github", "EUCLID_ITEM_TITLE": "Fix login on Safari",
+                                    "EUCLID_ITEM_SUBTITLE": "acme/web · #412", "EUCLID_ITEM_URL": "https://github.com/acme/web/pull/412",
+                                    "EUCLID_ITEM_TEXT": "Reviewers: $(whoami)"])
+        #expect(Array(pr.prefix(2)) == ["sh", "-c"])
+        #expect(Array(pr[3...5]) == ["sh", home, "claude"])
+        let prompt = pr[6...].joined(separator: "\n")
+        #expect(prompt.hasPrefix("Here is something I'm looking at in my launcher."))
+        #expect(prompt.contains("\nKind: github\nTitle: Fix login on Safari\nDetails: acme/web · #412\nLink: https://github.com/acme/web/pull/412\n"))
+        #expect(prompt.contains("\nReviewers: $(whoami)")) // passed as text, never run
+
+        // A project starts in its own folder; a file in the folder it's in.
+        let project = try await handoff(["EUCLID_ITEM_KIND": "project", "EUCLID_ITEM_TITLE": "plugin", "EUCLID_ITEM_PATH": ho.dir.path])
+        #expect(project[4] == ho.dir.path)
+        let file = try await handoff(["EUCLID_ITEM_KIND": "file", "EUCLID_ITEM_TITLE": "handoff.sh",
+                                      "EUCLID_ITEM_PATH": ho.dir.appendingPathComponent("plugins/handoff/handoff.sh").path])
+        #expect(file[4] == ho.dir.appendingPathComponent("plugins/handoff").path)
+
+        // gemini wants -i for a chat; anything else is refused rather than run.
+        try script(bin, "gemini", "#!/bin/sh\nexit 0\n")
+        let gemini = try install("handoff", settings: ["terminal": #"printf %s\n"#, "cli": "gemini"])
+        let other = try install("handoff", settings: ["terminal": #"printf %s\n"#, "cli": "rm -rf"])
+        defer { for m in [gemini, other] { try? FileManager.default.removeItem(at: m.dir) } }
+        let gem = try await handoff(["EUCLID_ITEM_TITLE": "x"], with: gemini)
+        #expect(Array(gem[5...6]) == ["gemini", "-i"])
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await handoff(["EUCLID_ITEM_TITLE": "x"], with: other) }
+        await #expect(throws: PluginRunner.Failure.self) { _ = try await handoff([:]) } // nothing selected
+    }
+
     /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
     func claudeSessionsListAndResume() async throws {
