@@ -464,7 +464,12 @@ import Testing
         defer { try? FileManager.default.removeItem(at: hd.dir) }
         let bin = hd.dir.appendingPathComponent("bin")
         try script(bin, "herdr", "#!/bin/sh\ncat \"$(dirname \"$0\")/agents.json\"\n")
-        try script(bin, "osascript", "#!/bin/sh\necho \"$3\" >> \"$(dirname \"$0\")/notified\"\n")
+        // A fake terminal-notifier, first on PATH: a real one (CI runners have it) never runs.
+        try script(bin, "terminal-notifier", """
+            #!/bin/sh
+            printf '%s\\n' "$@" > "$(dirname "$0")/clicked"
+            echo "$4" >> "$(dirname "$0")/notified"
+            """)
         func agents(_ list: [(String, String, String)]) throws {
             let rows = list.map { #"{"pane_id":"\#($0.0)","name":"\#($0.1)","agent_status":"\#($0.2)"}"# }
             try #"{"result":{"agents":[\#(rows.joined(separator: ","))]}}"#
@@ -489,25 +494,23 @@ import Testing
         _ = try await hd.run("./badge.sh", bin: bin)
         #expect(notified() == ["codex needs you", "claude needs you"]) // blocked again after working
 
-        // With terminal-notifier, a click runs `herdr agent focus` on that agent, then brings the app forward.
+        // A click runs `herdr agent focus` on that agent, then brings the app forward.
         let clicky = try install("herdr", settings: ["app": "Ghostty"])
         defer { try? FileManager.default.removeItem(at: clicky.dir) }
-        try script(bin, "terminal-notifier", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/clicked\"\n")
         _ = try await clicky.run("./badge.sh", bin: bin)
         try agents([("w1:p1", "claude", "blocked"), ("w1:p2", "codex", "blocked"), ("w9:p1", "pi", "blocked")])
         _ = try await clicky.run("./badge.sh", bin: bin)
         let clicked = try String(contentsOf: bin.appendingPathComponent("clicked"), encoding: .utf8).split(separator: "\n").map(String.init)
         #expect(clicked == ["-title", "Herdr", "-message", "pi needs you", "-group", "herdr-w9:p1", "-execute",
                             "'\(bin.path)/herdr' agent focus 'w9:p1' && open -a 'Ghostty'"])
-        #expect(notified().count == 2) // terminal-notifier, not osascript
-        try FileManager.default.removeItem(at: bin.appendingPathComponent("terminal-notifier"))
+        #expect(notified() == ["codex needs you", "claude needs you", "pi needs you"])
 
         let quiet = try install("herdr", settings: ["app": "", "notify": "false"])
         defer { try? FileManager.default.removeItem(at: quiet.dir) }
         _ = try await quiet.run("./badge.sh", bin: bin)
         try agents([("w1:p3", "pi", "blocked")])
         _ = try await quiet.run("./badge.sh", bin: bin)
-        #expect(notified().count == 2)
+        #expect(notified().count == 3)
     }
 
     /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
