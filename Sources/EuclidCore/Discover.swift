@@ -177,3 +177,28 @@ public enum CheatSheet {
         }.joined(separator: "\n\n")
     }
 }
+
+extension CheatSheet {
+    /// The ⌘/ list from config alone, for agents and `euclid-bar --tool euclid_shortcuts`. Sources the
+    /// panel only shows once they have data (history, projects) are listed when they're switched on.
+    public static func text(config c: EuclidConfig) -> String {
+        let builtIn = SearchScope.builtIn.filter { s in
+            switch s {
+            case .apps, .clipboard: true
+            case .files: c.filesEnabled
+            case .history: c.historyEnabled
+            case .projects: !c.projectRoots.isEmpty
+            case .snippets: !c.snippets.isEmpty
+            case .notes: c.obsidianVault != nil
+            case .actions: !c.actions.isEmpty
+            case .plugin: false
+            }
+        }
+        let fromPlugins = c.plugins.filter { $0.source != nil }.map { SearchScope.plugin(id: $0.id, name: $0.name) }
+        return text(scopes: SearchScope.ordered(builtIn + fromPlugins, by: c.sourceOrder, hidden: c.hiddenSources),
+                    prefixes: c.scopePrefixes, actions: c.actions.map(\.name),
+                    aliases: c.aliases.targets.sorted { $0.key < $1.key }.map { (alias: $0.key, target: $0.value) },
+                    snippets: c.snippets.compactMap { s in s.keyword.map { (keyword: $0, name: s.name) } },
+                    pluginKeys: c.plugins.flatMap { p in p.keys.map { (key: $0.key.symbols, name: $0.name) } })
+    }
+}

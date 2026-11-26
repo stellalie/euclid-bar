@@ -54,6 +54,14 @@ public enum EuclidSkill {
                 inputSchema: AgentTools.schema([:], required: [])) { _ in
                 report(paths: paths, readFile: readFile)
             },
+            .init(
+                name: "euclid_shortcuts",
+                description: "Every key, source, prefix, action, alias, snippet keyword and plugin key in the user's Euclid, as ⌘/ shows it. Use it to answer \"how do I … in Euclid\" with their own setup.",
+                inputSchema: AgentTools.schema([:], required: [])) { _ in
+                let config = readFile(paths.configFile)
+                    .flatMap { try? ConfigLoader.parse($0, directory: paths.configDirectory).config } ?? EuclidConfig()
+                return CheatSheet.text(config: config)
+            },
         ]
     }
 

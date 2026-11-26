@@ -80,6 +80,41 @@ import Testing
         }
     }
 
+    /// euclid_shortcuts: the ⌘/ list from the user's own config, so an agent answers with their keys.
+    @Test func shortcutsComeFromTheirConfig() throws {
+        let toml = """
+            [aliases]
+            gh = "GitHub Desktop"
+
+            [search]
+            sources = ["clipboard"]
+
+            [[action]]
+            name = "Ask pi"
+            run  = 'pi "$1"'
+
+            [[snippet]]
+            name    = "Standup"
+            keyword = "standup"
+            text    = "Yesterday:"
+            """
+        let mod = "name = \"GitLab\"\n[source]\nrun = \"./items.sh\"\n[[key]]\nkey = \"cmd+shift+g\"\nname = \"Open in GitLab\"\nrun = 'open \"$1\"'\n"
+        try withConfig(toml, plugin: mod) { paths in
+            let sheet = try text(server(paths), "euclid_shortcuts").text
+            #expect(sheet.hasPrefix("Keys\n↵"))
+            #expect(sheet.contains("Sources (type the name, then ⇥)\nClipboard")) // [search] sources order first
+            #expect(sheet.contains("GitLab") && sheet.contains("gitlab ⇥"))    // a plugin with a source is a source
+            #expect(sheet.contains("Actions\n⌘1") && sheet.contains("Ask pi"))
+            #expect(sheet.contains("Aliases\ngh") && sheet.contains("GitHub Desktop"))
+            #expect(sheet.contains("Snippet keywords\nstandup") && sheet.contains("Standup"))
+            #expect(sheet.contains("Plugin keys\n⇧⌘G") && sheet.contains("Open in GitLab"))
+        }
+        try withConfig(nil) { paths in // no config yet: the defaults
+            let sheet = try text(server(paths), "euclid_shortcuts").text
+            #expect(sheet.hasPrefix("Keys\n↵") && !sheet.contains("Plugin keys"))
+        }
+    }
+
     @Test func promptsBecomeSlashCommands() throws {
         try withConfig("") { paths in
             let s = server(paths)

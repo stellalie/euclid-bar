@@ -503,6 +503,7 @@ args    = ["--mcp"]
 | `search_browser_history` | Titles and URLs from every browser |
 | `euclid_config` | Your config.toml, plugins and any problems Euclid finds |
 | `euclid_guide` | The settings or plugin guide (the same as `AGENTS.md`) |
+| `euclid_shortcuts` | Every key, source, action, alias and keyword in your setup, as `⌘/` shows it |
 
 The same tools work from a shell or a script, no agent needed:
 
@@ -510,6 +511,7 @@ The same tools work from a shell or a script, no agent needed:
 euclid-bar --tool                                   # lists them
 euclid-bar --tool search_clipboard query=kubectl limit=3
 euclid-bar --tool search_browser_history query="rebase" | head
+euclid-bar --tool euclid_shortcuts                  # your ⌘/ list, in the terminal
 ```
 
 Connected agents also learn your Euclid setup as they start: ask "open Euclid with ⌥Space" or
