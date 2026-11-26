@@ -371,6 +371,13 @@ Validate it from a terminal (great in dotfiles CI):
 theme = "tokyo-night"
 ```
 
+Or from a terminal, with the panel open to watch it change:
+
+```sh
+euclid-bar --theme              # lists them, * marks yours
+euclid-bar --theme nord         # sets [appearance] theme, keeping the rest of config.toml
+```
+
 | Theme | Look |
 |---|---|
 | `default` | The system look: glass, your accent colour, light or dark with macOS |

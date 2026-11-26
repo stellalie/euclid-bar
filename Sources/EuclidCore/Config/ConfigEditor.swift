@@ -20,6 +20,11 @@ public enum ConfigEditor {
         }
     }
 
+    /// `[table] key = "value"`.
+    public static func set(_ key: String, to value: String, in table: String, text: String) -> String? {
+        set(key, literal: quoted(value), in: table, text: text) { (try? $0.string(forKey: key)) == value }
+    }
+
     static func quoted(_ s: String) -> String {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
