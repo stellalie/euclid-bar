@@ -114,7 +114,7 @@ changed() { # true when the PR touches any of these paths (or the base is unknow
 }
 ui=0 search=0
 changed Sources/EuclidBar XcodeCloud && ui=1
-changed Sources/EuclidCore/FuzzyMatcher.swift Sources/EuclidCore/Ranking Sources/EuclidCore/Transforms \
+changed Sources/EuclidSearch Sources/EuclidCore/SearchItem.swift Sources/EuclidCore/Ranking Sources/EuclidCore/Transforms \
   Sources/EuclidCore/Calculator Sources/EuclidBar/Panel XcodeCloud && search=1
 (( ui || search )) || { echo "== Speed budget and UI screens: skipped, no search or UI changes"; exit 0; }
 

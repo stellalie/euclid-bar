@@ -1,3 +1,5 @@
+import Foundation
+
 /// Byte-level fuzzy matcher.
 ///
 /// Ranking tiers (higher is better):
@@ -6,30 +8,49 @@
 ///                         beats a match inside a word ("am" in Teams) but not one at a word start
 /// - subsequence:          < 1000 (bonus for consecutive and word-boundary hits)
 public enum FuzzyMatcher {
-    public static func search(_ query: String, in items: [SearchItem], limit: Int = 50) -> [SearchItem] {
+    /// The best `limit` items for `query`, best first. Ties keep the items' original order.
+    @inlinable
+    public static func search<S: Searchable>(_ query: String, in items: [S], limit: Int = 50) -> [S] {
         scoredSearch(query, in: items, limit: limit).map(\.item)
     }
 
     /// Like `search`, but keeps scores so results from different sources can be merged.
-    public static func scoredSearch(_ query: String, in items: [SearchItem], limit: Int = 50) -> [(score: Int, item: SearchItem)] {
-        let q = SearchKey.make(query)
+    @inlinable
+    public static func scoredSearch<S: Searchable>(_ query: String, in items: [S], limit: Int = 50) -> [(score: Int, item: S)] {
+        // A closure, not `\.searchKey`: key paths as functions aren't optimized away, ~8x slower here.
+        scoredSearch(query, in: items, limit: limit) { $0.searchKey }
+    }
+
+    /// Ranks any collection: `key` returns each element's `SearchKey`. Build keys once and keep
+    /// them, so a keystroke only compares bytes. An empty query returns the first `limit` items.
+    @inlinable
+    public static func scoredSearch<C: Collection>(_ query: String, in items: C, limit: Int = 50,
+                                                   key: (C.Element) -> SearchKey) -> [(score: Int, item: C.Element)] {
+        let q = SearchKey(query)
         if q.isEmpty { return items.prefix(limit).map { (0, $0) } }
 
-        var hits: [(score: Int, index: Int)] = []
+        var hits: [(score: Int, order: Int, index: C.Index)] = []
         hits.reserveCapacity(256)
-        for i in items.indices {
-            if let s = score(query: q, in: items[i].key) { hits.append((s, i)) }
+        var order = 0
+        var i = items.startIndex
+        while i != items.endIndex {
+            if let s = score(query: q, in: key(items[i])) { hits.append((s, order, i)) }
+            order += 1
+            items.formIndex(after: &i)
         }
-        // Stable on ties: keep original order (later: recency/frecency).
-        hits.sort { $0.score != $1.score ? $0.score > $1.score : $0.index < $1.index }
+        // Stable on ties: keep original order.
+        hits.sort { $0.score != $1.score ? $0.score > $1.score : $0.order < $1.order }
         return hits.prefix(limit).map { ($0.score, items[$0.index]) }
     }
 
+    /// The score of `text` for `query`, or nil when it doesn't match. Higher is better.
     public static func score(query: String, in text: String) -> Int? {
-        score(query: SearchKey.make(query), in: SearchKey.make(text))
+        score(query: SearchKey(query), in: SearchKey(text))
     }
 
-    static func score(query q: [UInt8], in t: [UInt8]) -> Int? {
+    /// `score(query:in:)` on prepared keys: the fast path for ranking many items.
+    public static func score(query: SearchKey, in text: SearchKey) -> Int? {
+        let q = query.bytes, t = text.bytes
         guard !q.isEmpty, q.count <= t.count else { return q.isEmpty ? 0 : nil }
         return q.withUnsafeBufferPointer { qb in
             t.withUnsafeBufferPointer { tb in

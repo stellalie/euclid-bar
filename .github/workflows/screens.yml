@@ -7,7 +7,7 @@ name: UI screens
 # this repo, to the `screens/pr-<number>` branch so the images can be linked.
 on:
   pull_request:
-    paths: ["Sources/EuclidBar/**", "Sources/EuclidCore/FuzzyMatcher.swift", "Sources/EuclidCore/Ranking/**", ".github/workflows/screens.yml"]
+    paths: ["Sources/EuclidBar/**", "Sources/EuclidSearch/**", "Sources/EuclidCore/Ranking/**", ".github/workflows/screens.yml"]
 
 permissions:
   contents: write

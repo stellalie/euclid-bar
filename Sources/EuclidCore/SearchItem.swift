@@ -1,13 +1,14 @@
 import Foundation
+@_exported import EuclidSearch
 
 /// One searchable row. The search key is computed once at creation so the
 /// per-keystroke path only compares bytes.
-public struct SearchItem: Sendable, Identifiable {
+public struct SearchItem: Sendable, Identifiable, Searchable {
     public let id: Int
     public let title: String
     public let subtitle: String
     public let date: Date?
-    let key: [UInt8]
+    public let searchKey: SearchKey
 
     /// `searchText` is what matching runs against (defaults to the title).
     public init(id: Int, title: String, subtitle: String = "", date: Date? = nil, searchText: String? = nil) {
@@ -15,16 +16,6 @@ public struct SearchItem: Sendable, Identifiable {
         self.title = title
         self.subtitle = subtitle
         self.date = date
-        self.key = SearchKey.make(searchText ?? title)
-    }
-}
-
-enum SearchKey {
-    /// Only the first N bytes are searchable, so a 5 MB paste can't slow typing.
-    static let maxBytes = 2048
-
-    static func make(_ s: String) -> [UInt8] {
-        let folded = s.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
-        return Array(folded.utf8.prefix(maxBytes))
+        self.searchKey = SearchKey(searchText ?? title)
     }
 }

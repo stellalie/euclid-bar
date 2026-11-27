@@ -19,6 +19,7 @@ p = open("Package.swift").read()
 p = re.sub(r'\n\s*\.package\(url: "https://github.com/sindresorhus/KeyboardShortcuts"[^\n]*', '', p)
 p = re.sub(r'\n\s*\.package\(url: "https://github.com/sparkle-project/Sparkle"[^\n]*', '', p)
 p = p.replace('dependencies: [\n', 'dependencies: [\n        .package(url: "https://github.com/apple/swift-crypto", from: "3.0.0"),\n', 1)
+p = re.sub(r'\n\s*\.executable\(name: "euclid-bar"[^\n]*', '', p)
 p = re.sub(r'\n\s*\.executableTarget\(\s*name: "euclid-bar".*?\),', '', p, flags=re.S)
 p = p.replace('.product(name: "GRDB", package: "GRDB.swift"),',
               '.product(name: "GRDB", package: "GRDB.swift"),\n                .product(name: "Crypto", package: "swift-crypto"),', 1)
