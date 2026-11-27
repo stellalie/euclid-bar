@@ -290,6 +290,22 @@ import Testing
         #expect(try String(contentsOf: installed, encoding: .utf8) == DefaultScripts.herdrRun)
     }
 
+    /// A herdr-run copied by hand from the old recipe, unedited, gets tab names; an edited one is left alone.
+    @Test func handCopiedHerdrRunIsUpgradedUnlessEdited() throws {
+        let v1 = URL(fileURLWithPath: #filePath.components(separatedBy: "/Tests/")[0] + "/Tests/fixtures/herdr-run-v1")
+        let old = try String(contentsOf: v1, encoding: .utf8)
+        #expect(!old.contains("HERDR_RUN_LABEL"))
+        for (text, upgraded) in [(old, true), (old + "# mine\n", false)] {
+            let bin = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-bin-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: bin) }
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            try text.write(to: bin.appendingPathComponent("herdr-run"), atomically: true, encoding: .utf8)
+            try ConfigLoader.installDefaultScripts(in: bin)
+            let now = try String(contentsOf: bin.appendingPathComponent("herdr-run"), encoding: .utf8)
+            #expect((now == DefaultScripts.herdrRun) == upgraded)
+        }
+    }
+
     /// An unmodified older version is upgraded; that's how ghostty-run v1 users get the fix.
     @Test func installDefaultScriptsUpgradesUnmodifiedOldVersions() throws {
         let bin = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -309,7 +325,7 @@ import Testing
         }
     }
 
-    /// The herdr-run recipe (docs/recipes, no longer installed by default) against a fake `herdr`
+    /// herdr-run (installed into bin, the same as docs/recipes/herdr-run) against a fake `herdr`
     /// that answers like the real CLI (JSON IDs) and, for `pane run`, types the text into a shell
     /// with the pane's --env set.
     @Test(arguments: ["tab", "split", "split-down"])
@@ -363,7 +379,17 @@ import Testing
         let calls = try String(contentsOf: dir.appendingPathComponent("state/calls"), encoding: .utf8)
         let first = calls.split(separator: "\n").first.map(String.init) ?? ""
         switch place {
-        case "tab": #expect(first.hasPrefix("tab create --focus --label zsh"))
+        case "tab":
+            #expect(first.hasPrefix("tab create --focus --label zsh"))
+            // HERDR_RUN_LABEL names the tab instead.
+            var named = env
+            named["HERDR_RUN_LABEL"] = "Fix login on Safari"
+            _ = await withCheckedContinuation { c in
+                CommandRunner.runInBackground(shell: "/bin/zsh", command: "herdr-run tab true", query: "", pathPrefix: bin.path,
+                                              baseEnvironment: named) { c.resume(returning: $0) }
+            }
+            let again = try String(contentsOf: dir.appendingPathComponent("state/calls"), encoding: .utf8)
+            #expect(again.contains("tab create --focus --label Fix login on Safari --env"))
         case "split": #expect(first.hasPrefix("pane split --direction right --focus"))
         default: #expect(first.hasPrefix("pane split --direction down --focus"))
         }

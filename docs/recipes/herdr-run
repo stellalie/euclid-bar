@@ -11,6 +11,7 @@
 #
 #   HERDR_RUN_APP=Ghostty   app hosting herdr, brought to the front (empty = don't)
 #   HERDR_RUN_FOCUS=0       create in the background, don't switch to it
+#   HERDR_RUN_LABEL=...     the new tab's name in herdr (default: the command's name)
 #   HERDR_RUN_TITLE=...     Ghostty title of the terminal running herdr
 #                           (default "<hostname -s>: <workspace label>", herdr's own title)
 # With Ghostty, the exact terminal running herdr is focused, not just the app.
@@ -33,7 +34,7 @@ focus=--focus
 
 case $place in
   tab)
-    res=$(herdr tab create $focus --label "${1:t}" --env "EUCLID_CMD=$inner")
+    res=$(herdr tab create $focus --label "${HERDR_RUN_LABEL:-${1:t}}" --env "EUCLID_CMD=$inner")
     pane=$(jq -r '.result.root_pane.pane_id' <<<"$res") ;;
   split|split-down)
     dir=right; [[ $place == split-down ]] && dir=down

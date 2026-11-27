@@ -9,6 +9,8 @@ public enum DefaultScripts {
     public static let previousVersions: [String: Set<String>] = [
         // v1: ran the command in a non-interactive shell, so ~/.zshrc exports were missing.
         "ghostty-run": ["aaecd6d1093bc03da602c20138539c4e41c650638fcd68f782896df35a0141dd"],
+        // v1 (the docs recipe people copied by hand): tabs were always named after the command.
+        "herdr-run": ["22f44d31ec27c2ad3d19a9076958845813b6bfd12fa2eaf5e405aae6898868a5"],
     ]
 
     /// Ghostty's CLI can't open tabs or splits on macOS (`+new-window is not
@@ -78,6 +80,7 @@ APPLESCRIPT
 #
 #   HERDR_RUN_APP=Ghostty   app hosting herdr, brought to the front (empty = don't)
 #   HERDR_RUN_FOCUS=0       create in the background, don't switch to it
+#   HERDR_RUN_LABEL=...     the new tab's name in herdr (default: the command's name)
 #   HERDR_RUN_TITLE=...     Ghostty title of the terminal running herdr
 #                           (default "<hostname -s>: <workspace label>", herdr's own title)
 # With Ghostty, the exact terminal running herdr is focused, not just the app.
@@ -100,7 +103,7 @@ focus=--focus
 
 case $place in
   tab)
-    res=$(herdr tab create $focus --label "${1:t}" --env "EUCLID_CMD=$inner")
+    res=$(herdr tab create $focus --label "${HERDR_RUN_LABEL:-${1:t}}" --env "EUCLID_CMD=$inner")
     pane=$(jq -r '.result.root_pane.pane_id' <<<"$res") ;;
   split|split-down)
     dir=right; [[ $place == split-down ]] && dir=down

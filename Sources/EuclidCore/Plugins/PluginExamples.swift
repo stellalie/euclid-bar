@@ -2604,6 +2604,9 @@ f=$(ls "$dir"/*/"$id".jsonl 2>/dev/null | head -n 1) || true
 cwd=$(grep -m 1 '"cwd":' "$f" | jq -r '.cwd // empty' 2>/dev/null) || true
 [ -d "${cwd:-/nonexistent}" ] || cwd=$HOME
 cli=${EUCLID_SETTING_COMMAND:-claude}
+# herdr names the tab after the session (herdr-run reads this).
+HERDR_RUN_LABEL=$(grep '"type":"ai-title"' "$f" | tail -n 1 | jq -r '.aiTitle // empty' 2>/dev/null | cut -c1-40) || true
+export HERDR_RUN_LABEL=${HERDR_RUN_LABEL:-$cli}
 term=${EUCLID_SETTING_TERMINAL:-}
 if [ -z "$term" ] && command -v herdr-run >/dev/null 2>&1 && herdr workspace list >/dev/null 2>&1; then
   term="herdr-run tab"   # herdr is running: open it there, where the herdr plugin sees it
@@ -2683,6 +2686,9 @@ $text"
 
 case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;; esac
 set -- sh -c 'cd "$1" && shift && exec "$@"' sh "$dir" "$@"
+# herdr names the tab after the result, not "sh" (herdr-run reads this).
+HERDR_RUN_LABEL=$(printf '%s' "${title:-${kind:-$cli}}" | tr '\n' ' ' | cut -c1-40)
+export HERDR_RUN_LABEL
 
 term=${EUCLID_SETTING_TERMINAL:-}
 if [ -z "$term" ] && command -v herdr-run >/dev/null 2>&1 && herdr workspace list >/dev/null 2>&1; then

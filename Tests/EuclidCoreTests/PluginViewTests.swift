@@ -563,7 +563,7 @@ import Testing
         let key = try #require(ho.plugin.keys.first)
         let bin = ho.dir.appendingPathComponent("bin")
         try script(bin, "claude", "#!/bin/sh\nexit 0\n")
-        try script(bin, "herdr-run", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/herdr-run.args\"\n")
+        try script(bin, "herdr-run", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/herdr-run.args\"\necho \"$HERDR_RUN_LABEL\" > \"$(dirname \"$0\")/herdr-run.label\"\n")
         let args = bin.appendingPathComponent("herdr-run.args")
 
         try script(bin, "herdr", "#!/bin/sh\n[ \"$1 $2\" = 'workspace list' ] && exit 0\nexit 1\n") // running
@@ -571,6 +571,7 @@ import Testing
         let sent = try String(contentsOf: args, encoding: .utf8).split(separator: "\n").map(String.init)
         #expect(Array(sent.prefix(3)) == ["tab", "sh", "-c"])
         #expect(sent.contains("claude"))
+        #expect(try String(contentsOf: bin.appendingPathComponent("herdr-run.label"), encoding: .utf8) == "Fix login\n") // not "sh"
 
         try FileManager.default.removeItem(at: args)
         try script(bin, "herdr", "#!/bin/sh\necho 'no herdr server' >&2\nexit 1\n") // installed, not running
