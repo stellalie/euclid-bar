@@ -12,8 +12,10 @@ enum EuclidApp {
         if CommandLine.arguments.contains("--check-config") { exit(checkConfig()) }
         if CommandLine.arguments.contains("--mcp") { exit(AgentServer.run()) }
         if let i = CommandLine.arguments.firstIndex(of: "--completions") {
-            guard CommandLine.arguments.dropFirst(i + 1).first == "zsh" else { print("usage: euclid-bar --completions zsh"); exit(64) }
-            print(Completions.zsh(), terminator: ""); exit(0)
+            guard let shell = CommandLine.arguments.dropFirst(i + 1).first, let script = Completions.script(for: shell) else {
+                print("usage: euclid-bar --completions \(Completions.shells.joined(separator: "|"))"); exit(64)
+            }
+            print(script, terminator: ""); exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--theme") { exit(ThemeCLI.run(Array(CommandLine.arguments.dropFirst(i + 1)))) }
         if let i = CommandLine.arguments.firstIndex(of: "--tool") { exit(AgentServer.tool(Array(CommandLine.arguments.dropFirst(i + 1)))) }

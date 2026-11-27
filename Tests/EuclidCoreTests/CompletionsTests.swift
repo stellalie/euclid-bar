@@ -61,4 +61,70 @@ import Testing
         #expect(p.terminationStatus == 0)
         #expect(Completions.zsh().hasPrefix("#compdef euclid-bar\n"))
     }
+
+    static let bash = ["/bin/bash", "/usr/bin/bash"].first { FileManager.default.isExecutableFile(atPath: $0) }
+    static let fish = ["/usr/bin/fish", "/opt/homebrew/bin/fish", "/usr/local/bin/fish"].first { FileManager.default.isExecutableFile(atPath: $0) }
+
+    /// Runs `script` in `shell` with a fake euclid-bar first on PATH; returns its stdout lines.
+    func runShell(_ shell: String, _ script: String, files: [String: String]) throws -> [String] {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-comp-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for (name, text) in files { try text.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+        try """
+            #!/bin/sh
+            case $1 in
+              --tool) printf 'usage: euclid-bar --tool <name> [key=value…]\\n\\nsearch_clipboard  Search it.\\neuclid_shortcuts  Keys.\\n' ;;
+              --theme) printf '  default\\n* nord\\n  midnight  (themes/midnight.toml)\\n\\neuclid-bar --theme <name> switches.\\n' ;;
+            esac
+            """.writeScript(to: dir.appendingPathComponent("euclid-bar"))
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: shell)
+        p.arguments = ["-c", script.replacingOccurrences(of: "$DIR", with: dir.path)]
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = dir.path + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        env["XDG_CONFIG_HOME"] = dir.path // fish: no user config
+        p.environment = env
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        try p.run()
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(decoding: data, as: UTF8.self).split(separator: "\n").map(String.init)
+    }
+
+    @Test(.enabled(if: bash != nil)) func bashCompletes() throws {
+        func complete(_ words: [String]) throws -> [String] {
+            let list = words.map { "'\($0)'" }.joined(separator: " ")
+            return try runShell(try #require(Self.bash), """
+                source $DIR/euclid-bar.bash
+                COMP_WORDS=(\(list)); COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))
+                _euclid_bar; printf '%s\\n' "${COMPREPLY[@]}"
+                """, files: ["euclid-bar.bash": Completions.bash()])
+        }
+        #expect(try complete(["euclid-bar", "--t"]) == ["--tool", "--theme", "--try-plugin"])
+        #expect(try complete(["euclid-bar", "--tool", ""]) == ["search_clipboard", "euclid_shortcuts"])
+        #expect(try complete(["euclid-bar", "--theme", "mi"]) == ["midnight"])
+        #expect(try complete(["euclid-bar", "--plugin", "add", "her"]) == ["herdr"])
+        #expect(try complete(["euclid-bar", "--completions", ""]) == ["zsh", "bash", "fish"])
+    }
+
+    @Test(.enabled(if: fish != nil)) func fishCompletes() throws {
+        func complete(_ line: String) throws -> [String] {
+            try runShell(try #require(Self.fish), "source $DIR/euclid-bar.fish; complete -C '\(line)'",
+                         files: ["euclid-bar.fish": Completions.fish()]).map { String($0.prefix { $0 != "\t" }) }
+        }
+        #expect(try complete("euclid-bar --t").sorted() == ["--theme", "--tool", "--try-plugin"])
+        #expect(try complete("euclid-bar --tool ").sorted() == ["euclid_shortcuts", "search_clipboard"])
+        #expect(try complete("euclid-bar --theme ").sorted() == ["default", "midnight", "nord"])
+        #expect(try complete("euclid-bar --plugin ").sorted() == ["add", "list"])
+        #expect(try complete("euclid-bar --plugin add her") == ["herdr"])
+        #expect(try complete("euclid-bar --tool search_clipboard ").isEmpty)
+    }
+
+    @Test func everyShellHasAScript() {
+        #expect(Completions.shells.allSatisfy { Completions.script(for: $0) != nil })
+        #expect(Completions.script(for: "tcsh") == nil)
+    }
 }

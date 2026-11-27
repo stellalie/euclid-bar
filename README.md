@@ -179,10 +179,11 @@ Then press **`⌥Space`**. Euclid updates itself, so `brew upgrade` skips it. Or
    ```sh
    alias euclid-bar=/Applications/Euclid.app/Contents/MacOS/euclid-bar
    ```
-   Tab completion for zsh (flags, tools, your themes, plugins):
+   Tab completion (flags, tools, your themes, plugins) for zsh, bash or fish:
    ```sh
-   mkdir -p ~/.zfunc && euclid-bar --completions zsh > ~/.zfunc/_euclid-bar
-   # in ~/.zshrc, before compinit: fpath=(~/.zfunc $fpath)
+   mkdir -p ~/.zfunc && euclid-bar --completions zsh > ~/.zfunc/_euclid-bar  # then fpath=(~/.zfunc $fpath) before compinit
+   euclid-bar --completions bash > ~/.local/share/bash-completion/completions/euclid-bar
+   euclid-bar --completions fish > ~/.config/fish/completions/euclid-bar.fish
    ```
    Installed before v1.2? Updates keep your copy at `/Applications/euclid-bar.app`; rename it to
    `Euclid.app` in Finder whenever you like (settings, permissions and updates carry over).
