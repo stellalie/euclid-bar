@@ -2549,8 +2549,8 @@ refresh_minutes = 2
 [settings]
 limit    = "40"      # sessions shown, newest first
 command  = "claude"  # the CLI that resumes: `<command> --resume <id>`
-terminal = ""        # empty = Ghostty if you have it, else Terminal;
-                     # or a command that runs its arguments, e.g. "ghostty-run split"
+terminal = ""        # empty = a herdr tab if herdr is running, else Ghostty if you have it, else
+                     # Terminal; or a command that runs its arguments, e.g. "ghostty-run split"
 """#
 
     static let claudeSessionsItems = #"""
@@ -2605,7 +2605,9 @@ cwd=$(grep -m 1 '"cwd":' "$f" | jq -r '.cwd // empty' 2>/dev/null) || true
 [ -d "${cwd:-/nonexistent}" ] || cwd=$HOME
 cli=${EUCLID_SETTING_COMMAND:-claude}
 term=${EUCLID_SETTING_TERMINAL:-}
-if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+if [ -z "$term" ] && command -v herdr-run >/dev/null 2>&1 && herdr workspace list >/dev/null 2>&1; then
+  term="herdr-run tab"   # herdr is running: open it there, where the herdr plugin sees it
+elif [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
   term="ghostty-run tab"
 fi
 if [ -n "$term" ]; then
@@ -2636,8 +2638,8 @@ run  = "./handoff.sh"
 
 [settings]
 cli      = ""   # claude, codex or gemini; empty = the first of them on your PATH
-terminal = ""   # empty = Ghostty if you have it, else Terminal; or a command that runs its
-                # arguments, e.g. "ghostty-run split"
+terminal = ""   # empty = a herdr tab if herdr is running, else Ghostty if you have it, else
+                # Terminal; or a command that runs its arguments, e.g. "ghostty-run split"
 """#
 
     static let handoffScript = #"""
@@ -2683,7 +2685,9 @@ case $cli in gemini) set -- gemini -i "$prompt" ;; *) set -- "$cli" "$prompt" ;;
 set -- sh -c 'cd "$1" && shift && exec "$@"' sh "$dir" "$@"
 
 term=${EUCLID_SETTING_TERMINAL:-}
-if [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
+if [ -z "$term" ] && command -v herdr-run >/dev/null 2>&1 && herdr workspace list >/dev/null 2>&1; then
+  term="herdr-run tab"   # herdr is running: open it there, where the herdr plugin sees it
+elif [ -z "$term" ] && { [ -d /Applications/Ghostty.app ] || [ -d "$HOME/Applications/Ghostty.app" ]; }; then
   term="ghostty-run tab"
 fi
 if [ -n "$term" ]; then

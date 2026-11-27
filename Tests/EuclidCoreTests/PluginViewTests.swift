@@ -555,6 +555,36 @@ import Testing
         await #expect(throws: PluginRunner.Failure.self) { _ = try await handoff([:]) } // nothing selected
     }
 
+    /// Hand-off and session resume open in a herdr tab while herdr is running, so the herdr plugin
+    /// (badge, notifications, "needs you") sees the agent; otherwise the next terminal down.
+    @Test func agentsOpenInHerdrWhenItsRunning() async throws {
+        let ho = try install("handoff")
+        defer { try? FileManager.default.removeItem(at: ho.dir) }
+        let key = try #require(ho.plugin.keys.first)
+        let bin = ho.dir.appendingPathComponent("bin")
+        try script(bin, "claude", "#!/bin/sh\nexit 0\n")
+        try script(bin, "herdr-run", "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$(dirname \"$0\")/herdr-run.args\"\n")
+        let args = bin.appendingPathComponent("herdr-run.args")
+
+        try script(bin, "herdr", "#!/bin/sh\n[ \"$1 $2\" = 'workspace list' ] && exit 0\nexit 1\n") // running
+        _ = try await ho.run(key.run, env: ["EUCLID_ITEM_TITLE": "Fix login"], bin: bin)
+        let sent = try String(contentsOf: args, encoding: .utf8).split(separator: "\n").map(String.init)
+        #expect(Array(sent.prefix(3)) == ["tab", "sh", "-c"])
+        #expect(sent.contains("claude"))
+
+        try FileManager.default.removeItem(at: args)
+        try script(bin, "herdr", "#!/bin/sh\necho 'no herdr server' >&2\nexit 1\n") // installed, not running
+        _ = try? await ho.run(key.run, env: ["EUCLID_ITEM_TITLE": "Fix login"], bin: bin) // Ghostty or Terminal, not here
+        #expect(!FileManager.default.fileExists(atPath: args.path))
+
+        // A terminal you chose always wins.
+        let chosen = try install("handoff", settings: ["terminal": #"printf %s\n"#])
+        defer { try? FileManager.default.removeItem(at: chosen.dir) }
+        try script(bin, "herdr", "#!/bin/sh\nexit 0\n")
+        let out = try await chosen.run(key.run, env: ["EUCLID_ITEM_TITLE": "Fix login"], bin: bin)
+        #expect(out.hasPrefix("sh\n-c\n") && !FileManager.default.fileExists(atPath: args.path))
+    }
+
     /// The `claude-sessions` example over a fake ~/.claude: titled rows, newest first, ↵ resumes in its folder.
     @Test(.enabled(if: FileManager.default.isExecutableFile(atPath: "/usr/bin/jq")))
     func claudeSessionsListAndResume() async throws {

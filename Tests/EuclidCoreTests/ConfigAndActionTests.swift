@@ -278,6 +278,18 @@ import Testing
         #expect(try String(contentsOf: script, encoding: .utf8) == "# mine")
     }
 
+    /// Euclid installs herdr-run too, the same script as the docs/recipes copy.
+    @Test func herdrRunIsInstalledAndMatchesTheRecipe() throws {
+        let recipe = URL(fileURLWithPath: #filePath.components(separatedBy: "/Tests/")[0] + "/docs/recipes/herdr-run")
+        #expect(DefaultScripts.herdrRun + "\n" == (try String(contentsOf: recipe, encoding: .utf8)))
+        let bin = FileManager.default.temporaryDirectory.appendingPathComponent("euclid-bin-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: bin) }
+        try ConfigLoader.installDefaultScripts(in: bin)
+        let installed = bin.appendingPathComponent("herdr-run")
+        #expect(FileManager.default.isExecutableFile(atPath: installed.path))
+        #expect(try String(contentsOf: installed, encoding: .utf8) == DefaultScripts.herdrRun)
+    }
+
     /// An unmodified older version is upgraded; that's how ghostty-run v1 users get the fix.
     @Test func installDefaultScriptsUpgradesUnmodifiedOldVersions() throws {
         let bin = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

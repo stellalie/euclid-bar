@@ -232,8 +232,9 @@ run  = 'printf %s "$1" | jq . | pbcopy'
 ```
 
 `ghostty-run` is a small script Euclid installs into `~/.config/euclid/bin` (on `PATH` for every
-action). Read it, tweak it, or drop your own scripts next to it. Using herdr? Copy
-[`docs/recipes/herdr-run`](docs/recipes/herdr-run) there.
+action). Read it, tweak it, or drop your own scripts next to it. Using herdr? `herdr-run tab|split`
+sits next to it and does the same in a herdr pane; the `handoff` and `claude-sessions` plugins open
+agents there on their own while herdr is running, so the `herdr` plugin can tell you when they need you.
 
 ## Configuration
 
