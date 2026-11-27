@@ -54,7 +54,7 @@ public enum Completions {
                   compadd -a tools ;;
                 --theme)
                   (( CURRENT == 3 )) || return 1
-                  local -a themes=(${(f)"$($cmd --theme 2>/dev/null | sed -n 's/^[* ] \([a-z0-9_-]*\).*/\1/p')"})
+                  local -a themes=(--next --prev ${(f)"$($cmd --theme 2>/dev/null | sed -n 's/^[* ] \([a-z0-9_-]*\).*/\1/p')"})
                   compadd -a themes ;;
                 --plugin)
                   if (( CURRENT == 3 )); then compadd add list
@@ -83,7 +83,7 @@ public enum Completions {
               else
                 case ${COMP_WORDS[1]} in
                   --tool) (( COMP_CWORD == 2 )) && words=$("$cmd" --tool 2>/dev/null | \#(toolNames)) ;;
-                  --theme) (( COMP_CWORD == 2 )) && words=$("$cmd" --theme 2>/dev/null | \#(themeNames)) ;;
+                  --theme) (( COMP_CWORD == 2 )) && words="--next --prev $("$cmd" --theme 2>/dev/null | \#(themeNames))" ;;
                   --plugin)
                     if (( COMP_CWORD == 2 )); then words="add list"
                     elif (( COMP_CWORD == 3 )) && [[ ${COMP_WORDS[2]} == add ]]; then words="\#(examples)"; fi ;;
@@ -111,7 +111,7 @@ public enum Completions {
             "complete -c euclid-bar -f",
         ] + flagLines + [
             after("tool") + " -a '(euclid-bar --tool 2>/dev/null | \(toolNames.replacingOccurrences(of: "'", with: "\\'")))'",
-            after("theme") + " -a '(euclid-bar --theme 2>/dev/null | \(themeNames.replacingOccurrences(of: "'", with: "\\'")))'",
+            after("theme") + " -a '--next --prev (euclid-bar --theme 2>/dev/null | \(themeNames.replacingOccurrences(of: "'", with: "\\'")))'",
             after("plugin") + " -a 'add list'",
             "complete -c euclid-bar -n '__fish_seen_argument -l plugin; and __fish_seen_subcommand_from add' -a '\(examples)'",
             after("completions") + " -a 'zsh bash fish'",

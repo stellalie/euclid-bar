@@ -45,7 +45,7 @@ import Testing
     @Test(.enabled(if: zsh != nil)) func completesFlagsToolsThemesAndPlugins() throws {
         #expect(try complete(["euclid-bar", ""]).prefix(3) == ["--tool", "--theme", "--plugin"])
         #expect(try complete(["euclid-bar", "--tool", ""]) == ["search_clipboard", "euclid_shortcuts"])
-        #expect(try complete(["euclid-bar", "--theme", ""]) == ["default", "nord", "midnight"])
+        #expect(try complete(["euclid-bar", "--theme", ""]) == ["--next", "--prev", "default", "nord", "midnight"])
         #expect(try complete(["euclid-bar", "--plugin", ""]) == ["add", "list"])
         let examples = try complete(["euclid-bar", "--plugin", "add", ""])
         #expect(examples.contains("herdr") && examples.contains("claude-sessions") && examples.contains("handoff"))
@@ -106,6 +106,7 @@ import Testing
         #expect(try complete(["euclid-bar", "--t"]) == ["--tool", "--theme", "--try-plugin"])
         #expect(try complete(["euclid-bar", "--tool", ""]) == ["search_clipboard", "euclid_shortcuts"])
         #expect(try complete(["euclid-bar", "--theme", "mi"]) == ["midnight"])
+        #expect(try complete(["euclid-bar", "--theme", "--n"]) == ["--next"])
         #expect(try complete(["euclid-bar", "--plugin", "add", "her"]) == ["herdr"])
         #expect(try complete(["euclid-bar", "--completions", ""]) == ["zsh", "bash", "fish"])
     }
@@ -117,7 +118,7 @@ import Testing
         }
         #expect(try complete("euclid-bar --t").sorted() == ["--theme", "--tool", "--try-plugin"])
         #expect(try complete("euclid-bar --tool ").sorted() == ["euclid_shortcuts", "search_clipboard"])
-        #expect(try complete("euclid-bar --theme ").sorted() == ["default", "midnight", "nord"])
+        #expect(try complete("euclid-bar --theme ").sorted() == ["--next", "--prev", "default", "midnight", "nord"])
         #expect(try complete("euclid-bar --plugin ").sorted() == ["add", "list"])
         #expect(try complete("euclid-bar --plugin add her") == ["herdr"])
         #expect(try complete("euclid-bar --tool search_clipboard ").isEmpty)

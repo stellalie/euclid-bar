@@ -1,6 +1,6 @@
 import Foundation
 
-/// `euclid-bar --theme [name]`: list the themes (yours from `themes/*.toml` too, the one in use
+/// `euclid-bar --theme [name | --next | --prev]`: list the themes (yours from `themes/*.toml` too, the one in use
 /// marked), or switch to one. Switching edits `[appearance] theme` in config.toml, keeping the rest
 /// of the file as it is; Euclid applies a saved config at once, so an open panel changes as you watch.
 public enum ThemeCommand {
@@ -13,10 +13,14 @@ public enum ThemeCommand {
     public static func run(_ args: [String], configText: String, current: String, yourThemes: [String]) -> Result {
         let yours = Set(yourThemes)
         let all = [Themes.defaultName] + Set(Themes.names + yourThemes).subtracting([Themes.defaultName]).sorted()
-        guard let name = args.first else {
+        guard var name = args.first else {
             let rows = all.map { ($0 == current ? "* " : "  ") + $0 + (yours.contains($0) ? "  (themes/\($0).toml)" : "") }
-            return Result(output: (rows + ["", "euclid-bar --theme <name> switches; Euclid applies it at once."]).joined(separator: "\n"),
+            return Result(output: (rows + ["", "euclid-bar --theme <name> switches (or --next, --prev); Euclid applies it at once."]).joined(separator: "\n"),
                           newText: nil, status: 0)
+        }
+        if name == "--next" || name == "--prev" { // step through the list, wrapping round
+            let i = all.firstIndex(of: current) ?? 0
+            name = all[(i + (name == "--next" ? 1 : all.count - 1)) % all.count]
         }
         guard all.contains(name) else {
             let close = all.filter { $0.hasPrefix(name.lowercased()) || $0.contains(name.lowercased()) }

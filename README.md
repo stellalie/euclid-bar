@@ -383,6 +383,7 @@ Or from a terminal, with the panel open to watch it change:
 ```sh
 euclid-bar --theme              # lists them, * marks yours
 euclid-bar --theme nord         # sets [appearance] theme, keeping the rest of config.toml
+while sleep 2; do euclid-bar --theme --next; done   # tour them all; ⌃C on the one you like
 ```
 
 | Theme | Look |

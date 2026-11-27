@@ -45,4 +45,20 @@ import Testing
         let yours = ThemeCommand.run(["midnight"], configText: config, current: "nord", yourThemes: ["midnight"])
         #expect(yours.newText?.contains(#"theme = "midnight""#) == true)
     }
+
+    @Test func nextAndPrevStepThroughAndWrap() throws {
+        let all = [Themes.defaultName] + Set(Themes.names + ["midnight"]).subtracting([Themes.defaultName]).sorted()
+        func step(_ flag: String, from current: String) -> String? {
+            ThemeCommand.run([flag], configText: config, current: current, yourThemes: ["midnight"]).output
+                .split(separator: " ").last.map(String.init)
+        }
+        #expect(step("--next", from: "default") == all[1])
+        #expect(step("--prev", from: all[1]) == "default")
+        #expect(step("--next", from: all.last!) == "default")   // wraps round
+        #expect(step("--prev", from: "default") == all.last!)
+        #expect(all.contains("midnight"))                      // your own themes are in the cycle
+        let r = ThemeCommand.run(["--next"], configText: config, current: "nord", yourThemes: [])
+        #expect(r.newText?.contains("theme = ") == true && r.status == 0)
+    }
 }
+
