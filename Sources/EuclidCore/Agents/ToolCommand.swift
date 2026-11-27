@@ -4,10 +4,14 @@ import Foundation
 /// No name lists them. Values are strings, or numbers where the tool's schema says integer.
 public enum ToolCommand {
     public static func run(_ args: [String], tools: [MCPServer.Tool]) -> (output: String, status: Int32) {
-        guard let name = args.first, !name.hasPrefix("-") else { return (list(tools), args.isEmpty ? 0 : 64) }
+        guard let name = args.first, !name.hasPrefix("-") else {
+            let asked = args.isEmpty || args.first == "--help" || args.first == "-h"
+            return (list(tools), asked ? 0 : 64)
+        }
         guard let tool = tools.first(where: { $0.name == name }) else {
             return ("error: no tool named '\(name)'\n\n" + list(tools), 64)
         }
+        if args.dropFirst().contains(where: { $0 == "--help" || $0 == "-h" }) { return (usage(tool), 0) }
         let properties = tool.inputSchema["properties"] as? [String: [String: Any]] ?? [:]
         var input: [String: Any] = [:]
         for pair in args.dropFirst() {

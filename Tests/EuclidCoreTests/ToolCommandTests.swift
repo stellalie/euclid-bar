@@ -40,6 +40,16 @@ import Testing
         #expect(ToolCommand.run(["search_clipboard", "docker"], tools: tools).output.hasPrefix("error: arguments are key=value"))
     }
 
+    @Test func helpShowsUsageAndSucceeds() {
+        let help = ToolCommand.run(["search_clipboard", "--help"], tools: tools)
+        #expect(help.status == 0)
+        #expect(help.output.hasPrefix("usage: euclid-bar --tool search_clipboard query=… [limit=…]"))
+        #expect(help.output.contains("  query: Words to look for."))
+        #expect(ToolCommand.run(["search_clipboard", "query=x", "-h"], tools: tools).status == 0)
+        #expect(ToolCommand.run(["--help"], tools: tools).status == 0)
+        #expect(ToolCommand.run(["--bogus"], tools: tools).status == 64)
+    }
+
     @Test func aFailingToolSaysWhy() {
         let r = ToolCommand.run(["broken"], tools: tools)
         #expect(r.status == 1)
